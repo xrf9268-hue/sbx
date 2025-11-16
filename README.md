@@ -206,11 +206,14 @@ git submodule update --remote docs/sing-box-official
 ### Testing
 
 ```bash
-# Run Reality unit tests (coming soon - Phase 2)
+# Run Reality unit tests
 make test
 
-# Run full integration tests
-make integration-test
+# Run quick validation tests
+make test-quick
+
+# Run full integration tests (requires sing-box binary)
+make test-integration
 
 # Check test coverage
 make coverage
