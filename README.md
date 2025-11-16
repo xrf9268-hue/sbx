@@ -15,12 +15,12 @@ One-click deployment script for sing-box proxy server with VLESS-REALITY support
 
 **Install (Reality mode, no domain required)**
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/Joe-oss9527/sbx-lite/main/install_multi.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/xrf9268-hue/sbx/main/install_multi.sh)
 ```
 
 **Install with domain (enables WS-TLS + Hysteria2)**
 ```bash
-DOMAIN=your.domain.com bash <(curl -fsSL https://raw.githubusercontent.com/Joe-oss9527/sbx-lite/main/install_multi.sh)
+DOMAIN=your.domain.com bash <(curl -fsSL https://raw.githubusercontent.com/xrf9268-hue/sbx/main/install_multi.sh)
 ```
 
 After installation, connection URIs are displayed automatically. Copy them to your client.
@@ -63,7 +63,7 @@ sbx log           # View error messages
 **Installation issues - Enable debug logging**
 ```bash
 # Run with detailed debug output and timestamps
-DEBUG=1 LOG_TIMESTAMPS=1 bash <(curl -fsSL https://raw.githubusercontent.com/Joe-oss9527/sbx-lite/main/install_multi.sh)
+DEBUG=1 LOG_TIMESTAMPS=1 bash <(curl -fsSL https://raw.githubusercontent.com/xrf9268-hue/sbx/main/install_multi.sh)
 
 # Save debug log to file for sharing
 DEBUG=1 LOG_FILE=/tmp/install-debug.log bash <(curl -fsSL ...)

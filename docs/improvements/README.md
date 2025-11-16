@@ -192,7 +192,7 @@ Phase 4: ⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜ 0% (0/4)
 ## 📞 联系与支持
 
 ### 问题反馈
-- GitHub Issues: [Create Issue](https://github.com/Joe-oss9527/sbx-lite/issues)
+- GitHub Issues: [Create Issue](https://github.com/xrf9268-hue/sbx/issues)
 - 计划问题: 在改进计划文档中记录
 
 ### 审查请求
