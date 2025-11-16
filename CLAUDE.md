@@ -294,6 +294,480 @@ export -f msg warn err success die
 - **Error Handling**: Falls back to manual input on detection failure
 - **IPv4 Validation**: Regex validation of detected IP addresses
 
+## Reality Protocol Best Practices (sing-box 1.12.0+)
+
+### Overview
+
+This section documents critical best practices for VLESS + REALITY + Vision implementation based on sing-box 1.12.0+ official standards and verified compliance audit. **ALL** Reality configurations must follow these rules.
+
+**Reference Documentation:**
+- **Official sing-box VLESS spec**: `docs/sing-box-official/docs/configuration/inbound/vless.md`
+- **Official Reality/TLS fields**: `docs/sing-box-official/docs/configuration/shared/tls.md#reality-fields`
+- **Migration guide**: `docs/sing-box-official/docs/migration.md`
+- **Compliance audit**: `docs/REALITY_COMPLIANCE_REVIEW.md`
+- **Comparison guide**: `docs/SING_BOX_VS_XRAY.md`
+
+### Short ID Generation Rules
+
+**CRITICAL:** sing-box has strict short ID constraints (different from Xray)
+
+#### Mandatory Rules
+
+```bash
+# ✅ CORRECT: Generate 8-character short ID (sing-box standard)
+SID=$(openssl rand -hex 4)
+
+# ✗ WRONG: Generates 16 characters (Xray format, INVALID for sing-box)
+SID=$(openssl rand -hex 8)  # DO NOT USE THIS
+
+# ✅ ALWAYS validate immediately after generation
+validate_short_id "$SID" || die "Generated invalid short ID: $SID"
+```
+
+#### Validation Pattern
+
+```bash
+# Regex pattern for short ID validation (lib/validation.sh:296)
+[[ "$sid" =~ ^[0-9a-fA-F]{1,8}$ ]]
+
+# Requirements:
+# - Length: 0-8 hexadecimal characters (NOT 16 like Xray)
+# - Format: Only 0-9, a-f, A-F allowed (case-insensitive)
+# - Type: Must be stored as ARRAY in config.json
+```
+
+#### Common Mistakes
+
+```bash
+# ❌ Using Xray short ID length
+openssl rand -hex 8  # Produces 16 chars → INVALID
+
+# ❌ Missing validation
+SID=$(openssl rand -hex 4)
+# No validation here → may proceed with invalid ID
+
+# ❌ String instead of array in JSON
+"short_id": "a1b2c3d4"  # WRONG
+
+# ✅ Correct array format
+"short_id": ["a1b2c3d4"]  # CORRECT
+```
+
+### Configuration Structure Rules
+
+**CRITICAL:** Reality MUST be nested under `tls.reality` (NOT top-level)
+
+#### Mandatory Structure
+
+```json
+{
+  "inbounds": [
+    {
+      "type": "vless",
+      "users": [
+        {
+          "uuid": "...",
+          "flow": "xtls-rprx-vision"  // ← Flow field in users array
+        }
+      ],
+      "tls": {
+        "enabled": true,  // ← TLS must be enabled
+        "server_name": "www.microsoft.com",
+        "reality": {  // ← Reality NESTED under tls
+          "enabled": true,
+          "private_key": "...",
+          "short_id": ["..."],  // ← ARRAY format
+          "handshake": {
+            "server": "www.microsoft.com",
+            "server_port": 443
+          },
+          "max_time_difference": "1m"
+        },
+        "alpn": ["h2", "http/1.1"]
+      }
+    }
+  ]
+}
+```
+
+#### Structure Validation Checklist
+
+```bash
+# 1. Reality nested under tls
+jq -e '.inbounds[0].tls.reality' config.json || die "Reality not nested under tls"
+
+# 2. TLS enabled
+jq -e '.inbounds[0].tls.enabled == true' config.json || die "TLS not enabled"
+
+# 3. Flow field in users array
+jq -e '.inbounds[0].users[0].flow == "xtls-rprx-vision"' config.json || die "Flow field incorrect"
+
+# 4. Short ID is array
+jq -e '.inbounds[0].tls.reality.short_id | type == "array"' config.json || die "Short ID not array"
+
+# 5. All required fields present
+for field in private_key short_id handshake; do
+  jq -e ".inbounds[0].tls.reality.$field" config.json || die "Missing: $field"
+done
+```
+
+#### Common Structure Errors
+
+```json
+// ❌ WRONG: Reality at top level
+{
+  "inbounds": [{
+    "type": "vless",
+    "reality": { ... }  // ERROR: Not under tls
+  }]
+}
+
+// ❌ WRONG: TLS not enabled
+{
+  "inbounds": [{
+    "tls": {
+      "enabled": false,  // ERROR: Must be true for Reality
+      "reality": { ... }
+    }
+  }]
+}
+
+// ❌ WRONG: Flow in wrong location
+{
+  "inbounds": [{
+    "flow": "xtls-rprx-vision",  // ERROR: Should be in users array
+    "users": [{"uuid": "..."}]
+  }]
+}
+
+// ✅ CORRECT: Proper nesting
+{
+  "inbounds": [{
+    "type": "vless",
+    "users": [{"uuid": "...", "flow": "xtls-rprx-vision"}],
+    "tls": {
+      "enabled": true,
+      "reality": { ... }
+    }
+  }]
+}
+```
+
+### Transport and Security Pairing Rules
+
+**CRITICAL:** Vision flow requires TCP transport with Reality security
+
+#### Valid Combinations
+
+| Transport | Security | Flow | Valid | Notes |
+|-----------|----------|------|-------|-------|
+| TCP | Reality | `xtls-rprx-vision` | ✅ | **Default Reality configuration** |
+| TCP | TLS | `""` (empty) | ✅ | Standard VLESS over TLS |
+| WS | TLS | `""` (empty) | ✅ | WebSocket with TLS |
+| gRPC | TLS | `""` (empty) | ✅ | gRPC with TLS |
+
+#### Invalid Combinations
+
+| Transport | Security | Flow | Valid | Reason |
+|-----------|----------|------|-------|--------|
+| WS | Reality | `xtls-rprx-vision` | ❌ | Vision requires TCP, not WebSocket |
+| gRPC | Reality | `xtls-rprx-vision` | ❌ | Vision requires TCP, not gRPC |
+| TCP | Reality | `""` (empty) | ⚠️ | Works but defeats Vision purpose |
+| TCP | none | `xtls-rprx-vision` | ❌ | Vision requires Reality security |
+
+#### Validation Rule
+
+```bash
+# Vision flow MUST use TCP transport with Reality security
+if [[ "$flow" == "xtls-rprx-vision" ]]; then
+  [[ "$transport" == "tcp" ]] || die "Vision requires TCP transport"
+  [[ "$security" == "reality" ]] || die "Vision requires Reality security"
+fi
+```
+
+### Official Reference Locations
+
+**Local Access** (after `git submodule update --init`):
+
+```bash
+# VLESS inbound configuration
+docs/sing-box-official/docs/configuration/inbound/vless.md
+
+# Reality/TLS field specifications
+docs/sing-box-official/docs/configuration/shared/tls.md
+
+# Migration guide (1.12.0 changes)
+docs/sing-box-official/docs/migration.md
+
+# Official test configurations
+docs/sing-box-official/test/config/vless-server.json
+docs/sing-box-official/test/config/vless-tls-server.json
+```
+
+**Online Access**:
+- VLESS: https://sing-box.sagernet.org/configuration/inbound/vless/
+- Reality/TLS: https://sing-box.sagernet.org/configuration/shared/tls/
+- Migration: https://sing-box.sagernet.org/migration/
+
+### Configuration Validation Workflow
+
+**Execute these steps EVERY time you modify Reality configuration:**
+
+#### Step 1: Pre-Generation Validation
+
+```bash
+# Validate all materials before config generation
+validate_config_vars() {
+  # Check UUID format
+  [[ "$UUID" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]] || die "Invalid UUID"
+
+  # Check short ID (1-8 hex chars)
+  [[ "$SID" =~ ^[0-9a-fA-F]{1,8}$ ]] || die "Invalid short ID: $SID"
+
+  # Check keypair format (base64-like)
+  [[ "$PRIV" =~ ^[A-Za-z0-9+/=_-]+$ ]] || die "Invalid private key"
+  [[ "$PUB" =~ ^[A-Za-z0-9+/=_-]+$ ]] || die "Invalid public key"
+
+  # Check port range
+  [[ "$REALITY_PORT_CHOSEN" -ge 1 && "$REALITY_PORT_CHOSEN" -le 65535 ]] || die "Invalid port"
+}
+```
+
+#### Step 2: Structure Validation
+
+```bash
+# After config generation, validate JSON structure
+CONFIG="/etc/sing-box/config.json"
+
+# 1. Valid JSON syntax
+jq empty "$CONFIG" || die "Invalid JSON syntax"
+
+# 2. Reality nested under tls
+jq -e '.inbounds[0].tls.reality' "$CONFIG" >/dev/null || die "Reality not under tls"
+
+# 3. Short ID is array
+sid_type=$(jq -r '.inbounds[0].tls.reality.short_id | type' "$CONFIG")
+[[ "$sid_type" == "array" ]] || die "Short ID must be array, got: $sid_type"
+
+# 4. Flow field correct
+flow=$(jq -r '.inbounds[0].users[0].flow' "$CONFIG")
+[[ "$flow" == "xtls-rprx-vision" ]] || die "Incorrect flow: $flow"
+```
+
+#### Step 3: Runtime Validation
+
+```bash
+# Use sing-box built-in validator
+/usr/local/bin/sing-box check -c "$CONFIG" || die "Configuration validation failed"
+```
+
+#### Step 4: Service Validation
+
+```bash
+# Start/restart service
+systemctl restart sing-box
+
+# Wait for startup
+sleep 3
+
+# Verify service running
+systemctl is-active sing-box || die "Service failed to start"
+
+# Verify port listening
+timeout 10 bash -c 'until ss -lntp | grep -q ":443"; do sleep 1; done' || \
+  die "Port 443 not listening after 10s"
+
+# Check logs for errors
+journalctl -u sing-box -n 20 --no-pager | grep -i "error\|fail" && \
+  warn "Errors detected in logs, please review"
+```
+
+### Reality Configuration Validation Checklist
+
+**Pre-Deployment Checklist** (run before going to production):
+
+```bash
+#!/bin/bash
+# Reality configuration validation checklist
+
+echo "Reality Configuration Validation Checklist"
+echo "==========================================="
+
+# 1. ✅ Generate keypair with official command
+echo -n "1. Keypair generated with 'sing-box generate reality-keypair': "
+[[ -n "$PRIV" && -n "$PUB" ]] && echo "✅" || echo "❌ Missing"
+
+# 2. ✅ Generate short_id correctly
+echo -n "2. Short ID generated with 'openssl rand -hex 4' (8 chars): "
+[[ ${#SID} -eq 8 && "$SID" =~ ^[0-9a-fA-F]+$ ]] && echo "✅" || echo "❌ Invalid"
+
+# 3. ✅ Validate short_id immediately
+echo -n "3. Short ID validated with validate_short_id(): "
+validate_short_id "$SID" 2>/dev/null && echo "✅" || echo "❌ Failed"
+
+# 4. ✅ Structure check: Reality nested under tls.reality
+echo -n "4. Reality nested under tls.reality (not top-level): "
+jq -e '.inbounds[0].tls.reality' /etc/sing-box/config.json >/dev/null 2>&1 && echo "✅" || echo "❌ Wrong"
+
+# 5. ✅ Flow check: xtls-rprx-vision in users array
+echo -n "5. Flow field 'xtls-rprx-vision' in users[].flow: "
+jq -e '.inbounds[0].users[0].flow == "xtls-rprx-vision"' /etc/sing-box/config.json >/dev/null 2>&1 && echo "✅" || echo "❌ Wrong"
+
+# 6. ✅ Short ID format: Array not string
+echo -n "6. Short ID stored as array [\"$SID\"] not string: "
+sid_type=$(jq -r '.inbounds[0].tls.reality.short_id | type' /etc/sing-box/config.json)
+[[ "$sid_type" == "array" ]] && echo "✅" || echo "❌ Wrong type: $sid_type"
+
+# 7. ✅ Config validation
+echo -n "7. Configuration passes 'sing-box check': "
+/usr/local/bin/sing-box check -c /etc/sing-box/config.json >/dev/null 2>&1 && echo "✅" || echo "❌ Failed"
+
+# 8. ✅ Service test
+echo -n "8. Service starts successfully: "
+systemctl is-active sing-box >/dev/null 2>&1 && echo "✅" || echo "❌ Not running"
+
+# 9. ✅ Port listening
+echo -n "9. Port 443 listening: "
+ss -lntp | grep -q ':443' && echo "✅" || echo "❌ Not listening"
+
+# 10. ✅ No errors in logs
+echo -n "10. No errors in recent logs: "
+journalctl -u sing-box -n 50 --no-pager | grep -qi "error\|fatal" && echo "❌ Errors found" || echo "✅"
+
+echo ""
+echo "Review complete. All ✅ means production-ready."
+```
+
+### sing-box vs Xray Differences (Quick Reference)
+
+**CRITICAL for migration from Xray to sing-box:**
+
+| Aspect | sing-box | Xray | Action Required |
+|--------|----------|------|-----------------|
+| **Short ID Length** | 0-8 hex chars | 0-16 hex chars | Use `openssl rand -hex 4` (not `-hex 8`) |
+| **Config Structure** | `tls.reality` | `streamSettings.realitySettings` | Update JSON paths |
+| **Short ID Type** | Array `["id"]` | Array `["id"]` | Ensure array format |
+| **Keypair Command** | `sing-box generate reality-keypair` | `xray x25519` | Either works (X25519 compatible) |
+| **Client Core** | sing-box | Xray | **v2rayN users MUST switch core** |
+
+**See full comparison:** `docs/SING_BOX_VS_XRAY.md`
+
+### Troubleshooting Quick Reference
+
+**Common Reality Issues:**
+
+1. **Short ID validation error**
+   - Symptom: `Short ID must be 1-8 hexadecimal characters`
+   - Fix: Use `openssl rand -hex 4` (not `-hex 8`)
+
+2. **Reality not nested error**
+   - Symptom: `unknown field 'reality'`
+   - Fix: Ensure Reality is under `tls.reality`, not top-level
+
+3. **Handshake timeout**
+   - Symptom: `reality handshake failed`
+   - Fix: Verify public/private key match, short ID matches
+
+4. **Network unreachable (IPv6)**
+   - Symptom: `dial tcp [::1]:443: network unreachable`
+   - Fix: Add `"strategy": "ipv4_only"` to DNS config
+
+5. **v2rayN connection failed**
+   - Symptom: Connection works on other clients but not v2rayN
+   - Fix: Switch v2rayN core from Xray to sing-box
+
+**See full troubleshooting guide:** `docs/REALITY_TROUBLESHOOTING.md`
+
+### Code Examples & Patterns
+
+#### Correct Reality Configuration Generation
+
+```bash
+# From lib/config.sh:create_reality_inbound()
+
+create_reality_inbound() {
+  local uuid="$1"
+  local port="$2"
+  local listen_addr="$3"
+  local sni="$4"
+  local priv_key="$5"
+  local short_id="$6"
+
+  # Input validation
+  [[ -n "$uuid" ]] || { err "UUID cannot be empty"; return 1; }
+  [[ -n "$priv_key" ]] || { err "Private key cannot be empty"; return 1; }
+  [[ -n "$short_id" ]] || { err "Short ID cannot be empty"; return 1; }
+
+  # Generate configuration with jq (ensures type safety)
+  jq -n \
+    --arg uuid "$uuid" \
+    --arg port "$port" \
+    --arg listen_addr "$listen_addr" \
+    --arg sni "$sni" \
+    --arg priv "$priv_key" \
+    --arg sid "$short_id" \
+    '{
+      type: "vless",
+      tag: "in-reality",
+      listen: $listen_addr,
+      listen_port: ($port | tonumber),
+      users: [{ uuid: $uuid, flow: "xtls-rprx-vision" }],
+      tls: {
+        enabled: true,
+        server_name: $sni,
+        reality: {
+          enabled: true,
+          private_key: $priv,
+          short_id: [$sid],  # Array format
+          handshake: { server: $sni, server_port: 443 },
+          max_time_difference: "1m"
+        },
+        alpn: ["h2", "http/1.1"]
+      }
+    }'
+}
+```
+
+#### Correct Material Generation
+
+```bash
+# From install_multi.sh:gen_materials()
+
+gen_materials() {
+  # 1. Generate UUID
+  UUID=$(generate_uuid)
+
+  # 2. Generate Reality keypair
+  keypair=$(generate_reality_keypair) || die "Failed to generate Reality keypair"
+  read -r PRIV PUB <<< "$keypair"
+
+  # 3. Generate short ID (CORRECT: 8 chars)
+  SID=$(openssl rand -hex 4)
+
+  # 4. IMMEDIATELY validate
+  validate_short_id "$SID" || die "Generated invalid short ID: $SID"
+
+  # 5. Export for use in config generation
+  export UUID PRIV PUB SID
+}
+```
+
+### Security Reminders
+
+**NEVER in Production:**
+- ❌ Skip short ID validation
+- ❌ Use hardcoded test keys
+- ❌ Disable config validation
+- ❌ Skip service health checks
+- ❌ Export private keys to clients (only public keys!)
+
+**ALWAYS in Production:**
+- ✅ Generate fresh keypairs for each deployment
+- ✅ Validate configuration before restart
+- ✅ Monitor logs after changes
+- ✅ Keep backups: `sbx backup create --encrypt`
+- ✅ Test client connection after deployment
+
 ## Code Architecture & Critical Functions
 
 ### Installation Flow (install_multi.sh)
