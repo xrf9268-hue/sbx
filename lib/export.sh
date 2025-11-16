@@ -71,7 +71,7 @@ export_v2rayn_json() {
         "serverName": "$SNI",
         "publicKey": "$PUBLIC_KEY",
         "shortId": "$SHORT_ID",
-        "fingerprint": "chrome"
+        "fingerprint": "${REALITY_FINGERPRINT_DEFAULT}"
       }
     }
   }]
@@ -141,13 +141,13 @@ proxies:
     server: $DOMAIN
     port: $REALITY_PORT
     uuid: $UUID
-    flow: xtls-rprx-vision
+    flow: ${REALITY_FLOW_VISION}
     network: tcp
     tls: true
     reality-opts:
       public-key: $PUBLIC_KEY
       short-id: $SHORT_ID
-    client-fingerprint: chrome
+    client-fingerprint: ${REALITY_FINGERPRINT_DEFAULT}
     servername: $SNI
 EOF
 
@@ -166,7 +166,7 @@ EOF
       headers:
         Host: $DOMAIN
     servername: $DOMAIN
-    client-fingerprint: chrome
+    client-fingerprint: ${REALITY_FINGERPRINT_DEFAULT}
 
   - name: "sbx-hysteria2-$DOMAIN"
     type: hysteria2
@@ -206,11 +206,11 @@ export_uri() {
 
   case "$protocol" in
     reality)
-      echo "vless://${UUID}@${DOMAIN}:${REALITY_PORT}?encryption=none&security=reality&flow=xtls-rprx-vision&sni=${SNI}&pbk=${PUBLIC_KEY}&sid=${SHORT_ID}&type=tcp&fp=chrome#Reality-${DOMAIN}"
+      echo "vless://${UUID}@${DOMAIN}:${REALITY_PORT}?encryption=none&security=reality&flow=${REALITY_FLOW_VISION}&sni=${SNI}&pbk=${PUBLIC_KEY}&sid=${SHORT_ID}&type=tcp&fp=${REALITY_FINGERPRINT_DEFAULT}#Reality-${DOMAIN}"
       ;;
     ws)
       [[ -n "$WS_PORT" ]] || die "WS-TLS not configured"
-      echo "vless://${UUID}@${DOMAIN}:${WS_PORT}?encryption=none&security=tls&type=ws&host=${DOMAIN}&path=/ws&sni=${DOMAIN}&fp=chrome#WS-TLS-${DOMAIN}"
+      echo "vless://${UUID}@${DOMAIN}:${WS_PORT}?encryption=none&security=tls&type=ws&host=${DOMAIN}&path=/ws&sni=${DOMAIN}&fp=${REALITY_FINGERPRINT_DEFAULT}#WS-TLS-${DOMAIN}"
       ;;
     hysteria2|hy2)
       [[ -n "$HY2_PORT" ]] || die "Hysteria2 not configured"
