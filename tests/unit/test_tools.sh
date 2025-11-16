@@ -156,7 +156,7 @@ test_http_operations() {
     echo "Testing HTTP operations..."
 
     # Test 1: http_download creates output file
-    local test_url="https://raw.githubusercontent.com/Joe-oss9527/sbx-lite/main/README.md"
+    local test_url="https://raw.githubusercontent.com/xrf9268-hue/sbx/main/README.md"
     local output_file="/tmp/test_http_download_$$"
 
     if http_download "$test_url" "$output_file" 10 2>/dev/null; then
@@ -180,7 +180,7 @@ test_http_operations() {
 
     # Test 3: http_fetch returns content
     local content
-    content=$(http_fetch "https://raw.githubusercontent.com/Joe-oss9527/sbx-lite/main/README.md" 10 2>/dev/null | head -1) || true
+    content=$(http_fetch "https://raw.githubusercontent.com/xrf9268-hue/sbx/main/README.md" 10 2>/dev/null | head -1) || true
     if [[ -n "$content" ]]; then
         test_result "http_fetch returns content" "pass"
     else

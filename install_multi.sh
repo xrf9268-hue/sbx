@@ -242,7 +242,7 @@ _show_download_error_help() {
     echo "Troubleshooting:"
     echo "  • Test connectivity: curl -I https://github.com"
     echo "  • Use git clone instead:"
-    echo "    git clone https://github.com/Joe-oss9527/sbx-lite.git"
+    echo "    git clone https://github.com/xrf9268-hue/sbx.git"
     echo "    cd sbx-lite && bash install_multi.sh"
     echo ""
 }
@@ -298,7 +298,7 @@ _show_syntax_error() {
 
 # Smart module loader: downloads modules if not present (for one-liner install)
 _load_modules() {
-    local github_repo="https://raw.githubusercontent.com/Joe-oss9527/sbx-lite/main"
+    local github_repo="https://raw.githubusercontent.com/xrf9268-hue/sbx/main"
     # Module loading order: common loads logging and generators, tools after common
     local modules=(common logging generators tools retry download network validation checksum version certificate caddy config config_validator service ui backup export messages)
     local temp_lib_dir=""
@@ -500,7 +500,7 @@ _verify_module_apis() {
         echo "  3. Corrupted module files"
         echo ""
         echo "Please try:"
-        echo "  git clone https://github.com/Joe-oss9527/sbx-lite.git"
+        echo "  git clone https://github.com/xrf9268-hue/sbx.git"
         echo "  cd sbx-lite && bash install_multi.sh"
         echo ""
         exit 1
@@ -1030,7 +1030,7 @@ EOF
         warn "     - 'sbx export' and 'sbx backup' commands not available"
         warn ""
         warn "  To get full functionality, please reinstall or manually download:"
-        warn "  curl -fsSL https://raw.githubusercontent.com/Joe-oss9527/sbx-lite/main/bin/sbx-manager.sh \\"
+        warn "  curl -fsSL https://raw.githubusercontent.com/xrf9268-hue/sbx/main/bin/sbx-manager.sh \\"
         warn "    -o /usr/local/bin/sbx-manager && chmod 755 /usr/local/bin/sbx-manager"
     fi
 }
