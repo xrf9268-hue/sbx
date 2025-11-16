@@ -85,7 +85,7 @@ ${B}Examples:${N}
 EOF
 }
 
-case "$1" in
+case "${1:-}" in
     status)
         echo -e "${B}=== Service Status ===${N}"
         echo "[sing-box]"
