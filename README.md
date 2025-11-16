@@ -122,11 +122,99 @@ SINGBOX_VERSION=v1.10.7 bash <(curl -fsSL ...)
 SINGBOX_VERSION=latest bash <(curl -fsSL ...)
 ```
 
+## Reality Protocol Support
+
+sbx-lite provides **fully compliant** VLESS + REALITY + Vision protocol implementation verified against sing-box 1.12.0+ official standards.
+
+### Key Features
+
+- ✅ **Zero Configuration**: No domain or certificate required for Reality-only mode
+- ✅ **Auto IP Detection**: Automatically detects server public IP via multiple services
+- ✅ **Modern Standards**: Full compliance with sing-box 1.12.0+ configuration format
+- ✅ **Multi-Format Export**: v2rayN, Clash Meta, QR codes, subscription links
+- ✅ **Production Grade**: SHA256 binary verification, comprehensive validation, automated testing
+- ✅ **Verified Compliance**: [Independent audit](docs/REALITY_COMPLIANCE_REVIEW.md) confirms 100% compliance
+
+### Configuration Validation
+
+Every Reality configuration is validated through multiple layers:
+
+1. **Pre-Generation Validation**: UUID, keypair, short_id format checks
+2. **Structure Validation**: JSON schema compliance, proper `tls.reality` nesting
+3. **Runtime Validation**: `sing-box check -c /etc/sing-box/config.json`
+4. **Service Validation**: Port listening verification, log monitoring
+
+### sing-box vs Xray Differences
+
+If migrating from Xray-based Reality setups, note these key differences:
+
+| Feature | sing-box | Xray | Impact |
+|---------|----------|------|---------|
+| Short ID Length | 0-8 hex chars | 0-16 hex chars | Use `openssl rand -hex 4` (not `-hex 8`) |
+| Config Structure | `tls.reality` | `streamSettings.realitySettings` | Different JSON paths |
+| Client Core | sing-box required | Xray | **v2rayN users must switch core to sing-box** |
+
+See [SING_BOX_VS_XRAY.md](docs/SING_BOX_VS_XRAY.md) for complete comparison and migration guide.
+
+## Official Documentation Access
+
+This project includes the official sing-box repository as a git submodule for easy access to the latest documentation and configuration examples.
+
+### For Users (Quick Reference)
+
+Browse official docs online:
+- **VLESS Configuration**: https://sing-box.sagernet.org/configuration/inbound/vless/
+- **Reality/TLS**: https://sing-box.sagernet.org/configuration/shared/tls/
+- **Migration Guide**: https://sing-box.sagernet.org/migration/
+
+### For Developers (Local Access)
+
+**First-Time Setup:**
+```bash
+# Clone the repository with submodules
+git clone --recursive https://github.com/xrf9268-hue/sbx.git
+cd sbx
+
+# Or if already cloned, initialize submodule
+git submodule update --init --recursive
+```
+
+**Update to Latest Official Docs:**
+```bash
+git submodule update --remote docs/sing-box-official
+```
+
+**Key Documentation Paths:**
+- VLESS inbound: `docs/sing-box-official/docs/configuration/inbound/vless.md`
+- Reality/TLS fields: `docs/sing-box-official/docs/configuration/shared/tls.md`
+- Migration guide: `docs/sing-box-official/docs/migration.md`
+- Config examples: `docs/sing-box-official/test/config/`
+
 ## Documentation
 
+### User Documentation
 - **User Guide**: This README
-- **Developer Guide**: [CLAUDE.md](CLAUDE.md) - Architecture, development workflow, coding standards
+- **Troubleshooting**: [REALITY_TROUBLESHOOTING.md](docs/REALITY_TROUBLESHOOTING.md) - Common issues and solutions
 - **Changelog**: [CHANGELOG.md](CHANGELOG.md) - Version history and migration notes
+
+### Developer Documentation
+- **Developer Guide**: [CLAUDE.md](CLAUDE.md) - Architecture, development workflow, coding standards
+- **Compliance Review**: [REALITY_COMPLIANCE_REVIEW.md](docs/REALITY_COMPLIANCE_REVIEW.md) - Full audit vs official standards
+- **Improvement Plan**: [MULTI_PHASE_IMPROVEMENT_PLAN.md](docs/MULTI_PHASE_IMPROVEMENT_PLAN.md) - Roadmap and enhancements
+- **sing-box vs Xray**: [SING_BOX_VS_XRAY.md](docs/SING_BOX_VS_XRAY.md) - Differences and migration
+
+### Testing
+
+```bash
+# Run Reality unit tests (coming soon - Phase 2)
+make test
+
+# Run full integration tests
+make integration-test
+
+# Check test coverage
+make coverage
+```
 
 ## System Requirements
 
