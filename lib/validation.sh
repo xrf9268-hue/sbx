@@ -291,16 +291,14 @@ validate_env_vars() {
 # Validate Reality short ID (must be exactly 8 hex characters for sing-box)
 validate_short_id() {
   local sid="$1"
-  local min_len="${REALITY_SHORT_ID_MIN_LENGTH}"
-  local max_len="${REALITY_SHORT_ID_MAX_LENGTH}"
 
   # Allow 1-8 hexadecimal characters for flexibility
   # Note: sing-box typically uses 8 chars, but shorter IDs are valid
-  [[ "$sid" =~ ^[0-9a-fA-F]{${min_len},${max_len}}$ ]] || {
+  [[ "$sid" =~ ^[0-9a-fA-F]{1,8}$ ]] || {
     err "Invalid Reality short ID: $sid"
     err ""
     err "Requirements:"
-    err "  - Length: ${min_len}-${max_len} hexadecimal characters"
+    err "  - Length: ${REALITY_SHORT_ID_MIN_LENGTH}-${REALITY_SHORT_ID_MAX_LENGTH} hexadecimal characters"
     err "  - Format: Only 0-9, a-f, A-F allowed"
     err "  - Example: a1b2c3d4"
     err ""

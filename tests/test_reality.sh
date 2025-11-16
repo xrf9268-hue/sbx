@@ -36,16 +36,16 @@ fi
 
 # Mark test as passed
 pass() {
-  ((TESTS_PASSED++))
-  ((TESTS_RUN++))
+  TESTS_PASSED=$((TESTS_PASSED + 1))
+  TESTS_RUN=$((TESTS_RUN + 1))
   echo -e "${GREEN}✓${NC} ${FUNCNAME[1]}"
 }
 
 # Mark test as failed
 fail() {
   local message="${1:-No error message provided}"
-  ((TESTS_FAILED++))
-  ((TESTS_RUN++))
+  TESTS_FAILED=$((TESTS_FAILED + 1))
+  TESTS_RUN=$((TESTS_RUN + 1))
   echo -e "${RED}✗${NC} ${FUNCNAME[1]}: $message"
   return 1
 }
@@ -53,8 +53,8 @@ fail() {
 # Skip a test
 skip() {
   local reason="${1:-No reason provided}"
-  ((TESTS_SKIPPED++))
-  ((TESTS_RUN++))
+  TESTS_SKIPPED=$((TESTS_SKIPPED + 1))
+  TESTS_RUN=$((TESTS_RUN + 1))
   echo -e "${YELLOW}⊘${NC} ${FUNCNAME[1]}: SKIPPED - $reason"
   return 0
 }
