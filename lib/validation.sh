@@ -316,6 +316,49 @@ validate_reality_sni() {
   return 0
 }
 
+# Validate Reality keypair (X25519 private and public keys)
+validate_reality_keypair() {
+  local priv="$1"
+  local pub="$2"
+
+  # Both keys must be non-empty
+  [[ -n "$priv" ]] || {
+    err "Private key cannot be empty"
+    return 1
+  }
+  [[ -n "$pub" ]] || {
+    err "Public key cannot be empty"
+    return 1
+  }
+
+  # Validate format: base64url characters (A-Za-z0-9_-)
+  # Reality keys are base64url-encoded without padding
+  [[ "$priv" =~ ^[A-Za-z0-9_-]+$ ]] || {
+    err "Private key contains invalid characters"
+    return 1
+  }
+  [[ "$pub" =~ ^[A-Za-z0-9_-]+$ ]] || {
+    err "Public key contains invalid characters"
+    return 1
+  }
+
+  # X25519 keys are 32 bytes, base64url-encoded = 43 chars
+  # Allow some flexibility (42-44 chars)
+  local priv_len="${#priv}"
+  local pub_len="${#pub}"
+
+  if [[ $priv_len -lt 42 || $priv_len -gt 44 ]]; then
+    err "Private key has invalid length: $priv_len (expected 42-44)"
+    return 1
+  fi
+  if [[ $pub_len -lt 42 || $pub_len -gt 44 ]]; then
+    err "Public key has invalid length: $pub_len (expected 42-44)"
+    return 1
+  fi
+
+  return 0
+}
+
 #==============================================================================
 # User Input Validation
 #==============================================================================
