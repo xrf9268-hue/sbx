@@ -75,6 +75,33 @@ bash install_multi.sh
 # Choose option 3) Reconfigure
 ```
 
+### Testing Commands (Development)
+```bash
+# Phase 2: Unit Tests (Reality validation)
+bash tests/test_reality.sh
+
+# Phase 4: Integration Tests (requires installation)
+bash tests/integration/test_reality_connection.sh
+
+# Schema Validation (Phase 4)
+source lib/common.sh
+source lib/schema_validator.sh
+validate_config_schema /etc/sing-box/config.json
+validate_reality_structure /etc/sing-box/config.json
+
+# Version Compatibility Checks (Phase 4)
+source lib/common.sh
+source lib/network.sh
+source lib/version.sh
+show_version_info
+validate_singbox_version
+
+# Run all tests
+make test          # Unit tests
+make integration   # Integration tests (if available)
+make check         # All validation checks
+```
+
 ### Management Commands (Post-Installation)
 ```bash
 # View all URIs and configuration
@@ -86,7 +113,7 @@ sbx log
 
 # Service control
 sbx restart
-sbx start 
+sbx start
 sbx stop
 
 # Validate configuration
@@ -1309,7 +1336,48 @@ When CI fails but local tests pass:
 
 ## Recent Updates
 
-### Latest Version: v2.1.0 (2025-10-17)
+### Latest Version: v2.2.0 (2025-11-17) - Phase 4 Complete ✅
+**Focus**: Advanced features - schema validation, version compatibility, integration testing
+
+**Phase 4 Implementation**:
+- **JSON Schema Validation**: Comprehensive Reality configuration schema validation
+  - Created `schema/reality-config.schema.json` with sing-box 1.12.0+ standards
+  - Implemented `lib/schema_validator.sh` with manual jq-based validation
+  - Validates Reality nesting, short_id format, flow fields, TLS configuration
+- **Version Compatibility Checks**: Automated version validation and requirements
+  - Enhanced `lib/version.sh` with `validate_singbox_version()`
+  - Minimum version enforcement (1.8.0 for Reality support)
+  - Recommended version warnings (1.12.0 for modern config)
+  - Version comparison and compatibility checking functions
+- **Integration Testing**: Comprehensive post-installation validation
+  - Created `tests/integration/test_reality_connection.sh`
+  - Tests binary, configuration, service, Reality structure, exports
+  - 14 integration test cases covering full deployment validation
+- **CI/CD Enhancements**: Automated Phase 4 testing in GitHub Actions
+  - Added `phase4-advanced-features` job to test workflow
+  - Schema validation tests in CI
+  - Version compatibility verification
+  - Coverage reporting includes Phase 4 functions
+
+**Key Features**:
+- Schema validation catches configuration errors before deployment
+- Version checks prevent incompatible installations
+- Integration tests validate complete Reality setup
+- All Phase 4 tests run automatically in CI/CD
+
+**Multi-Phase Progress**:
+- ✅ **Phase 0**: Foundation (submodule initialization)
+- ✅ **Phase 1**: Documentation & Knowledge Base
+- ✅ **Phase 2**: Testing Infrastructure (unit tests)
+- ✅ **Phase 3**: Code Enhancements (validation, constants, error messages)
+- ✅ **Phase 4**: Advanced Features (schema, version checks, integration tests)
+- ⏭️ **Phase 5**: Documentation Finalization (next)
+
+**For detailed phase information**, see `docs/MULTI_PHASE_IMPROVEMENT_PLAN.md`
+
+### Previous Versions
+
+#### v2.1.0 (2025-10-17)
 **Focus**: Security hardening and stability improvements
 
 **Key Improvements**:
@@ -1323,6 +1391,7 @@ When CI fails but local tests pass:
 **For detailed release notes**, see `CHANGELOG.md`
 
 ### Architecture Evolution
+- **v2.2.0** (2025-11-17): Phase 4 - Advanced features (schema, version checks, integration tests)
 - **v2.1.0** (2025-10-17): Security audit and stability hardening
 - **v2.0.0** (2025-10-08): Modular architecture with 9 library modules
 - **v1.x** (2025-08): Single-file deployment, Reality-only support

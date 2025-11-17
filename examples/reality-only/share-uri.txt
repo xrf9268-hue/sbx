@@ -1,0 +1,46 @@
+# Reality Share URI Example
+# Copy this URI and import it directly into your client
+
+# Replace placeholders before using:
+# - YOUR_SERVER_IP: Your server's public IP address
+# - REPLACE_WITH_YOUR_UUID: UUID generated with 'sing-box generate uuid'
+# - REPLACE_WITH_YOUR_PUBLIC_KEY: Public key from 'sing-box generate reality-keypair'
+# - REPLACE_WITH_YOUR_SHORT_ID: Short ID from 'openssl rand -hex 4'
+
+vless://REPLACE_WITH_YOUR_UUID@YOUR_SERVER_IP:443?encryption=none&flow=xtls-rprx-vision&security=reality&sni=www.microsoft.com&fp=chrome&pbk=REPLACE_WITH_YOUR_PUBLIC_KEY&sid=REPLACE_WITH_YOUR_SHORT_ID&type=tcp&headerType=none#Reality-YOUR_SERVER_IP
+
+# URI Format Breakdown:
+# vless://          - Protocol
+# UUID@IP:PORT      - User ID, server address and port
+# encryption=none   - No additional encryption (Reality provides it)
+# flow=xtls-rprx-vision - Vision protocol for better performance
+# security=reality  - Reality TLS camouflage
+# sni=www.microsoft.com - Server Name Indication
+# fp=chrome         - TLS fingerprint (Chrome browser)
+# pbk=PUBLIC_KEY    - Reality public key
+# sid=SHORT_ID      - Reality short ID (8 hex chars)
+# type=tcp          - Transport protocol
+# #Reality-IP       - Connection name/remark
+
+# Example with real values (DO NOT USE - generate your own!):
+# vless://a1b2c3d4-e5f6-7890-abcd-ef1234567890@1.2.3.4:443?encryption=none&flow=xtls-rprx-vision&security=reality&sni=www.microsoft.com&fp=chrome&pbk=jNXHt1yRo0vDuchQlIP6Z0ZvjT3KtzVI-T4E7RoLJS0&sid=a1b2c3d4&type=tcp&headerType=none#Reality-1.2.3.4
+
+# How to use:
+# 1. Replace all placeholders with your actual values
+# 2. Copy the entire line (no line breaks!)
+# 3. Import in your client:
+#    - v2rayN: Import → From Clipboard
+#    - NekoRay: Add → Import from Clipboard
+#    - Clash Meta: Parse subscription URL
+
+# Generating materials:
+#   UUID:        sing-box generate uuid
+#   Keypair:     sing-box generate reality-keypair
+#   Short ID:    openssl rand -hex 4
+#   Server IP:   curl -4 ifconfig.me
+
+# Validation:
+# - UUID must be valid UUIDv4 format
+# - Public key from keypair generation (not private key!)
+# - Short ID exactly 8 hex characters
+# - Server IP must be accessible from client

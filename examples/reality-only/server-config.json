@@ -1,0 +1,71 @@
+{
+  "log": {
+    "level": "warn",
+    "timestamp": true
+  },
+  "dns": {
+    "servers": [
+      {
+        "type": "local",
+        "tag": "dns-local"
+      }
+    ],
+    "strategy": "ipv4_only"
+  },
+  "inbounds": [
+    {
+      "type": "vless",
+      "tag": "in-reality",
+      "listen": "::",
+      "listen_port": 443,
+      "users": [
+        {
+          "uuid": "REPLACE_WITH_YOUR_UUID",
+          "flow": "xtls-rprx-vision"
+        }
+      ],
+      "tls": {
+        "enabled": true,
+        "server_name": "www.microsoft.com",
+        "reality": {
+          "enabled": true,
+          "private_key": "REPLACE_WITH_YOUR_PRIVATE_KEY",
+          "short_id": ["REPLACE_WITH_YOUR_SHORT_ID"],
+          "handshake": {
+            "server": "www.microsoft.com",
+            "server_port": 443
+          },
+          "max_time_difference": "1m"
+        },
+        "alpn": ["h2", "http/1.1"]
+      }
+    }
+  ],
+  "outbounds": [
+    {
+      "type": "direct",
+      "tag": "direct",
+      "tcp_fast_open": true
+    },
+    {
+      "type": "block",
+      "tag": "block"
+    }
+  ],
+  "route": {
+    "rules": [
+      {
+        "inbound": ["in-reality"],
+        "action": "sniff"
+      },
+      {
+        "protocol": "dns",
+        "action": "hijack-dns"
+      }
+    ],
+    "auto_detect_interface": true,
+    "default_domain_resolver": {
+      "server": "dns-local"
+    }
+  }
+}

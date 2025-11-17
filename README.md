@@ -134,6 +134,19 @@ sbx-lite provides **fully compliant** VLESS + REALITY + Vision protocol implemen
 - ✅ **Multi-Format Export**: v2rayN, Clash Meta, QR codes, subscription links
 - ✅ **Production Grade**: SHA256 binary verification, comprehensive validation, automated testing
 - ✅ **Verified Compliance**: [Independent audit](docs/REALITY_COMPLIANCE_REVIEW.md) confirms 100% compliance
+- ✅ **Advanced Features** (Phase 4): JSON schema validation, version compatibility checks, integration testing
+
+### Multi-Phase Development
+
+sbx-lite has been systematically enhanced through a comprehensive improvement plan:
+
+- ✅ **Phase 1**: Documentation & Knowledge Base - [Compliance review](docs/REALITY_COMPLIANCE_REVIEW.md), [sing-box vs Xray comparison](docs/SING_BOX_VS_XRAY.md)
+- ✅ **Phase 2**: Testing Infrastructure - 23 unit tests covering validation, config generation, exports
+- ✅ **Phase 3**: Code Enhancements - Transport pairing validation, extracted constants, enhanced error messages
+- ✅ **Phase 4**: Advanced Features - JSON schema validation, version compatibility, 14 integration tests
+- 📝 **Phase 5**: Documentation Finalization - Best practices guide, configuration examples (this release)
+
+See [MULTI_PHASE_IMPROVEMENT_PLAN.md](docs/MULTI_PHASE_IMPROVEMENT_PLAN.md) for detailed roadmap.
 
 ### Configuration Validation
 
@@ -143,6 +156,8 @@ Every Reality configuration is validated through multiple layers:
 2. **Structure Validation**: JSON schema compliance, proper `tls.reality` nesting
 3. **Runtime Validation**: `sing-box check -c /etc/sing-box/config.json`
 4. **Service Validation**: Port listening verification, log monitoring
+5. **Schema Validation** (Phase 4): Automated JSON schema validation against sing-box 1.12.0+ standards
+6. **Version Compatibility** (Phase 4): Ensures sing-box version meets Reality requirements (1.8.0+)
 
 ### sing-box vs Xray Differences
 
@@ -205,18 +220,50 @@ git submodule update --remote docs/sing-box-official
 
 ### Testing
 
+**Unit Tests** (Phase 2):
 ```bash
-# Run Reality unit tests
+# Run Reality unit tests (23 test cases)
+bash tests/test_reality.sh
+
+# Or using make
 make test
+```
 
-# Run quick validation tests
-make test-quick
+**Integration Tests** (Phase 4):
+```bash
+# Run comprehensive integration tests (requires installation)
+bash tests/integration/test_reality_connection.sh
 
-# Run full integration tests (requires sing-box binary)
-make test-integration
+# Tests include:
+# - sing-box binary and version verification
+# - Configuration file validity and structure
+# - Reality-specific compliance (nesting, short_id, flow)
+# - Service status and port listening
+# - Client export functionality
+```
 
-# Check test coverage
+**Schema Validation** (Phase 4):
+```bash
+# Validate configuration against JSON schema
+source lib/common.sh
+source lib/schema_validator.sh
+validate_reality_structure /etc/sing-box/config.json
+
+# Check version compatibility
+source lib/version.sh
+validate_singbox_version
+show_version_info
+```
+
+**Test Coverage**:
+```bash
+# Generate coverage report
 make coverage
+
+# Current coverage (as of Phase 4):
+# - Unit tests: 23 test cases across 5 categories
+# - Integration tests: 14 comprehensive checks
+# - Phase 4 functions: 100% coverage
 ```
 
 ## System Requirements
