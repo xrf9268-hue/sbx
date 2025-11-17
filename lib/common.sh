@@ -66,6 +66,30 @@ declare -r CADDY_CERT_WAIT_TIMEOUT_SEC=60
 [[ -z "${SERVICE_WAIT_MEDIUM_SEC:-}" ]] && declare -r SERVICE_WAIT_MEDIUM_SEC=2
 
 #==============================================================================
+# Reality Protocol Constants
+#==============================================================================
+
+# Reality configuration defaults
+declare -r REALITY_DEFAULT_SNI="www.microsoft.com"
+declare -r REALITY_DEFAULT_HANDSHAKE_PORT=443
+declare -r REALITY_MAX_TIME_DIFF="1m"
+declare -r REALITY_FLOW_VISION="xtls-rprx-vision"
+
+# Reality validation constraints
+declare -r REALITY_SHORT_ID_MIN_LENGTH=1
+declare -r REALITY_SHORT_ID_MAX_LENGTH=8
+
+# ALPN protocols for Reality
+declare -r REALITY_ALPN_H2="h2"
+declare -r REALITY_ALPN_HTTP11="http/1.1"
+
+# Reality fingerprint options
+declare -r REALITY_FINGERPRINT_CHROME="chrome"
+declare -r REALITY_FINGERPRINT_FIREFOX="firefox"
+declare -r REALITY_FINGERPRINT_SAFARI="safari"
+declare -r REALITY_FINGERPRINT_DEFAULT="$REALITY_FINGERPRINT_CHROME"
+
+#==============================================================================
 # Global Variables (from environment)
 #==============================================================================
 

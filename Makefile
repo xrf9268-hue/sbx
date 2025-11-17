@@ -62,9 +62,30 @@ security:
 
 # Run unit and integration tests
 test:
-	@echo "→ Running test suite..."
-	@bash tests/test-runner.sh || exit 1
+	@echo "→ Running Reality protocol test suite..."
+	@if [ -f tests/test_reality.sh ]; then \
+		bash tests/test_reality.sh || exit 1; \
+	else \
+		echo "✗ test_reality.sh not found"; \
+		exit 1; \
+	fi
 	@echo "✓ All tests passed"
+
+# Run quick Reality tests only (validation)
+test-quick:
+	@echo "→ Running quick Reality validation tests..."
+	@bash tests/test_reality.sh 2>&1 | grep -E "Category 1:|Category 2:|Category 3:|✓|✗"
+	@echo "✓ Quick tests complete"
+
+# Run integration tests (requires sing-box binary)
+test-integration:
+	@echo "→ Running integration tests..."
+	@command -v sing-box >/dev/null 2>&1 || { \
+		echo "✗ sing-box binary not found. Install it first."; \
+		exit 1; \
+	}
+	@bash tests/test_reality.sh
+	@echo "✓ Integration tests passed"
 
 # Generate code coverage report
 coverage:

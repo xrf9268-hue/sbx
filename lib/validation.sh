@@ -291,10 +291,21 @@ validate_env_vars() {
 # Validate Reality short ID (must be exactly 8 hex characters for sing-box)
 validate_short_id() {
   local sid="$1"
+
   # Allow 1-8 hexadecimal characters for flexibility
   # Note: sing-box typically uses 8 chars, but shorter IDs are valid
   [[ "$sid" =~ ^[0-9a-fA-F]{1,8}$ ]] || {
-    err "Short ID must be 1-8 hexadecimal characters, got: $sid"
+    err "Invalid Reality short ID: $sid"
+    err ""
+    err "Requirements:"
+    err "  - Length: ${REALITY_SHORT_ID_MIN_LENGTH}-${REALITY_SHORT_ID_MAX_LENGTH} hexadecimal characters"
+    err "  - Format: Only 0-9, a-f, A-F allowed"
+    err "  - Example: a1b2c3d4"
+    err ""
+    err "Generate valid short ID:"
+    err "  openssl rand -hex 4"
+    err ""
+    err "Note: sing-box uses 8-char short IDs (different from Xray's 16-char limit)"
     return 1
   }
   return 0
@@ -312,6 +323,139 @@ validate_reality_sni() {
 
   # Check basic domain format
   [[ "$cleaned_sni" =~ ^[a-zA-Z0-9.-]+$ ]] || return 1
+
+  return 0
+}
+
+# Validate Reality keypair (X25519 private and public keys)
+validate_reality_keypair() {
+  local priv="$1"
+  local pub="$2"
+
+  # Both keys must be non-empty
+  [[ -n "$priv" ]] || {
+    err "Invalid Reality keypair: Private key cannot be empty"
+    err ""
+    err "Generate valid keypair:"
+    err "  sing-box generate reality-keypair"
+    err ""
+    err "Example output:"
+    err "  PrivateKey: UuMBgl7MXTPx9inmQp2UC7Jcnwc6XYbwDNebonM-FCc"
+    err "  PublicKey:  jNXHt1yRo0vDuchQlIP6Z0ZvjT3KtzVI-T4E7RoLJS0"
+    return 1
+  }
+  [[ -n "$pub" ]] || {
+    err "Invalid Reality keypair: Public key cannot be empty"
+    err ""
+    err "Generate valid keypair:"
+    err "  sing-box generate reality-keypair"
+    return 1
+  }
+
+  # Validate format: base64url characters (A-Za-z0-9_-)
+  # Reality keys are base64url-encoded without padding
+  [[ "$priv" =~ ^[A-Za-z0-9_-]+$ ]] || {
+    err "Invalid Reality private key format"
+    err ""
+    err "Requirements:"
+    err "  - Base64url encoding (A-Za-z0-9_-)"
+    err "  - No padding (=) characters"
+    err "  - Length: 42-44 characters"
+    err ""
+    err "Generate valid keypair:"
+    err "  sing-box generate reality-keypair"
+    return 1
+  }
+  [[ "$pub" =~ ^[A-Za-z0-9_-]+$ ]] || {
+    err "Invalid Reality public key format"
+    err ""
+    err "Requirements:"
+    err "  - Base64url encoding (A-Za-z0-9_-)"
+    err "  - No padding (=) characters"
+    err "  - Length: 42-44 characters"
+    err ""
+    err "Generate valid keypair:"
+    err "  sing-box generate reality-keypair"
+    return 1
+  }
+
+  # X25519 keys are 32 bytes, base64url-encoded = 43 chars
+  # Allow some flexibility (42-44 chars)
+  local priv_len="${#priv}"
+  local pub_len="${#pub}"
+
+  if [[ $priv_len -lt 42 || $priv_len -gt 44 ]]; then
+    err "Private key has invalid length: $priv_len"
+    err "Expected: 42-44 characters (X25519 key = 32 bytes base64url-encoded)"
+    err ""
+    err "Generate valid keypair:"
+    err "  sing-box generate reality-keypair"
+    return 1
+  fi
+  if [[ $pub_len -lt 42 || $pub_len -gt 44 ]]; then
+    err "Public key has invalid length: $pub_len"
+    err "Expected: 42-44 characters (X25519 key = 32 bytes base64url-encoded)"
+    err ""
+    err "Generate valid keypair:"
+    err "  sing-box generate reality-keypair"
+    return 1
+  fi
+
+  return 0
+}
+
+# Validate transport+security+flow pairing for VLESS
+# Vision flow requires TCP transport with Reality security
+validate_transport_security_pairing() {
+  local transport="${1:-tcp}"  # Default to TCP
+  local security="${2:-}"      # TLS, Reality, or none
+  local flow="${3:-}"          # xtls-rprx-vision or empty
+
+  # Validate Vision flow requirements
+  if [[ "$flow" == "xtls-rprx-vision" ]]; then
+    # Vision REQUIRES TCP transport
+    if [[ "$transport" != "tcp" ]]; then
+      err "Vision flow (xtls-rprx-vision) requires TCP transport, got: $transport"
+      err "Valid combinations:"
+      err "  - Transport: tcp, Security: reality, Flow: xtls-rprx-vision"
+      return 1
+    fi
+
+    # Vision REQUIRES Reality security
+    if [[ "$security" != "reality" ]]; then
+      err "Vision flow (xtls-rprx-vision) requires Reality security, got: $security"
+      err "For TLS security, use flow=\"\" (empty flow field)"
+      return 1
+    fi
+  fi
+
+  # Validate Reality security requirements
+  if [[ "$security" == "reality" ]]; then
+    # Reality works with TCP (and theoretically others, but Vision requires TCP)
+    if [[ -n "$flow" && "$flow" != "xtls-rprx-vision" ]]; then
+      warn "Reality security with non-Vision flow: $flow"
+      warn "Common configuration uses flow=\"xtls-rprx-vision\" with Reality"
+    fi
+  fi
+
+  # Validate incompatible combinations
+  case "$transport:$security" in
+    "ws:reality")
+      err "WebSocket transport is incompatible with Reality security"
+      err "Use: ws+tls or tcp+reality"
+      return 1
+      ;;
+    "grpc:reality")
+      err "gRPC transport is incompatible with Reality security"
+      err "Use: grpc+tls or tcp+reality"
+      return 1
+      ;;
+    "http:reality")
+      err "HTTP transport is incompatible with Reality security"
+      err "Use: tcp+reality for Vision protocol"
+      return 1
+      ;;
+  esac
 
   return 0
 }

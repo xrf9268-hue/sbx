@@ -1,0 +1,236 @@
+name: Reality Protocol Tests
+
+on:
+  push:
+    branches: [ main, dev, 'claude/**' ]
+  pull_request:
+    branches: [ main, dev ]
+
+jobs:
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq openssl shellcheck
+
+      - name: Run ShellCheck on test suite
+        run: |
+          shellcheck tests/test_reality.sh || true
+
+      - name: Run Reality validation tests
+        run: |
+          bash tests/test_reality.sh
+
+      - name: Generate test report
+        if: always()
+        run: |
+          echo "Test execution completed"
+          echo "Check test output above for results"
+
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: unit-tests
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/claude/')
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install sing-box binary
+        run: |
+          # Download latest stable sing-box
+          VERSION=$(curl -s https://api.github.com/repos/SagerNet/sing-box/releases/latest | \
+            jq -r '.tag_name')
+          echo "Installing sing-box $VERSION"
+
+          wget -q "https://github.com/SagerNet/sing-box/releases/download/${VERSION}/sing-box-${VERSION#v}-linux-amd64.tar.gz"
+          tar -xzf "sing-box-${VERSION#v}-linux-amd64.tar.gz"
+          sudo mv "sing-box-${VERSION#v}-linux-amd64/sing-box" /usr/local/bin/
+          sudo chmod +x /usr/local/bin/sing-box
+
+      - name: Verify sing-box installation
+        run: |
+          sing-box version
+
+      - name: Test Reality configuration generation
+        run: |
+          # Source library modules
+          source lib/common.sh
+          source lib/generators.sh
+          source lib/validation.sh
+          source lib/config.sh
+
+          # Generate test materials
+          UUID=$(generate_uuid)
+          KEYPAIR=$(generate_reality_keypair)
+          read -r PRIV PUB <<< "$KEYPAIR"
+          SID=$(openssl rand -hex 4)
+
+          # Validate materials
+          validate_short_id "$SID" || exit 1
+
+          # Generate Reality configuration
+          CONFIG=$(create_reality_inbound "$UUID" 443 "::" "www.microsoft.com" "$PRIV" "$SID")
+
+          # Save to temp file
+          echo "$CONFIG" > /tmp/test-reality-inbound.json
+
+          # Wrap in complete config
+          jq -n \
+            --argjson inbound "$CONFIG" \
+            '{
+              log: {level: "warn"},
+              dns: {servers: [{type: "local", tag: "dns-local"}]},
+              inbounds: [$inbound],
+              outbounds: [{type: "direct", tag: "direct"}]
+            }' > /tmp/test-config.json
+
+          # Validate with sing-box
+          sing-box check -c /tmp/test-config.json || exit 1
+
+          echo "✓ Configuration validation passed"
+
+      - name: Test configuration structure compliance
+        run: |
+          CONFIG="/tmp/test-config.json"
+
+          # Verify Reality is nested under tls
+          jq -e '.inbounds[0].tls.reality' "$CONFIG" || {
+            echo "✗ Reality not nested under tls"
+            exit 1
+          }
+
+          # Verify flow field
+          FLOW=$(jq -r '.inbounds[0].users[0].flow' "$CONFIG")
+          if [[ "$FLOW" != "xtls-rprx-vision" ]]; then
+            echo "✗ Incorrect flow: $FLOW"
+            exit 1
+          fi
+
+          # Verify short_id is array
+          SID_TYPE=$(jq -r '.inbounds[0].tls.reality.short_id | type' "$CONFIG")
+          if [[ "$SID_TYPE" != "array" ]]; then
+            echo "✗ Short ID must be array, got: $SID_TYPE"
+            exit 1
+          fi
+
+          echo "✓ Configuration structure compliance verified"
+
+      - name: Cleanup
+        if: always()
+        run: |
+          rm -f /tmp/test-*.json
+
+  shellcheck:
+    name: ShellCheck Analysis
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install ShellCheck
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y shellcheck
+
+      - name: Run ShellCheck on all scripts
+        run: |
+          # Check main installer
+          shellcheck -e SC1090 -e SC1091 install_multi.sh || true
+
+          # Check library modules
+          for lib in lib/*.sh; do
+            echo "Checking $lib..."
+            shellcheck -e SC1090 -e SC1091 -S error "$lib" || true
+          done
+
+          # Check test suite
+          shellcheck tests/test_reality.sh || true
+
+          # Check bin scripts
+          if [ -f bin/sbx-manager.sh ]; then
+            shellcheck bin/sbx-manager.sh || true
+          fi
+
+  test-coverage:
+    name: Test Coverage Report
+    runs-on: ubuntu-latest
+    needs: unit-tests
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Calculate test coverage
+        run: |
+          echo "# Test Coverage Report" > coverage-report.md
+          echo "" >> coverage-report.md
+          echo "## Reality Protocol Functions" >> coverage-report.md
+          echo "" >> coverage-report.md
+
+          # List functions to test
+          echo "| Function | Tested | Location |" >> coverage-report.md
+          echo "|----------|--------|----------|" >> coverage-report.md
+
+          # Check validation functions
+          for func in validate_short_id validate_reality_keypair validate_reality_sni; do
+            if grep -q "test.*$func" tests/test_reality.sh; then
+              echo "| \`$func\` | ✅ | lib/validation.sh |" >> coverage-report.md
+            else
+              echo "| \`$func\` | ❌ | lib/validation.sh |" >> coverage-report.md
+            fi
+          done
+
+          # Check config functions
+          for func in create_reality_inbound; do
+            if grep -q "test.*reality.*config" tests/test_reality.sh; then
+              echo "| \`$func\` | ✅ | lib/config.sh |" >> coverage-report.md
+            else
+              echo "| \`$func\` | ❌ | lib/config.sh |" >> coverage-report.md
+            fi
+          done
+
+          # Check export functions
+          for func in export_uri export_v2rayn_json; do
+            if grep -q "test.*export\|test.*uri" tests/test_reality.sh; then
+              echo "| \`$func\` | ✅ | lib/export.sh |" >> coverage-report.md
+            else
+              echo "| \`$func\` | ❌ | lib/export.sh |" >> coverage-report.md
+            fi
+          done
+
+          echo "" >> coverage-report.md
+          echo "## Test Statistics" >> coverage-report.md
+          echo "" >> coverage-report.md
+
+          # Count test functions
+          TEST_COUNT=$(grep -c "^test_" tests/test_reality.sh || echo "0")
+          echo "- **Total Test Cases**: $TEST_COUNT" >> coverage-report.md
+
+          # Count test categories
+          CAT_COUNT=$(grep -c "^# Category" tests/test_reality.sh || echo "0")
+          echo "- **Test Categories**: $CAT_COUNT" >> coverage-report.md
+
+          echo "" >> coverage-report.md
+          echo "Generated: $(date -u +"%Y-%m-%d %H:%M:%S UTC")" >> coverage-report.md
+
+          cat coverage-report.md
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage-report.md

@@ -135,6 +135,12 @@ create_reality_inbound() {
     return 1
   fi
 
+  # Validate transport+security+flow pairing
+  if ! validate_transport_security_pairing "tcp" "reality" "xtls-rprx-vision" 2>/dev/null; then
+    err "Invalid transport+security+flow combination for Reality"
+    return 1
+  fi
+
   local reality_config
 
   msg "  - Creating Reality inbound configuration..."
@@ -146,12 +152,17 @@ create_reality_inbound() {
     --arg sni "$sni" \
     --arg priv "$priv_key" \
     --arg sid "$short_id" \
+    --arg flow "${REALITY_FLOW_VISION}" \
+    --arg max_time_diff "${REALITY_MAX_TIME_DIFF}" \
+    --arg alpn_h2 "${REALITY_ALPN_H2}" \
+    --arg alpn_http11 "${REALITY_ALPN_HTTP11}" \
+    --argjson handshake_port "${REALITY_DEFAULT_HANDSHAKE_PORT}" \
     '{
       type: "vless",
       tag: "in-reality",
       listen: $listen_addr,
       listen_port: ($port | tonumber),
-      users: [{ uuid: $uuid, flow: "xtls-rprx-vision" }],
+      users: [{ uuid: $uuid, flow: $flow }],
       multiplex: {
         enabled: false,
         padding: false,
@@ -168,10 +179,10 @@ create_reality_inbound() {
           enabled: true,
           private_key: $priv,
           short_id: [$sid],
-          handshake: { server: $sni, server_port: 443 },
-          max_time_difference: "1m"
+          handshake: { server: $sni, server_port: $handshake_port },
+          max_time_difference: $max_time_diff
         },
-        alpn: ["h2", "http/1.1"]
+        alpn: [$alpn_h2, $alpn_http11]
       }
     }' 2>&1); then
     err "Failed to create Reality configuration. jq output:"
