@@ -336,8 +336,6 @@ LOG_LEVEL_FILTER=ERROR    # Filter by severity (ERROR/WARN/INFO/DEBUG)
 
 ### Developer Documentation
 - **Best Practices**: @docs/REALITY_BEST_PRACTICES.md - Production-grade deployment patterns
-- **Compliance Review**: @docs/REALITY_COMPLIANCE_REVIEW.md - Full audit vs sing-box official standards
-- **Improvement Plan**: @docs/MULTI_PHASE_IMPROVEMENT_PLAN.md - Development roadmap
 - **sing-box vs Xray**: @docs/SING_BOX_VS_XRAY.md - Migration guide for Xray users
 
 ### Official sing-box Documentation (Git Submodule)
@@ -362,7 +360,7 @@ docs/sing-box-official/docs/migration.md
 ## Common Workflows
 
 ### Adding a New Feature
-1. **Read documentation**: Check @docs/REALITY_COMPLIANCE_REVIEW.md for compliance requirements
+1. **Read documentation**: Check @docs/REALITY_BEST_PRACTICES.md and official sing-box docs for compliance requirements
 2. **Write code**: Follow bash coding standards above
 3. **Add tests**: Create unit tests in `tests/` directory
 4. **Validate**: Run `bash tests/test_reality.sh`

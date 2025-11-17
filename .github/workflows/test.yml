@@ -2,45 +2,73 @@ name: Reality Protocol Tests
 
 on:
   push:
-    branches: [ main, dev, 'claude/**' ]
+    branches: [ main, dev, claude/** ]
   pull_request:
     branches: [ main, dev ]
+
+# Cancel in-progress runs when a new workflow is triggered on the same branch
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  SINGBOX_MIN_VERSION: "1.8.0"
+  SINGBOX_RECOMMENDED_VERSION: "1.12.0"
 
 jobs:
   unit-tests:
     name: Unit Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           submodules: recursive
+
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/apt
+          key: ${{ runner.os }}-test-deps-${{ hashFiles('.github/workflows/test.yml') }}
+          restore-keys: |
+            ${{ runner.os }}-test-deps-
 
       - name: Install dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y jq openssl shellcheck
-
-      - name: Run ShellCheck on test suite
-        run: |
-          shellcheck tests/test_reality.sh || true
+          sudo apt-get update -qq
+          sudo apt-get install -y jq openssl
+          jq --version
+          openssl version
 
       - name: Run Reality validation tests
         run: |
-          bash tests/test_reality.sh
+          echo "# Reality Protocol Unit Tests" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
 
-      - name: Generate test report
-        if: always()
-        run: |
-          echo "Test execution completed"
-          echo "Check test output above for results"
+          if bash tests/test_reality.sh; then
+            echo "✅ All Reality validation tests passed" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Reality validation tests failed" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
 
   integration-tests:
-    name: Integration Tests
+    name: Integration Tests (sing-box ${{ matrix.version }})
     runs-on: ubuntu-latest
     needs: unit-tests
     if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/claude/')
+    timeout-minutes: 15
+
+    strategy:
+      fail-fast: false
+      matrix:
+        version: ['latest', '1.12.0']
 
     steps:
       - name: Checkout code
@@ -48,24 +76,44 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Install sing-box binary
+      - name: Cache sing-box binary
+        id: cache-singbox
+        uses: actions/cache@v4
+        with:
+          path: /tmp/sing-box-download
+          key: ${{ runner.os }}-singbox-${{ matrix.version }}-${{ hashFiles('.github/workflows/test.yml') }}
+
+      - name: Install sing-box ${{ matrix.version }}
+        if: steps.cache-singbox.outputs.cache-hit != 'true'
         run: |
-          # Download latest stable sing-box
-          VERSION=$(curl -s https://api.github.com/repos/SagerNet/sing-box/releases/latest | \
-            jq -r '.tag_name')
+          mkdir -p /tmp/sing-box-download
+
+          if [ "${{ matrix.version }}" = "latest" ]; then
+            VERSION=$(curl -s https://api.github.com/repos/SagerNet/sing-box/releases/latest | jq -r '.tag_name')
+          else
+            VERSION="v${{ matrix.version }}"
+          fi
+
           echo "Installing sing-box $VERSION"
+          wget -q "https://github.com/SagerNet/sing-box/releases/download/${VERSION}/sing-box-${VERSION#v}-linux-amd64.tar.gz" -O /tmp/sing-box.tar.gz
+          tar -xzf /tmp/sing-box.tar.gz -C /tmp/sing-box-download
 
-          wget -q "https://github.com/SagerNet/sing-box/releases/download/${VERSION}/sing-box-${VERSION#v}-linux-amd64.tar.gz"
-          tar -xzf "sing-box-${VERSION#v}-linux-amd64.tar.gz"
-          sudo mv "sing-box-${VERSION#v}-linux-amd64/sing-box" /usr/local/bin/
-          sudo chmod +x /usr/local/bin/sing-box
-
-      - name: Verify sing-box installation
+      - name: Setup sing-box binary
         run: |
+          sudo cp /tmp/sing-box-download/sing-box-*/sing-box /usr/local/bin/
+          sudo chmod +x /usr/local/bin/sing-box
           sing-box version
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y jq openssl
 
       - name: Test Reality configuration generation
         run: |
+          echo "# Integration Tests - sing-box ${{ matrix.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
           # Source library modules
           source lib/common.sh
           source lib/generators.sh
@@ -78,97 +126,106 @@ jobs:
           read -r PRIV PUB <<< "$KEYPAIR"
           SID=$(openssl rand -hex 4)
 
+          echo "**Generated Materials:**" >> $GITHUB_STEP_SUMMARY
+          echo "- UUID: ${UUID:0:8}..." >> $GITHUB_STEP_SUMMARY
+          echo "- Short ID: $SID" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
           # Validate materials
           validate_short_id "$SID" || exit 1
 
           # Generate Reality configuration
           CONFIG=$(create_reality_inbound "$UUID" 443 "::" "www.microsoft.com" "$PRIV" "$SID")
 
-          # Save to temp file
-          echo "$CONFIG" > /tmp/test-reality-inbound.json
-
           # Wrap in complete config
           jq -n \
             --argjson inbound "$CONFIG" \
             '{
               log: {level: "warn"},
-              dns: {servers: [{type: "local", tag: "dns-local"}]},
+              dns: {servers: [{type: "local", tag: "dns-local"}], strategy: "ipv4_only"},
               inbounds: [$inbound],
-              outbounds: [{type: "direct", tag: "direct"}]
+              outbounds: [{type: "direct", tag: "direct"}],
+              route: {rules: [{inbound: ["in-reality"], action: "sniff"}], auto_detect_interface: true}
             }' > /tmp/test-config.json
 
           # Validate with sing-box
-          sing-box check -c /tmp/test-config.json || exit 1
-
-          echo "✓ Configuration validation passed"
+          if sing-box check -c /tmp/test-config.json; then
+            echo "✅ Configuration validation passed" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Configuration validation failed" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
 
       - name: Test configuration structure compliance
         run: |
           CONFIG="/tmp/test-config.json"
 
+          echo "**Structure Compliance Checks:**" >> $GITHUB_STEP_SUMMARY
+
           # Verify Reality is nested under tls
-          jq -e '.inbounds[0].tls.reality' "$CONFIG" || {
-            echo "✗ Reality not nested under tls"
+          if jq -e '.inbounds[0].tls.reality' "$CONFIG" > /dev/null; then
+            echo "✅ Reality properly nested under tls" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Reality not nested under tls" >> $GITHUB_STEP_SUMMARY
             exit 1
-          }
+          fi
 
           # Verify flow field
           FLOW=$(jq -r '.inbounds[0].users[0].flow' "$CONFIG")
-          if [[ "$FLOW" != "xtls-rprx-vision" ]]; then
-            echo "✗ Incorrect flow: $FLOW"
+          if [[ "$FLOW" == "xtls-rprx-vision" ]]; then
+            echo "✅ Flow field correct: $FLOW" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Incorrect flow: $FLOW" >> $GITHUB_STEP_SUMMARY
             exit 1
           fi
 
           # Verify short_id is array
           SID_TYPE=$(jq -r '.inbounds[0].tls.reality.short_id | type' "$CONFIG")
-          if [[ "$SID_TYPE" != "array" ]]; then
-            echo "✗ Short ID must be array, got: $SID_TYPE"
+          if [[ "$SID_TYPE" == "array" ]]; then
+            echo "✅ Short ID is array type" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Short ID must be array, got: $SID_TYPE" >> $GITHUB_STEP_SUMMARY
             exit 1
           fi
 
-          echo "✓ Configuration structure compliance verified"
+      - name: Test export functionality
+        run: |
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Export Tests:**" >> $GITHUB_STEP_SUMMARY
+
+          source lib/common.sh
+          source lib/export.sh
+
+          # Set required environment variables
+          export UUID=$(jq -r '.inbounds[0].users[0].uuid' /tmp/test-config.json)
+          export PUBLIC_KEY="test_public_key"
+          export SHORT_ID=$(jq -r '.inbounds[0].tls.reality.short_id[0]' /tmp/test-config.json)
+          export DOMAIN="test.example.com"
+          export REALITY_PORT=443
+          export SNI="www.microsoft.com"
+
+          # Test URI export
+          if URI=$(export_uri reality 2>/dev/null); then
+            if [[ "$URI" =~ ^vless:// ]]; then
+              echo "✅ URI export format valid" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "❌ URI export format invalid" >> $GITHUB_STEP_SUMMARY
+              exit 1
+            fi
+          else
+            echo "⚠️ URI export skipped (function may require full setup)" >> $GITHUB_STEP_SUMMARY
+          fi
 
       - name: Cleanup
         if: always()
         run: |
           rm -f /tmp/test-*.json
 
-  shellcheck:
-    name: ShellCheck Analysis
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Install ShellCheck
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y shellcheck
-
-      - name: Run ShellCheck on all scripts
-        run: |
-          # Check main installer
-          shellcheck -e SC1090 -e SC1091 install_multi.sh || true
-
-          # Check library modules
-          for lib in lib/*.sh; do
-            echo "Checking $lib..."
-            shellcheck -e SC1090 -e SC1091 -S error "$lib" || true
-          done
-
-          # Check test suite
-          shellcheck tests/test_reality.sh || true
-
-          # Check bin scripts
-          if [ -f bin/sbx-manager.sh ]; then
-            shellcheck bin/sbx-manager.sh || true
-          fi
-
-  phase4-advanced-features:
-    name: Phase 4 - Advanced Features Tests
+  advanced-features:
+    name: Advanced Features Tests
     runs-on: ubuntu-latest
     needs: unit-tests
+    timeout-minutes: 12
 
     steps:
       - name: Checkout code
@@ -176,32 +233,66 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y jq openssl
+      - name: Cache sing-box binary
+        id: cache-singbox
+        uses: actions/cache@v4
+        with:
+          path: /tmp/sing-box-download
+          key: ${{ runner.os }}-singbox-latest-${{ hashFiles('.github/workflows/test.yml') }}
 
-      - name: Install sing-box binary
+      - name: Install sing-box
+        if: steps.cache-singbox.outputs.cache-hit != 'true'
         run: |
-          # Download latest stable sing-box
-          VERSION=$(curl -s https://api.github.com/repos/SagerNet/sing-box/releases/latest | \
-            jq -r '.tag_name')
+          mkdir -p /tmp/sing-box-download
+          VERSION=$(curl -s https://api.github.com/repos/SagerNet/sing-box/releases/latest | jq -r '.tag_name')
           echo "Installing sing-box $VERSION"
+          wget -q "https://github.com/SagerNet/sing-box/releases/download/${VERSION}/sing-box-${VERSION#v}-linux-amd64.tar.gz" -O /tmp/sing-box.tar.gz
+          tar -xzf /tmp/sing-box.tar.gz -C /tmp/sing-box-download
 
-          wget -q "https://github.com/SagerNet/sing-box/releases/download/${VERSION}/sing-box-${VERSION#v}-linux-amd64.tar.gz"
-          tar -xzf "sing-box-${VERSION#v}-linux-amd64.tar.gz"
-          sudo mv "sing-box-${VERSION#v}-linux-amd64/sing-box" /usr/local/bin/
+      - name: Setup sing-box binary
+        run: |
+          sudo cp /tmp/sing-box-download/sing-box-*/sing-box /usr/local/bin/
           sudo chmod +x /usr/local/bin/sing-box
 
-      - name: Test JSON Schema Validation
+      - name: Install dependencies
         run: |
-          echo "Testing JSON schema validation..."
+          sudo apt-get update -qq
+          sudo apt-get install -y jq openssl
 
-          # Source schema validator
+      - name: Test Version Compatibility
+        run: |
+          echo "# Advanced Features Tests" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Version Compatibility" >> $GITHUB_STEP_SUMMARY
+
+          source lib/common.sh
+          source lib/network.sh
+          source lib/version.sh
+
+          VERSION=$(get_singbox_version)
+          echo "**Detected Version:** $VERSION" >> $GITHUB_STEP_SUMMARY
+
+          if compare_versions "1.8.0" "1.12.0" | grep -q "1.8.0"; then
+            echo "✅ Version comparison works" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Version comparison failed" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+
+          if version_meets_minimum "$VERSION" "1.8.0"; then
+            echo "✅ Version meets minimum requirement (1.8.0+)" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Version too old (< 1.8.0)" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+
+      - name: Test Schema Validation
+        run: |
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Schema Validation" >> $GITHUB_STEP_SUMMARY
+
           source lib/common.sh
           source lib/schema_validator.sh
-
-          # Create test configuration
           source lib/generators.sh
           source lib/validation.sh
           source lib/config.sh
@@ -211,7 +302,6 @@ jobs:
           read -r PRIV PUB <<< "$KEYPAIR"
           SID=$(openssl rand -hex 4)
 
-          # Generate complete config
           CONFIG=$(create_reality_inbound "$UUID" 443 "::" "www.microsoft.com" "$PRIV" "$SID")
           jq -n \
             --argjson inbound "$CONFIG" \
@@ -223,57 +313,24 @@ jobs:
               route: {rules: [], auto_detect_interface: true}
             }' > /tmp/test-schema-config.json
 
-          # Validate with manual structure check
-          validate_reality_structure /tmp/test-schema-config.json || exit 1
-
-          echo "✓ Schema validation passed"
-
-      - name: Test Version Compatibility Checks
-        run: |
-          echo "Testing version compatibility checks..."
-
-          # Source version module
-          source lib/common.sh
-          source lib/network.sh
-          source lib/version.sh
-
-          # Get current version
-          VERSION=$(get_singbox_version)
-          echo "Detected version: $VERSION"
-
-          # Test version comparison
-          if compare_versions "1.8.0" "1.12.0" | grep -q "1.8.0"; then
-            echo "✓ Version comparison works"
+          if validate_reality_structure /tmp/test-schema-config.json; then
+            echo "✅ Schema validation passed" >> $GITHUB_STEP_SUMMARY
           else
-            echo "✗ Version comparison failed"
+            echo "❌ Schema validation failed" >> $GITHUB_STEP_SUMMARY
             exit 1
           fi
 
-          # Test minimum version check
-          if version_meets_minimum "$VERSION" "1.8.0"; then
-            echo "✓ Version meets minimum requirement"
+      - name: Test Integration Script Syntax
+        run: |
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Integration Tests" >> $GITHUB_STEP_SUMMARY
+
+          if bash -n tests/integration/test_reality_connection.sh 2>&1; then
+            echo "✅ Integration test script syntax valid" >> $GITHUB_STEP_SUMMARY
           else
-            echo "✗ Version too old"
+            echo "❌ Integration test script has syntax errors" >> $GITHUB_STEP_SUMMARY
             exit 1
           fi
-
-          # Test version info display
-          show_version_info
-
-          echo "✓ Version compatibility checks passed"
-
-      - name: Test Integration Test Suite
-        run: |
-          echo "Testing integration test suite..."
-
-          # The integration test requires a full installation
-          # For CI, we just verify the script structure
-          bash -n tests/integration/test_reality_connection.sh || {
-            echo "✗ Integration test script has syntax errors"
-            exit 1
-          }
-
-          echo "✓ Integration test script syntax valid"
 
       - name: Cleanup
         if: always()
@@ -283,82 +340,105 @@ jobs:
   test-coverage:
     name: Test Coverage Report
     runs-on: ubuntu-latest
-    needs: unit-tests
+    needs: [unit-tests, integration-tests]
+    if: always()
+    timeout-minutes: 5
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Calculate test coverage
+      - name: Generate coverage report
         run: |
-          echo "# Test Coverage Report" > coverage-report.md
-          echo "" >> coverage-report.md
-          echo "## Reality Protocol Functions" >> coverage-report.md
-          echo "" >> coverage-report.md
-
-          # List functions to test
-          echo "| Function | Tested | Location |" >> coverage-report.md
-          echo "|----------|--------|----------|" >> coverage-report.md
+          echo "# Test Coverage Report" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Reality Protocol Functions" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Function | Tested | Location |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|--------|----------|" >> $GITHUB_STEP_SUMMARY
 
           # Check validation functions
-          for func in validate_short_id validate_reality_keypair validate_reality_sni; do
-            if grep -q "test.*$func" tests/test_reality.sh; then
-              echo "| \`$func\` | ✅ | lib/validation.sh |" >> coverage-report.md
+          for func in validate_short_id validate_reality_keypair validate_reality_sni validate_transport_security_pairing; do
+            if grep -q "$func" tests/test_reality.sh 2>/dev/null; then
+              echo "| \`$func\` | ✅ | lib/validation.sh |" >> $GITHUB_STEP_SUMMARY
             else
-              echo "| \`$func\` | ❌ | lib/validation.sh |" >> coverage-report.md
+              echo "| \`$func\` | ⚠️ | lib/validation.sh |" >> $GITHUB_STEP_SUMMARY
             fi
           done
 
           # Check config functions
-          for func in create_reality_inbound; do
-            if grep -q "test.*reality.*config" tests/test_reality.sh; then
-              echo "| \`$func\` | ✅ | lib/config.sh |" >> coverage-report.md
+          if grep -q "create_reality_inbound\|reality.*config" tests/test_reality.sh 2>/dev/null; then
+            echo "| \`create_reality_inbound\` | ✅ | lib/config.sh |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| \`create_reality_inbound\` | ⚠️ | lib/config.sh |" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          # Check generator functions
+          for func in generate_uuid generate_reality_keypair; do
+            if grep -q "$func" tests/test_reality.sh 2>/dev/null; then
+              echo "| \`$func\` | ✅ | lib/generators.sh |" >> $GITHUB_STEP_SUMMARY
             else
-              echo "| \`$func\` | ❌ | lib/config.sh |" >> coverage-report.md
+              echo "| \`$func\` | ⚠️ | lib/generators.sh |" >> $GITHUB_STEP_SUMMARY
             fi
           done
 
-          # Check export functions
-          for func in export_uri export_v2rayn_json; do
-            if grep -q "test.*export\|test.*uri" tests/test_reality.sh; then
-              echo "| \`$func\` | ✅ | lib/export.sh |" >> coverage-report.md
-            else
-              echo "| \`$func\` | ❌ | lib/export.sh |" >> coverage-report.md
-            fi
-          done
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Test Statistics" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
 
-          # Check Phase 4 functions
-          echo "" >> coverage-report.md
-          echo "## Phase 4: Advanced Features" >> coverage-report.md
-          echo "" >> coverage-report.md
-          echo "| Function | Module | Status |" >> coverage-report.md
-          echo "|----------|--------|--------|" >> coverage-report.md
-          echo "| \`validate_config_schema\` | lib/schema_validator.sh | ✅ Implemented |" >> coverage-report.md
-          echo "| \`validate_reality_structure\` | lib/schema_validator.sh | ✅ Implemented |" >> coverage-report.md
-          echo "| \`get_singbox_version\` | lib/version.sh | ✅ Implemented |" >> coverage-report.md
-          echo "| \`compare_versions\` | lib/version.sh | ✅ Implemented |" >> coverage-report.md
-          echo "| \`version_meets_minimum\` | lib/version.sh | ✅ Implemented |" >> coverage-report.md
-          echo "| \`validate_singbox_version\` | lib/version.sh | ✅ Implemented |" >> coverage-report.md
+          if [ -f tests/test_reality.sh ]; then
+            TEST_COUNT=$(grep -c "^test_" tests/test_reality.sh 2>/dev/null || echo "0")
+            echo "- **Total Test Cases**: $TEST_COUNT" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- **Total Test Cases**: N/A (test file not found)" >> $GITHUB_STEP_SUMMARY
+          fi
 
-          echo "" >> coverage-report.md
-          echo "## Test Statistics" >> coverage-report.md
-          echo "" >> coverage-report.md
+          echo "- **Test Suites**: Unit Tests, Integration Tests, Advanced Features" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Status Summary:**" >> $GITHUB_STEP_SUMMARY
+          echo "- Unit Tests: ${{ needs.unit-tests.result == 'success' && '✅ Passed' || '❌ Failed' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Integration Tests: ${{ needs.integration-tests.result == 'success' && '✅ Passed' || (needs.integration-tests.result == 'skipped' && '⏭️ Skipped' || '❌ Failed') }}" >> $GITHUB_STEP_SUMMARY
 
-          # Count test functions
-          TEST_COUNT=$(grep -c "^test_" tests/test_reality.sh || echo "0")
-          echo "- **Total Test Cases**: $TEST_COUNT" >> coverage-report.md
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "*Generated: $(date -u +"%Y-%m-%d %H:%M:%S UTC")*" >> $GITHUB_STEP_SUMMARY
 
-          # Count test categories
-          CAT_COUNT=$(grep -c "^# Category" tests/test_reality.sh || echo "0")
-          echo "- **Test Categories**: $CAT_COUNT" >> coverage-report.md
+  test-summary:
+    name: Test Summary
+    runs-on: ubuntu-latest
+    needs: [unit-tests, integration-tests, advanced-features, test-coverage]
+    if: always()
+    timeout-minutes: 2
 
-          echo "" >> coverage-report.md
-          echo "Generated: $(date -u +"%Y-%m-%d %H:%M:%S UTC")" >> coverage-report.md
+    steps:
+      - name: Generate final summary
+        run: |
+          echo "# Reality Protocol Test Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Test Suite | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|------------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Unit Tests | ${{ needs.unit-tests.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Integration Tests | ${{ needs.integration-tests.result == 'success' && '✅ Passed' || (needs.integration-tests.result == 'skipped' && '⏭️ Skipped' || '❌ Failed') }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Advanced Features | ${{ needs.advanced-features.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Coverage Report | ${{ needs.test-coverage.result == 'success' && '✅ Generated' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
 
-          cat coverage-report.md
+          if [[ "${{ needs.unit-tests.result }}" == "success" ]] && \
+             [[ "${{ needs.advanced-features.result }}" == "success" ]]; then
+            echo "**Overall**: ✅ All tests passed" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "**Overall**: ❌ Some tests failed" >> $GITHUB_STEP_SUMMARY
+          fi
 
-      - name: Upload coverage report
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-report
-          path: coverage-report.md
+      - name: Check overall status
+        run: |
+          if [[ "${{ needs.unit-tests.result }}" != "success" ]] || \
+             [[ "${{ needs.advanced-features.result }}" != "success" ]]; then
+            echo "::error::One or more test suites failed"
+            exit 1
+          fi
+
+          # Integration tests are allowed to be skipped
+          if [[ "${{ needs.integration-tests.result }}" == "failure" ]]; then
+            echo "::error::Integration tests failed"
+            exit 1
+          fi

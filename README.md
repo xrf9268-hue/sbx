@@ -268,8 +268,6 @@ sbx-lite maintains high code quality standards through:
 - CI/CD with ShellCheck validation
 - Coverage tracking for critical functions
 
-See [docs/CODE_QUALITY_IMPROVEMENT_PLAN.md](docs/CODE_QUALITY_IMPROVEMENT_PLAN.md) for detailed refactoring history.
-
 ## License
 
 MIT License - See [LICENSE](LICENSE) for details
