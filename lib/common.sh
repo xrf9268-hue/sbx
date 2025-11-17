@@ -70,6 +70,10 @@ declare -r CADDY_CERT_WAIT_TIMEOUT_SEC=60
 [[ -z "${SERVICE_WAIT_SHORT_SEC:-}" ]] && declare -r SERVICE_WAIT_SHORT_SEC=1
 [[ -z "${SERVICE_WAIT_MEDIUM_SEC:-}" ]] && declare -r SERVICE_WAIT_MEDIUM_SEC=2
 
+# Logging configuration
+# Check for log rotation every 100 writes (1% overhead - negligible performance impact)
+declare -r LOG_ROTATION_CHECK_INTERVAL=100
+
 #==============================================================================
 # Reality Protocol Constants
 #==============================================================================

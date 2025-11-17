@@ -75,9 +75,9 @@ _log_timestamp() {
 _log_to_file() {
   [[ -z "${LOG_FILE}" ]] && return 0
 
-  # Periodic rotation check (every 100 writes to minimize overhead)
+  # Periodic rotation check (configurable interval via LOG_ROTATION_CHECK_INTERVAL)
   LOG_WRITE_COUNT=$((LOG_WRITE_COUNT + 1))
-  if [[ $((LOG_WRITE_COUNT % 100)) == 0 ]]; then
+  if [[ $((LOG_WRITE_COUNT % LOG_ROTATION_CHECK_INTERVAL)) == 0 ]]; then
     rotate_logs_if_needed
   fi
 
