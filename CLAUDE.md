@@ -203,10 +203,15 @@ die "fatal error"  # Exits with code 1
 sanitize_input "$user_input"
 validate_domain "$domain" || die "Invalid domain"
 
-# Secure temp files
-tmpfile=$(mktemp) || die "Failed to create temp file"
-chmod 600 "$tmpfile"
-trap 'rm -f "$tmpfile"' EXIT
+# Secure temp files (use helpers from lib/common.sh)
+tmpfile=$(create_temp_file "prefix") || return 1  # Automatic 600 permissions
+tmpdir=$(create_temp_dir "prefix") || return 1     # Automatic 700 permissions
+trap 'rm -rf "$tmpfile" "$tmpdir"' EXIT
+
+# Legacy manual method (avoid - use helpers above instead)
+# tmpfile=$(mktemp) || die "Failed to create temp file"
+# chmod 600 "$tmpfile"
+# trap 'rm -f "$tmpfile"' EXIT
 
 # JSON generation via jq (NEVER string concatenation)
 jq -n --arg uuid "$UUID" '{users: [{uuid: $uuid}]}'
@@ -233,6 +238,41 @@ source "${_LIB_DIR}/common.sh"
 - **NO Chinese characters** in output (use English only for compatibility)
 - Network operations: Always use timeout protection
 - Error handling: Check jq operations with `|| die "message"`
+
+### Common Validation Patterns
+
+**Parameter Validation (lib/validation.sh):**
+```bash
+# Validate single required parameter
+require "DOMAIN" "$DOMAIN" "Domain" || return 1
+
+# Validate multiple required parameters
+require_all UUID PRIV SID DOMAIN || return 1
+
+# Validate parameter with custom validation function
+require_valid "PORT" "$PORT" "Port number" validate_port || return 1
+```
+
+**File Integrity Validation (lib/validation.sh):**
+```bash
+# Validate certificate/key file integrity
+validate_file_integrity "$cert_path" "$key_path" || return 1
+
+# Manual checks (if helper not applicable)
+[[ -f "$file" ]] || die "File not found: $file"
+[[ -r "$file" ]] || die "File not readable: $file"
+```
+
+**Temp File Creation (lib/common.sh):**
+```bash
+# Create secure temp file (600 permissions automatic)
+tmpfile=$(create_temp_file "backup") || return 1
+
+# Create secure temp directory (700 permissions automatic)
+tmpdir=$(create_temp_dir "restore") || return 1
+
+# Both helpers provide detailed error diagnostics on failure
+```
 
 ## File Locations
 
