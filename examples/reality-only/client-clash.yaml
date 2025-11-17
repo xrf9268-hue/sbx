@@ -1,0 +1,64 @@
+# Clash Meta configuration for Reality protocol
+# Compatible with: Clash Meta, mihomo
+
+# Port configuration
+port: 7890
+socks-port: 7891
+mixed-port: 7892
+allow-lan: false
+mode: rule
+log-level: info
+ipv6: false
+external-controller: 127.0.0.1:9090
+
+# DNS configuration
+dns:
+  enable: true
+  listen: 0.0.0.0:53
+  enhanced-mode: fake-ip
+  nameserver:
+    - 1.1.1.1
+    - 8.8.8.8
+
+# Proxies
+proxies:
+  - name: "Reality-Server"
+    type: vless
+    server: YOUR_SERVER_IP
+    port: 443
+    uuid: REPLACE_WITH_YOUR_UUID
+    network: tcp
+    tls: true
+    udp: true
+    flow: xtls-rprx-vision
+    servername: www.microsoft.com
+    reality-opts:
+      public-key: REPLACE_WITH_YOUR_PUBLIC_KEY
+      short-id: REPLACE_WITH_YOUR_SHORT_ID
+    client-fingerprint: chrome
+
+# Proxy groups
+proxy-groups:
+  - name: "Proxy"
+    type: select
+    proxies:
+      - Reality-Server
+      - DIRECT
+
+  - name: "Auto"
+    type: url-test
+    proxies:
+      - Reality-Server
+    url: 'http://www.gstatic.com/generate_204'
+    interval: 300
+
+# Routing rules
+rules:
+  # LAN addresses
+  - IP-CIDR,192.168.0.0/16,DIRECT
+  - IP-CIDR,10.0.0.0/8,DIRECT
+  - IP-CIDR,172.16.0.0/12,DIRECT
+  - IP-CIDR,127.0.0.0/8,DIRECT
+
+  # Default: use proxy
+  - MATCH,Proxy
