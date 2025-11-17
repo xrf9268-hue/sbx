@@ -62,6 +62,99 @@ systemctl is-active sing-box || die "Service failed"
 - **ALWAYS use** `listen: "::"` for dual-stack (NEVER "0.0.0.0")
 - **ALWAYS include** route configuration with `action: "sniff"` and `action: "hijack-dns"`
 
+### Reality Configuration Best Practices
+
+#### Configuration Structure Rules
+- Reality **MUST** be nested under `tls.reality` (NOT at top-level in inbound)
+- Flow field **MUST** be `"xtls-rprx-vision"` in users array for Vision protocol
+- Short ID **MUST** be array format: `["a1b2c3d4"]` not string `"a1b2c3d4"`
+- Transport **MUST** be TCP (implicit or explicit) for Vision flow compatibility
+
+#### Official sing-box Reference Locations
+- **VLESS Inbound**: `docs/sing-box-official/docs/configuration/inbound/vless.md`
+- **Reality/TLS Fields**: `docs/sing-box-official/docs/configuration/shared/tls.md#reality-fields`
+- **Migration Guide**: `docs/sing-box-official/docs/migration.md`
+- **Online Docs**: https://sing-box.sagernet.org/
+
+#### Reality Configuration Validation Checklist
+When creating or modifying Reality configurations, follow this workflow:
+
+```bash
+# 1. Generate materials with proper tools
+UUID=$(generate_uuid)
+KEYPAIR=$(generate_reality_keypair)
+read -r PRIV PUB <<< "$KEYPAIR"
+SID=$(openssl rand -hex 4)  # Exactly 4, not 8!
+
+# 2. Validate materials immediately
+validate_short_id "$SID" || die "Invalid short ID: $SID"
+validate_reality_keypair "$PRIV" "$PUB" || die "Invalid keypair"
+
+# 3. Build configuration with validated materials
+CONFIG=$(create_reality_inbound "$UUID" 443 "::" "www.microsoft.com" "$PRIV" "$SID")
+
+# 4. Verify configuration structure
+echo "$CONFIG" | jq -e '.tls.reality' || die "Reality not nested under tls"
+echo "$CONFIG" | jq -e '.users[0].flow == "xtls-rprx-vision"' || die "Wrong flow"
+echo "$CONFIG" | jq -e '.tls.reality.short_id | type == "array"' || die "Short ID not array"
+
+# 5. Write and validate with sing-box
+echo "$CONFIG" > /tmp/config.json
+sing-box check -c /tmp/config.json || die "Config validation failed"
+
+# 6. Apply and verify service
+systemctl restart sing-box && sleep 3
+systemctl is-active sing-box || die "Service failed to start"
+
+# 7. Monitor logs for errors
+journalctl -u sing-box -f  # Watch for 10-15 seconds
+```
+
+#### Common Reality Configuration Mistakes
+
+**WRONG:**
+```json
+{
+  "inbounds": [{
+    "type": "vless",
+    "flow": "xtls-rprx-vision",        // ✗ Flow at inbound level
+    "reality": {                        // ✗ Reality at top-level
+      "short_id": "a1b2c3d4abcdef01"  // ✗ String format, 16 chars (Xray)
+    }
+  }]
+}
+```
+
+**CORRECT:**
+```json
+{
+  "inbounds": [{
+    "type": "vless",
+    "users": [
+      {"uuid": "...", "flow": "xtls-rprx-vision"}  // ✓ Flow in users array
+    ],
+    "tls": {                           // ✓ Reality nested under tls
+      "enabled": true,
+      "reality": {
+        "enabled": true,
+        "short_id": ["a1b2c3d4"]      // ✓ Array format, 8 chars
+      }
+    }
+  }]
+}
+```
+
+#### sing-box vs Xray Reality Differences
+
+| Aspect | sing-box | Xray |
+|--------|----------|------|
+| **Short ID Length** | 1-8 hex chars | 1-16 hex chars |
+| **Generation** | `openssl rand -hex 4` | `openssl rand -hex 8` |
+| **Config Path** | `tls.reality` | `streamSettings.realitySettings` |
+| **Client Core** | Must use sing-box core | Must use Xray core |
+
+**Migration Note:** When migrating from Xray, truncate short IDs to 8 chars or regenerate. See [SING_BOX_VS_XRAY.md](docs/SING_BOX_VS_XRAY.md) for full migration guide.
+
 ## Code Architecture
 
 ### Modular Structure (v2.0)

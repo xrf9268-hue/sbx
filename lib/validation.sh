@@ -292,9 +292,10 @@ validate_env_vars() {
 validate_short_id() {
   local sid="$1"
 
-  # Allow 1-8 hexadecimal characters for flexibility
+  # Allow 1-8 hexadecimal characters for flexibility (using constants)
   # Note: sing-box typically uses 8 chars, but shorter IDs are valid
-  [[ "$sid" =~ ^[0-9a-fA-F]{1,8}$ ]] || {
+  local pattern="^[0-9a-fA-F]{${REALITY_SHORT_ID_MIN_LENGTH},${REALITY_SHORT_ID_MAX_LENGTH}}$"
+  [[ "$sid" =~ $pattern ]] || {
     err "Invalid Reality short ID: $sid"
     err ""
     err "Requirements:"
@@ -311,18 +312,64 @@ validate_short_id() {
   return 0
 }
 
-# Validate Reality destination SNI
+# Validate Reality SNI (Server Name Indication for handshake)
+# The SNI should be a high-traffic domain that supports TLS 1.3
 validate_reality_sni() {
   local sni="$1"
 
-  # Must be a valid domain name
-  [[ -n "$sni" ]] || return 1
+  # Must be non-empty
+  [[ -n "$sni" ]] || {
+    err "Invalid Reality SNI: Cannot be empty"
+    err ""
+    err "The SNI (Server Name Indication) is used for the Reality handshake."
+    err "Choose a high-traffic domain that supports TLS 1.3."
+    err ""
+    err "Recommended SNI domains:"
+    err "  - www.microsoft.com (default)"
+    err "  - www.apple.com"
+    err "  - www.amazon.com"
+    err "  - www.cloudflare.com"
+    err ""
+    err "Avoid:"
+    err "  - Government websites"
+    err "  - Censored domains"
+    err "  - Low-traffic sites"
+    err ""
+    err "See: docs/REALITY_BEST_PRACTICES.md for SNI selection guide"
+    return 1
+  }
 
-  # Allow wildcard domains for Reality
+  # Allow wildcard domains for Reality (e.g., *.example.com)
   local cleaned_sni="${sni#\*.}"
 
-  # Check basic domain format
-  [[ "$cleaned_sni" =~ ^[a-zA-Z0-9.-]+$ ]] || return 1
+  # Check basic domain format (alphanumeric, dots, hyphens)
+  [[ "$cleaned_sni" =~ ^[a-zA-Z0-9]([a-zA-Z0-9.-]{0,251}[a-zA-Z0-9])?$ ]] || {
+    err "Invalid Reality SNI format: $sni"
+    err ""
+    err "Requirements:"
+    err "  - Valid domain name (RFC 1035)"
+    err "  - Max length: 253 characters"
+    err "  - Format: letters, numbers, dots, hyphens only"
+    err "  - Must start and end with alphanumeric character"
+    err ""
+    err "Examples:"
+    err "  ✓ www.microsoft.com"
+    err "  ✓ *.cloudflare.com (wildcard)"
+    err "  ✗ microsoft.com- (ends with hyphen)"
+    err "  ✗ -microsoft.com (starts with hyphen)"
+    err ""
+    err "Current value: $sni"
+    return 1
+  }
+
+  # Validate domain doesn't contain invalid patterns
+  if [[ "$cleaned_sni" =~ \.\. ]]; then
+    err "Invalid Reality SNI: Contains consecutive dots: $sni"
+    err ""
+    err "Domain names cannot have consecutive dots (..)"
+    err "Example: www..microsoft.com is invalid"
+    return 1
+  fi
 
   return 0
 }
@@ -534,10 +581,129 @@ validate_json_syntax() {
   return 0
 }
 
+# Validate transport+security+flow pairing for VLESS/Reality
+# Ensures compatible combinations according to sing-box requirements
+#
+# Args:
+#   $1 - transport type (tcp, ws, grpc, http, quic)
+#   $2 - security type (reality, tls, none)
+#   $3 - flow value (xtls-rprx-vision, empty)
+#
+# Returns:
+#   0 if pairing is valid
+#   1 if pairing is invalid
+#
+# sing-box Requirements:
+#   - Vision flow (xtls-rprx-vision) REQUIRES TCP transport
+#   - Vision flow (xtls-rprx-vision) REQUIRES Reality security
+#   - WebSocket is INCOMPATIBLE with Reality (use WS+TLS instead)
+#   - gRPC is INCOMPATIBLE with Reality (use gRPC+TLS instead)
+#   - HTTP is INCOMPATIBLE with Reality (use TCP+Reality for Vision)
+validate_transport_security_pairing() {
+  local transport="${1:-tcp}"  # Default to TCP
+  local security="${2:-}"      # TLS, Reality, or none
+  local flow="${3:-}"          # xtls-rprx-vision or empty
+
+  # Validate Vision flow requirements
+  if [[ "$flow" == "xtls-rprx-vision" ]]; then
+    # Vision REQUIRES TCP transport
+    if [[ "$transport" != "tcp" ]]; then
+      err "Invalid configuration: Vision flow requires TCP transport"
+      err ""
+      err "Current settings:"
+      err "  Transport: $transport"
+      err "  Security:  $security"
+      err "  Flow:      $flow"
+      err ""
+      err "Valid Vision configuration:"
+      err "  Transport: tcp"
+      err "  Security:  reality"
+      err "  Flow:      xtls-rprx-vision"
+      err ""
+      err "See: https://sing-box.sagernet.org/configuration/inbound/vless/"
+      return 1
+    fi
+
+    # Vision REQUIRES Reality security
+    if [[ "$security" != "reality" ]]; then
+      err "Invalid configuration: Vision flow requires Reality security"
+      err ""
+      err "Current settings:"
+      err "  Transport: $transport"
+      err "  Security:  $security"
+      err "  Flow:      $flow"
+      err ""
+      err "Valid Vision configuration:"
+      err "  Transport: tcp"
+      err "  Security:  reality"
+      err "  Flow:      xtls-rprx-vision"
+      err ""
+      err "For TLS security, use flow=\"\" (empty flow field)"
+      return 1
+    fi
+  fi
+
+  # Validate Reality security requirements
+  if [[ "$security" == "reality" ]]; then
+    # Reality works best with TCP (and Vision flow)
+    if [[ -n "$flow" && "$flow" != "xtls-rprx-vision" ]]; then
+      warn "Unusual configuration: Reality security with non-Vision flow: $flow"
+      warn "Common Reality configuration uses flow=\"xtls-rprx-vision\""
+    fi
+  fi
+
+  # Validate incompatible transport+security combinations
+  case "$transport:$security" in
+    "ws:reality")
+      err "Invalid configuration: WebSocket transport is incompatible with Reality security"
+      err ""
+      err "Valid alternatives:"
+      err "  - WebSocket + TLS:     transport=ws,  security=tls"
+      err "  - TCP + Reality:       transport=tcp, security=reality, flow=xtls-rprx-vision"
+      err ""
+      err "Reality protocol requires TCP transport for proper handshake"
+      return 1
+      ;;
+    "grpc:reality")
+      err "Invalid configuration: gRPC transport is incompatible with Reality security"
+      err ""
+      err "Valid alternatives:"
+      err "  - gRPC + TLS:          transport=grpc, security=tls"
+      err "  - TCP + Reality:       transport=tcp,  security=reality, flow=xtls-rprx-vision"
+      err ""
+      err "Reality protocol requires TCP transport for proper handshake"
+      return 1
+      ;;
+    "http:reality")
+      err "Invalid configuration: HTTP transport is incompatible with Reality security"
+      err ""
+      err "Valid alternatives:"
+      err "  - HTTP + TLS:          transport=http, security=tls"
+      err "  - TCP + Reality:       transport=tcp,  security=reality, flow=xtls-rprx-vision"
+      err ""
+      err "Use TCP+Reality for Vision protocol"
+      return 1
+      ;;
+    "quic:reality")
+      err "Invalid configuration: QUIC transport is incompatible with Reality security"
+      err ""
+      err "Valid alternatives:"
+      err "  - TCP + Reality:       transport=tcp, security=reality, flow=xtls-rprx-vision"
+      err ""
+      err "Reality protocol requires TCP transport"
+      return 1
+      ;;
+  esac
+
+  # If we reach here, pairing is valid
+  msg "Transport+security+flow pairing validated: $transport+$security${flow:++$flow}"
+  return 0
+}
+
 #==============================================================================
 # Export Functions
 #==============================================================================
 
 export -f sanitize_input validate_port validate_domain validate_cert_files validate_env_vars
 export -f validate_short_id validate_reality_sni validate_menu_choice validate_yes_no
-export -f validate_singbox_config validate_json_syntax
+export -f validate_singbox_config validate_json_syntax validate_transport_security_pairing

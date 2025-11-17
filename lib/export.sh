@@ -112,7 +112,7 @@ EOF
       },
       "tlsSettings": {
         "serverName": "$DOMAIN",
-        "fingerprint": "chrome"
+        "fingerprint": "${REALITY_FINGERPRINT_DEFAULT}"
       }
     }
   }]

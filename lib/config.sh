@@ -124,10 +124,44 @@ create_reality_inbound() {
   local priv_key="$5"
   local short_id="$6"
 
-  # Input validation
-  [[ -n "$uuid" ]] || { err "UUID cannot be empty"; return 1; }
-  [[ -n "$priv_key" ]] || { err "Private key cannot be empty"; return 1; }
-  [[ -n "$short_id" ]] || { err "Short ID cannot be empty"; return 1; }
+  # Input validation with helpful guidance
+  [[ -n "$uuid" ]] || {
+    err "Reality configuration error: UUID cannot be empty"
+    err ""
+    err "Generate a valid UUID:"
+    err "  sing-box generate uuid"
+    err "  OR"
+    err "  uuidgen (on Linux/macOS)"
+    err ""
+    err "Example UUID: a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+    return 1
+  }
+
+  [[ -n "$priv_key" ]] || {
+    err "Reality configuration error: Private key cannot be empty"
+    err ""
+    err "Generate Reality keypair:"
+    err "  sing-box generate reality-keypair"
+    err ""
+    err "Example output:"
+    err "  PrivateKey: UuMBgl7MXTPx9inmQp2UC7Jcnwc6XYbwDNebonM-FCc"
+    err "  PublicKey:  jNXHt1yRo0vDuchQlIP6Z0ZvjT3KtzVI-T4E7RoLJS0"
+    err ""
+    err "Use the PrivateKey on server, PublicKey on client"
+    return 1
+  }
+
+  [[ -n "$short_id" ]] || {
+    err "Reality configuration error: Short ID cannot be empty"
+    err ""
+    err "Generate short ID (8 hex characters):"
+    err "  openssl rand -hex 4"
+    err ""
+    err "Example: a1b2c3d4"
+    err ""
+    err "Note: sing-box uses 8-char short IDs (different from Xray's 16-char)"
+    return 1
+  }
 
   # Validate port range
   if ! validate_port "$port" 2>/dev/null; then
@@ -136,7 +170,7 @@ create_reality_inbound() {
   fi
 
   # Validate transport+security+flow pairing
-  if ! validate_transport_security_pairing "tcp" "reality" "xtls-rprx-vision" 2>/dev/null; then
+  if ! validate_transport_security_pairing "tcp" "reality" "${REALITY_FLOW_VISION}" 2>/dev/null; then
     err "Invalid transport+security+flow combination for Reality"
     return 1
   fi

@@ -210,6 +210,25 @@ sbx-lite provides fully compliant VLESS + REALITY + Vision protocol implementati
 - **Changelog**: [CHANGELOG.md](CHANGELOG.md)
 - **Official sing-box Docs**: https://sing-box.sagernet.org/
 
+### Accessing Official sing-box Documentation Locally
+
+This project includes the official sing-box repository as a git submodule for easy access to the latest documentation.
+
+**First-Time Setup:**
+```bash
+git submodule update --init --recursive
+```
+
+**Update to Latest Official Docs:**
+```bash
+git submodule update --remote docs/sing-box-official
+```
+
+**Key Documentation Paths:**
+- **VLESS Configuration**: `docs/sing-box-official/docs/configuration/inbound/vless.md`
+- **Reality/TLS Configuration**: `docs/sing-box-official/docs/configuration/shared/tls.md`
+- **Migration Guide**: `docs/sing-box-official/docs/migration.md`
+
 ## Contributing
 
 Contributions are welcome! Please:
