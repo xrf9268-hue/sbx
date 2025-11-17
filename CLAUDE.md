@@ -1,1455 +1,295 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Project guidance for Claude Code when working with sbx-lite, a sing-box proxy deployment script with VLESS-REALITY protocol support.
 
-## Quick Navigation
+## Quick Commands
 
-**Core Reference**:
-- [Development Commands](#development-commands) - Testing, validation, management commands
-- [Modular Architecture](#modular-architecture-v20) - 11 library modules structure
-- [Critical Implementation Details](#critical-implementation-details) - Security rules, patterns, compliance
-
-**Configuration**:
-- [sing-box 1.12.0 Standards](#sing-box-1120-configuration-standards) - Modern configuration patterns
-- [Environment Variables](#environment-variables--configuration) - Optional configuration variables
-- [Critical Configuration Notes](#critical-configuration-notes) - IPv6 issue and key rules
-
-**Development**:
-- [Code Architecture](#code-architecture--critical-functions) - Key functions and flow
-- [Bash Coding Standards](#bash-coding-standards--security-best-practices) - Quality and security requirements
-- [Common Bash Pitfalls](#common-bash-pitfalls--cicd-gotchas) - bash -e traps, shellcheck issues, CI debugging
-- [Troubleshooting](#troubleshooting) - Quick diagnostics and common issues
-
----
-
-## Project Overview
-
-This is **sbx-lite**, a one-click bash deployment script for official sing-box proxy server. The project features a **modular architecture (v2.0)** with 11 specialized library modules and a streamlined main installer (`install_multi.sh`) that supports three protocols: VLESS-REALITY (default), VLESS-WS-TLS (optional), and Hysteria2 (optional).
-
-### Architecture Highlights
-- **Modular Design**: 11 focused library modules (3,523 lines) in `lib/` directory
-- **Streamlined Installer**: Main script reduced from 2,294 to ~500 lines
-- **Enhanced Features**: Backup/restore, multi-client export, CI/CD integration
-- **Production-Grade**: ShellCheck validation, automated testing, comprehensive error handling
-
-## Development Commands
-
-### Testing Script Changes
-
-#### 🚨 MANDATORY Validation Steps (Execute After EVERY Configuration Change)
+### Essential Development Commands
 ```bash
-# 1. Validate configuration syntax (MUST show no warnings/errors)
-/usr/local/bin/sing-box check -c /etc/sing-box/config.json
-
-# 2. Verify configuration content (check key sections)
-cat /etc/sing-box/config.json | head -30
-
-# 3. Check service status and restart if needed
-systemctl status sing-box
-# If service is running, restart to apply changes:
+# Testing & Validation (Run after ANY config change)
+sing-box check -c /etc/sing-box/config.json  # MUST pass before restart
 systemctl restart sing-box && sleep 3 && systemctl status sing-box
+journalctl -u sing-box -f  # Monitor for 10-15 seconds
 
-# 4. Monitor logs for errors (run for 10-15 seconds)
-journalctl -u sing-box -f
-```
+# Test installation
+bash install_multi.sh  # Reality-only (auto-detect IP)
+DOMAIN=test.domain.com bash install_multi.sh  # Full setup with domain
 
-#### Full Integration Testing
-```bash
-# Test basic Reality-only installation (auto-detect IP)
-bash install_multi.sh
-
-# Test Reality with manual IP
-DOMAIN=1.2.3.4 bash install_multi.sh
-
-# Test Reality with domain
-DOMAIN=test.domain.com bash install_multi.sh
-
-# Test full installation with automatic certificates (Caddy)
-DOMAIN=test.domain.com bash install_multi.sh
-
-# Test uninstall functionality
-FORCE=1 bash install_multi.sh uninstall
-
-# Test reconfiguration (preserves binary)
-bash install_multi.sh
-# Choose option 3) Reconfigure
-```
-
-### Testing Commands (Development)
-```bash
-# Phase 2: Unit Tests (Reality validation)
+# Unit tests
 bash tests/test_reality.sh
 
-# Phase 4: Integration Tests (requires installation)
+# Integration tests (requires installation)
 bash tests/integration/test_reality_connection.sh
 
-# Schema Validation (Phase 4)
-source lib/common.sh
-source lib/schema_validator.sh
-validate_config_schema /etc/sing-box/config.json
-validate_reality_structure /etc/sing-box/config.json
-
-# Version Compatibility Checks (Phase 4)
-source lib/common.sh
-source lib/network.sh
-source lib/version.sh
-show_version_info
-validate_singbox_version
-
-# Run all tests
-make test          # Unit tests
-make integration   # Integration tests (if available)
-make check         # All validation checks
+# Management commands (post-installation)
+sbx info     # View URIs and config
+sbx status   # Check service
+sbx check    # Validate config
+sbx restart  # Restart service
 ```
 
-### Management Commands (Post-Installation)
+## Critical Implementation Rules
+
+### Reality Protocol Configuration (sing-box 1.12.0+)
+- **Short ID generation**: `openssl rand -hex 4` (8 chars, NOT 16 like Xray)
+- **Short ID validation**: `[[ "$SID" =~ ^[0-9a-fA-F]{1,8}$ ]]` - MUST validate immediately after generation
+- **Configuration structure**: Reality MUST be nested under `tls.reality` (NOT top-level)
+- **Flow field**: `"flow": "xtls-rprx-vision"` in users array (NOT at inbound level)
+- **Short ID type**: Array format `["a1b2c3d4"]` (NOT string)
+- **Transport pairing**: Vision flow requires TCP transport with Reality security
+- **Keypair generation**: Use `sing-box generate reality-keypair` (NOT openssl)
+
+### Mandatory Post-Configuration Validation
 ```bash
-# View all URIs and configuration
-sbx info
+# 1. Validate syntax
+sing-box check -c /etc/sing-box/config.json || die "Config invalid"
 
-# Check service status and logs
-sbx status
-sbx log
+# 2. Verify structure
+jq -e '.inbounds[0].tls.reality' /etc/sing-box/config.json || die "Reality not nested"
 
-# Service control
-sbx restart
-sbx start
-sbx stop
+# 3. Check short_id type
+[[ $(jq -r '.inbounds[0].tls.reality.short_id | type' /etc/sing-box/config.json) == "array" ]] || die "Short ID must be array"
 
-# Validate configuration
-sbx check
-
-# Complete uninstall (stops service first, requires root)
-sudo sbx uninstall
-
-# Backup and restore operations
-sbx backup create --encrypt    # Create encrypted backup
-sbx backup list                # List available backups
-sbx backup restore <file>      # Restore from backup
-
-# Export client configurations
-sbx export v2rayn reality      # Export v2rayN JSON config
-sbx export clash               # Export Clash YAML config
-sbx export uri all             # Export all share URIs
-sbx export qr ./qr-codes/      # Generate QR code images
-sbx export subscription        # Generate subscription link
+# 4. Restart service and verify
+systemctl restart sing-box && sleep 3
+systemctl is-active sing-box || die "Service failed"
 ```
 
-## Modular Architecture (v2.0)
+### sing-box 1.12.0+ Compliance
+- **NEVER use deprecated fields**: `sniff`, `sniff_override_destination`, `domain_strategy` in inbounds
+- **NEVER use** `domain_strategy` in outbounds (causes IPv6 connection failures)
+- **ALWAYS use** `dns.strategy: "ipv4_only"` for IPv4-only networks (global, not per-outbound)
+- **ALWAYS use** `listen: "::"` for dual-stack (NEVER "0.0.0.0")
+- **ALWAYS include** route configuration with `action: "sniff"` and `action: "hijack-dns"`
 
-The project follows a clean modular architecture with clear separation of concerns:
+## Code Architecture
 
-### Library Modules (`lib/` directory)
+### Modular Structure (v2.0)
+**Main script**: `install_multi.sh` (~583 lines) - Orchestrates installation flow
+**Library modules** in `lib/` directory (11 modules, 3,523 lines total):
 
-1. **lib/common.sh** (308 lines) - Global utilities and logging
-   - Constants: File paths, default ports, fallback ports
-   - Color definitions and initialization
-   - Logging functions: `msg()`, `warn()`, `err()`, `success()`, `die()`
-   - Core utilities: `generate_uuid()`, `generate_reality_keypair()`, `have()`, `need_root()`
-   - UUID generation with multiple fallback methods
-   - Secure temporary file handling
+1. **common.sh** (308 lines) - Logging, utilities, constants
+2. **network.sh** (242 lines) - IP detection, port allocation
+3. **validation.sh** (331 lines) - Input sanitization, security
+4. **checksum.sh** (200 lines) - SHA256 binary verification
+5. **certificate.sh** (102 lines) - Certificate management
+6. **caddy.sh** (429 lines) - Automatic TLS via Caddy
+7. **config.sh** (330 lines) - sing-box JSON generation
+8. **service.sh** (230 lines) - systemd management
+9. **ui.sh** (310 lines) - User interface
+10. **backup.sh** (291 lines) - Backup/restore operations
+11. **export.sh** (345 lines) - Client config export
 
-2. **lib/network.sh** (242 lines) - Network operations
-   - `get_public_ip()` - Multi-service IP detection with timeout protection
-   - `allocate_port()` - Port allocation with retry logic (3 attempts, 2s intervals)
-   - `detect_ipv6_support()` - IPv6 capability detection
-   - `safe_http_get()` - HTTP operations with timeout and retry
-   - `port_in_use()` - Port occupancy checking
-   - Network interface detection
+### Key Functions (Security-Critical)
+- `sanitize_input()` - Removes shell metacharacters from user input (lib/validation.sh)
+- `validate_short_id()` - Enforces 8-char limit for sing-box (lib/validation.sh)
+- `verify_singbox_binary()` - SHA256 checksum verification (lib/checksum.sh)
+- `write_config()` - Atomic config writes with validation (lib/config.sh)
+- `cleanup()` - Secure temp file cleanup with trap integration (lib/common.sh)
 
-3. **lib/validation.sh** (331 lines) - Input validation and security
-   - `sanitize_input()` - Remove shell metacharacters
-   - `validate_domain()` - Domain format and length validation
-   - `validate_ip_address()` - Enhanced IP validation with octet range checks
-   - `validate_cert_files()` - Certificate file validation
-   - `validate_env_vars()` - Environment variable validation
-   - `validate_menu_choice()`, `validate_yes_no()` - User input validation
+## Bash Coding Standards
 
-4. **lib/checksum.sh** (200 lines) - SHA256 binary verification ⭐ NEW
-   - `verify_file_checksum()` - Generic file SHA256 verification
-   - `verify_singbox_binary()` - sing-box specific binary verification
-   - Downloads official `.sha256sum` files from GitHub releases
-   - Supports both `sha256sum` and `shasum` tools
-   - Case-insensitive checksum comparison
-   - Graceful degradation when checksums unavailable
-   - Fatal error on verification failure to prevent compromised installations
-
-5. **lib/certificate.sh** (102 lines) - Caddy-based certificate management
-   - `maybe_issue_cert()` - Automatic certificate issuance via Caddy
-   - `check_cert_expiry()` - Certificate expiration checking
-   - Automatic certificate mode detection for domains
-   - Certificate-key compatibility verification
-   - Integration with Caddy for Let's Encrypt certificates
-
-6. **lib/caddy.sh** (429 lines) - Caddy automatic TLS management
-   - `caddy_install()` - Install/upgrade Caddy binary from GitHub
-   - `caddy_setup_auto_tls()` - Configure Caddy for automatic HTTPS
-   - `caddy_setup_cert_sync()` - Sync certificates from Caddy to sing-box
-   - `caddy_wait_for_cert()` - Wait for certificate issuance with timeout
-   - `caddy_create_renewal_hook()` - Automatic certificate renewal hooks
-   - `caddy_uninstall()` - Clean Caddy removal
-   - **SHA256 checksum verification** - FATAL on failure (stricter than sing-box)
-     - Rationale: Caddy handles TLS certificates and private keys
-     - No graceful degradation to prevent compromised certificate infrastructure
-   - Non-conflicting port configuration (8445 for HTTPS cert management)
-   - Systemd service integration with automatic startup
-   - Daily certificate sync via systemd timer
-
-7. **lib/config.sh** (330 lines) - sing-box configuration generation
-   - `create_base_config()` - Base configuration with DNS settings
-   - `create_reality_inbound()` - VLESS-REALITY inbound configuration
-   - `create_ws_inbound()` - VLESS-WS-TLS inbound configuration
-   - `create_hysteria2_inbound()` - Hysteria2 inbound configuration
-   - `add_route_config()` - Modern route rules (sing-box 1.12.0+)
-   - `add_outbound_config()` - Outbound configuration with TCP Fast Open
-   - `write_config()` - Complete JSON generation with jq
-   - Atomic configuration writes with validation
-
-8. **lib/service.sh** (230 lines) - systemd service management
-   - `create_service_file()` - Generate systemd unit file
-   - `setup_service()` - Install and start service with validation
-   - `validate_port_listening()` - Port verification with retries
-   - `check_service_status()` - Service status checking
-   - `restart_service()`, `stop_service()`, `reload_service()` - Service control
-   - `remove_service()` - Clean service uninstallation
-   - `show_service_logs()` - Log viewing utilities
-
-9. **lib/ui.sh** (310 lines) - User interface and interaction
-   - `show_logo()`, `show_sbx_logo()` - ASCII art banners
-   - `show_existing_installation_menu()` - Interactive upgrade menu
-   - `prompt_menu_choice()`, `prompt_yes_no()` - User prompts with validation
-   - `prompt_input()`, `prompt_password()` - Secure input handling
-   - `show_spinner()`, `show_progress()` - Progress indicators
-   - `show_config_summary()`, `show_installation_summary()` - Information display
-   - `show_error()` - Error display with context and suggestions
-
-10. **lib/backup.sh** (291 lines) - Backup and restore functionality
-   - `backup_create()` - Create backups with optional AES-256 encryption
-   - `backup_restore()` - Restore from encrypted/unencrypted backups
-   - `backup_list()` - List all available backups with details
-   - `backup_cleanup()` - Auto-cleanup of backups older than 30 days
-   - PBKDF2 key derivation for encryption
-   - Integrity verification on restore
-
-11. **lib/export.sh** (345 lines) - Client configuration export
-   - `export_v2rayn_json()` - v2rayN/v2rayNG JSON format
-   - `export_nekoray_json()` - NekoRay JSON format
-   - `export_clash_yaml()` - Clash/Clash Meta YAML format
-   - `export_uri()` - Share URIs (vless://, hysteria2://)
-   - `export_qr_codes()` - QR code image generation
-   - `export_subscription()` - Base64-encoded subscription links
-   - Multi-protocol support (Reality, WS-TLS, Hysteria2)
-
-### Main Components
-
-- **install_multi.sh** (~583 lines) - Main installer orchestrating all modules
-  - **Smart module loading** with automatic download for one-liner installations
-  - `_load_modules()` function (lines 23-96): Intelligent module detection and auto-download
-    - Detects missing `lib/` directory for remote installations
-    - Downloads 11 modules from GitHub to temporary directory
-    - Supports both curl and wget with timeout protection
-    - Secure temporary file handling with automatic cleanup
-  - Installation flow coordination
-  - Upgrade and reconfiguration scenarios
-  - Uninstallation flow
-  - Preserved backward compatibility
-  - **Deployment flexibility**: Works both locally (development) and remotely (production)
-  - **Module list**: common, retry, download, network, validation, **checksum**, certificate, caddy, config, service, ui, backup, export
-
-- **bin/sbx-manager.sh** (357 lines) - Enhanced management tool
-  - Service management commands with proper error handling
-    - Validates systemctl exit status before reporting success
-    - Propagates failures with non-zero exit codes
-    - Maintains strict mode for security (set -euo pipefail)
-  - Configuration display
-  - Backup operations (create, list, restore, cleanup)
-  - Export operations (v2rayn, clash, uri, qr, subscription)
-  - Module integration with graceful fallback
-
-### CI/CD Infrastructure
-
-- **GitHub Actions** - Automated quality checks
-  - ShellCheck static analysis (`.github/workflows/shellcheck.yml`)
-  - Syntax validation across all scripts
-  - Code style enforcement
-  - Security scanning
-
-- **Makefile** - Local development commands
-  - `make check` - Run all validation
-  - `make lint` - ShellCheck analysis
-  - `make syntax` - Bash syntax validation
-  - `make security` - Security checks
-
-- **.shellcheckrc** - ShellCheck configuration
-  - Enable all checks with selective disables
-  - SC1090 disabled for dynamic module loading
-
-### Module Loading Pattern
-
+### Mandatory Security Practices
 ```bash
-# All modules use guard variables to prevent re-sourcing
-[[ -n "${_SBX_COMMON_LOADED:-}" ]] && return 0
-readonly _SBX_COMMON_LOADED=1
+# Always use strict mode
+set -euo pipefail
 
-# Modules explicitly source their dependencies
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "${SCRIPT_DIR}/common.sh"
-source "${SCRIPT_DIR}/network.sh"
+# Quote all variables
+"$VARIABLE"  # NOT $VARIABLE
 
-# Functions are exported for use in other contexts
-export -f msg warn err success die
+# Safe expansion for constants/readonly vars
+${LOG_LEVEL:-warn}  # NOT $LOG_LEVEL (prevents unbound errors in strict mode)
+
+# Use existing logging functions
+msg "info message"
+warn "warning message"
+err "error message"
+die "fatal error"  # Exits with code 1
+
+# Input validation
+sanitize_input "$user_input"
+validate_domain "$domain" || die "Invalid domain"
+
+# Secure temp files
+tmpfile=$(mktemp) || die "Failed to create temp file"
+chmod 600 "$tmpfile"
+trap 'rm -f "$tmpfile"' EXIT
+
+# JSON generation via jq (NEVER string concatenation)
+jq -n --arg uuid "$UUID" '{users: [{uuid: $uuid}]}'
 ```
 
-## Reality Protocol & IP Detection
-
-### Reality-Only Mode Features
-- **Zero Configuration**: No domain or certificate required
-- **Auto IP Detection**: Automatically detects server public IP via multiple services
-- **Direct IP Usage**: Client connects directly to IP address, no DNS resolution needed
-- **SNI Masquerading**: Uses `www.microsoft.com` as SNI for traffic camouflage
-- **No Certificate Dependency**: Bypasses traditional TLS certificate requirements
-
-### Installation Modes
-1. **Auto-detect Mode**: `bash install_multi.sh` (detects IP automatically)
-2. **IP Specification**: `DOMAIN=1.2.3.4 bash install_multi.sh` (Reality-only)
-3. **Domain Mode**: `DOMAIN=example.com bash install_multi.sh` (enables full setup)
-4. **Full Setup**: Domain + certificate parameters (Reality + WS-TLS + Hysteria2)
-
-### IP Detection Architecture
-- **Service Redundancy**: ipify.org, icanhazip.com, ifconfig.me, ipinfo.io
-- **Timeout Control**: 5-second timeout per service
-- **Error Handling**: Falls back to manual input on detection failure
-- **IPv4 Validation**: Regex validation of detected IP addresses
-
-## Reality Protocol Best Practices (sing-box 1.12.0+)
-
-### Overview
-
-This section documents critical best practices for VLESS + REALITY + Vision implementation based on sing-box 1.12.0+ official standards and verified compliance audit. **ALL** Reality configurations must follow these rules.
-
-**Reference Documentation:**
-- **Official sing-box VLESS spec**: `docs/sing-box-official/docs/configuration/inbound/vless.md`
-- **Official Reality/TLS fields**: `docs/sing-box-official/docs/configuration/shared/tls.md#reality-fields`
-- **Migration guide**: `docs/sing-box-official/docs/migration.md`
-- **Compliance audit**: `docs/REALITY_COMPLIANCE_REVIEW.md`
-- **Comparison guide**: `docs/SING_BOX_VS_XRAY.md`
-
-### Short ID Generation Rules
-
-**CRITICAL:** sing-box has strict short ID constraints (different from Xray)
-
-#### Mandatory Rules
-
+### Common Bash Pitfalls (CI/CD)
 ```bash
-# ✅ CORRECT: Generate 8-character short ID (sing-box standard)
-SID=$(openssl rand -hex 4)
+# WRONG - Fails in bash -e when count=0
+count=0
+((count++))  # Returns 0 (old value), triggers exit in bash -e
 
-# ✗ WRONG: Generates 16 characters (Xray format, INVALID for sing-box)
-SID=$(openssl rand -hex 8)  # DO NOT USE THIS
+# CORRECT - Always safe
+count=$((count + 1))  # Returns 1 (new value)
 
-# ✅ ALWAYS validate immediately after generation
-validate_short_id "$SID" || die "Generated invalid short ID: $SID"
+# ShellCheck directives (avoid recursive analysis)
+# shellcheck source=/dev/null  # NOT source=lib/file.sh
+source "${_LIB_DIR}/common.sh"
 ```
 
-#### Validation Pattern
-
-```bash
-# Regex pattern for short ID validation (lib/validation.sh:296)
-[[ "$sid" =~ ^[0-9a-fA-F]{1,8}$ ]]
-
-# Requirements:
-# - Length: 0-8 hexadecimal characters (NOT 16 like Xray)
-# - Format: Only 0-9, a-f, A-F allowed (case-insensitive)
-# - Type: Must be stored as ARRAY in config.json
-```
-
-#### Common Mistakes
-
-```bash
-# ❌ Using Xray short ID length
-openssl rand -hex 8  # Produces 16 chars → INVALID
-
-# ❌ Missing validation
-SID=$(openssl rand -hex 4)
-# No validation here → may proceed with invalid ID
-
-# ❌ String instead of array in JSON
-"short_id": "a1b2c3d4"  # WRONG
-
-# ✅ Correct array format
-"short_id": ["a1b2c3d4"]  # CORRECT
-```
-
-### Configuration Structure Rules
-
-**CRITICAL:** Reality MUST be nested under `tls.reality` (NOT top-level)
-
-#### Mandatory Structure
-
-```json
-{
-  "inbounds": [
-    {
-      "type": "vless",
-      "users": [
-        {
-          "uuid": "...",
-          "flow": "xtls-rprx-vision"  // ← Flow field in users array
-        }
-      ],
-      "tls": {
-        "enabled": true,  // ← TLS must be enabled
-        "server_name": "www.microsoft.com",
-        "reality": {  // ← Reality NESTED under tls
-          "enabled": true,
-          "private_key": "...",
-          "short_id": ["..."],  // ← ARRAY format
-          "handshake": {
-            "server": "www.microsoft.com",
-            "server_port": 443
-          },
-          "max_time_difference": "1m"
-        },
-        "alpn": ["h2", "http/1.1"]
-      }
-    }
-  ]
-}
-```
-
-#### Structure Validation Checklist
-
-```bash
-# 1. Reality nested under tls
-jq -e '.inbounds[0].tls.reality' config.json || die "Reality not nested under tls"
-
-# 2. TLS enabled
-jq -e '.inbounds[0].tls.enabled == true' config.json || die "TLS not enabled"
-
-# 3. Flow field in users array
-jq -e '.inbounds[0].users[0].flow == "xtls-rprx-vision"' config.json || die "Flow field incorrect"
-
-# 4. Short ID is array
-jq -e '.inbounds[0].tls.reality.short_id | type == "array"' config.json || die "Short ID not array"
-
-# 5. All required fields present
-for field in private_key short_id handshake; do
-  jq -e ".inbounds[0].tls.reality.$field" config.json || die "Missing: $field"
-done
-```
-
-#### Common Structure Errors
-
-```json
-// ❌ WRONG: Reality at top level
-{
-  "inbounds": [{
-    "type": "vless",
-    "reality": { ... }  // ERROR: Not under tls
-  }]
-}
-
-// ❌ WRONG: TLS not enabled
-{
-  "inbounds": [{
-    "tls": {
-      "enabled": false,  // ERROR: Must be true for Reality
-      "reality": { ... }
-    }
-  }]
-}
-
-// ❌ WRONG: Flow in wrong location
-{
-  "inbounds": [{
-    "flow": "xtls-rprx-vision",  // ERROR: Should be in users array
-    "users": [{"uuid": "..."}]
-  }]
-}
-
-// ✅ CORRECT: Proper nesting
-{
-  "inbounds": [{
-    "type": "vless",
-    "users": [{"uuid": "...", "flow": "xtls-rprx-vision"}],
-    "tls": {
-      "enabled": true,
-      "reality": { ... }
-    }
-  }]
-}
-```
-
-### Transport and Security Pairing Rules
-
-**CRITICAL:** Vision flow requires TCP transport with Reality security
-
-#### Valid Combinations
-
-| Transport | Security | Flow | Valid | Notes |
-|-----------|----------|------|-------|-------|
-| TCP | Reality | `xtls-rprx-vision` | ✅ | **Default Reality configuration** |
-| TCP | TLS | `""` (empty) | ✅ | Standard VLESS over TLS |
-| WS | TLS | `""` (empty) | ✅ | WebSocket with TLS |
-| gRPC | TLS | `""` (empty) | ✅ | gRPC with TLS |
-
-#### Invalid Combinations
-
-| Transport | Security | Flow | Valid | Reason |
-|-----------|----------|------|-------|--------|
-| WS | Reality | `xtls-rprx-vision` | ❌ | Vision requires TCP, not WebSocket |
-| gRPC | Reality | `xtls-rprx-vision` | ❌ | Vision requires TCP, not gRPC |
-| TCP | Reality | `""` (empty) | ⚠️ | Works but defeats Vision purpose |
-| TCP | none | `xtls-rprx-vision` | ❌ | Vision requires Reality security |
-
-#### Validation Rule
-
-```bash
-# Vision flow MUST use TCP transport with Reality security
-if [[ "$flow" == "xtls-rprx-vision" ]]; then
-  [[ "$transport" == "tcp" ]] || die "Vision requires TCP transport"
-  [[ "$security" == "reality" ]] || die "Vision requires Reality security"
-fi
-```
-
-### Official Reference Locations
-
-**Local Access** (after `git submodule update --init`):
-
-```bash
-# VLESS inbound configuration
-docs/sing-box-official/docs/configuration/inbound/vless.md
-
-# Reality/TLS field specifications
-docs/sing-box-official/docs/configuration/shared/tls.md
-
-# Migration guide (1.12.0 changes)
-docs/sing-box-official/docs/migration.md
-
-# Official test configurations
-docs/sing-box-official/test/config/vless-server.json
-docs/sing-box-official/test/config/vless-tls-server.json
-```
-
-**Online Access**:
-- VLESS: https://sing-box.sagernet.org/configuration/inbound/vless/
-- Reality/TLS: https://sing-box.sagernet.org/configuration/shared/tls/
-- Migration: https://sing-box.sagernet.org/migration/
-
-### Configuration Validation Workflow
-
-**Execute these steps EVERY time you modify Reality configuration:**
-
-#### Step 1: Pre-Generation Validation
-
-```bash
-# Validate all materials before config generation
-validate_config_vars() {
-  # Check UUID format
-  [[ "$UUID" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]] || die "Invalid UUID"
-
-  # Check short ID (1-8 hex chars)
-  [[ "$SID" =~ ^[0-9a-fA-F]{1,8}$ ]] || die "Invalid short ID: $SID"
-
-  # Check keypair format (base64-like)
-  [[ "$PRIV" =~ ^[A-Za-z0-9+/=_-]+$ ]] || die "Invalid private key"
-  [[ "$PUB" =~ ^[A-Za-z0-9+/=_-]+$ ]] || die "Invalid public key"
-
-  # Check port range
-  [[ "$REALITY_PORT_CHOSEN" -ge 1 && "$REALITY_PORT_CHOSEN" -le 65535 ]] || die "Invalid port"
-}
-```
-
-#### Step 2: Structure Validation
-
-```bash
-# After config generation, validate JSON structure
-CONFIG="/etc/sing-box/config.json"
-
-# 1. Valid JSON syntax
-jq empty "$CONFIG" || die "Invalid JSON syntax"
-
-# 2. Reality nested under tls
-jq -e '.inbounds[0].tls.reality' "$CONFIG" >/dev/null || die "Reality not under tls"
-
-# 3. Short ID is array
-sid_type=$(jq -r '.inbounds[0].tls.reality.short_id | type' "$CONFIG")
-[[ "$sid_type" == "array" ]] || die "Short ID must be array, got: $sid_type"
-
-# 4. Flow field correct
-flow=$(jq -r '.inbounds[0].users[0].flow' "$CONFIG")
-[[ "$flow" == "xtls-rprx-vision" ]] || die "Incorrect flow: $flow"
-```
-
-#### Step 3: Runtime Validation
-
-```bash
-# Use sing-box built-in validator
-/usr/local/bin/sing-box check -c "$CONFIG" || die "Configuration validation failed"
-```
-
-#### Step 4: Service Validation
-
-```bash
-# Start/restart service
-systemctl restart sing-box
-
-# Wait for startup
-sleep 3
-
-# Verify service running
-systemctl is-active sing-box || die "Service failed to start"
-
-# Verify port listening
-timeout 10 bash -c 'until ss -lntp | grep -q ":443"; do sleep 1; done' || \
-  die "Port 443 not listening after 10s"
-
-# Check logs for errors
-journalctl -u sing-box -n 20 --no-pager | grep -i "error\|fail" && \
-  warn "Errors detected in logs, please review"
-```
-
-### Reality Configuration Validation Checklist
-
-**Pre-Deployment Checklist** (run before going to production):
-
-```bash
-#!/bin/bash
-# Reality configuration validation checklist
-
-echo "Reality Configuration Validation Checklist"
-echo "==========================================="
-
-# 1. ✅ Generate keypair with official command
-echo -n "1. Keypair generated with 'sing-box generate reality-keypair': "
-[[ -n "$PRIV" && -n "$PUB" ]] && echo "✅" || echo "❌ Missing"
-
-# 2. ✅ Generate short_id correctly
-echo -n "2. Short ID generated with 'openssl rand -hex 4' (8 chars): "
-[[ ${#SID} -eq 8 && "$SID" =~ ^[0-9a-fA-F]+$ ]] && echo "✅" || echo "❌ Invalid"
-
-# 3. ✅ Validate short_id immediately
-echo -n "3. Short ID validated with validate_short_id(): "
-validate_short_id "$SID" 2>/dev/null && echo "✅" || echo "❌ Failed"
-
-# 4. ✅ Structure check: Reality nested under tls.reality
-echo -n "4. Reality nested under tls.reality (not top-level): "
-jq -e '.inbounds[0].tls.reality' /etc/sing-box/config.json >/dev/null 2>&1 && echo "✅" || echo "❌ Wrong"
-
-# 5. ✅ Flow check: xtls-rprx-vision in users array
-echo -n "5. Flow field 'xtls-rprx-vision' in users[].flow: "
-jq -e '.inbounds[0].users[0].flow == "xtls-rprx-vision"' /etc/sing-box/config.json >/dev/null 2>&1 && echo "✅" || echo "❌ Wrong"
-
-# 6. ✅ Short ID format: Array not string
-echo -n "6. Short ID stored as array [\"$SID\"] not string: "
-sid_type=$(jq -r '.inbounds[0].tls.reality.short_id | type' /etc/sing-box/config.json)
-[[ "$sid_type" == "array" ]] && echo "✅" || echo "❌ Wrong type: $sid_type"
-
-# 7. ✅ Config validation
-echo -n "7. Configuration passes 'sing-box check': "
-/usr/local/bin/sing-box check -c /etc/sing-box/config.json >/dev/null 2>&1 && echo "✅" || echo "❌ Failed"
-
-# 8. ✅ Service test
-echo -n "8. Service starts successfully: "
-systemctl is-active sing-box >/dev/null 2>&1 && echo "✅" || echo "❌ Not running"
-
-# 9. ✅ Port listening
-echo -n "9. Port 443 listening: "
-ss -lntp | grep -q ':443' && echo "✅" || echo "❌ Not listening"
-
-# 10. ✅ No errors in logs
-echo -n "10. No errors in recent logs: "
-journalctl -u sing-box -n 50 --no-pager | grep -qi "error\|fatal" && echo "❌ Errors found" || echo "✅"
-
-echo ""
-echo "Review complete. All ✅ means production-ready."
-```
-
-### sing-box vs Xray Differences (Quick Reference)
-
-**CRITICAL for migration from Xray to sing-box:**
-
-| Aspect | sing-box | Xray | Action Required |
-|--------|----------|------|-----------------|
-| **Short ID Length** | 0-8 hex chars | 0-16 hex chars | Use `openssl rand -hex 4` (not `-hex 8`) |
-| **Config Structure** | `tls.reality` | `streamSettings.realitySettings` | Update JSON paths |
-| **Short ID Type** | Array `["id"]` | Array `["id"]` | Ensure array format |
-| **Keypair Command** | `sing-box generate reality-keypair` | `xray x25519` | Either works (X25519 compatible) |
-| **Client Core** | sing-box | Xray | **v2rayN users MUST switch core** |
-
-**See full comparison:** `docs/SING_BOX_VS_XRAY.md`
-
-### Troubleshooting Quick Reference
-
-**Common Reality Issues:**
-
-1. **Short ID validation error**
-   - Symptom: `Short ID must be 1-8 hexadecimal characters`
-   - Fix: Use `openssl rand -hex 4` (not `-hex 8`)
-
-2. **Reality not nested error**
-   - Symptom: `unknown field 'reality'`
-   - Fix: Ensure Reality is under `tls.reality`, not top-level
-
-3. **Handshake timeout**
-   - Symptom: `reality handshake failed`
-   - Fix: Verify public/private key match, short ID matches
-
-4. **Network unreachable (IPv6)**
-   - Symptom: `dial tcp [::1]:443: network unreachable`
-   - Fix: Add `"strategy": "ipv4_only"` to DNS config
-
-5. **v2rayN connection failed**
-   - Symptom: Connection works on other clients but not v2rayN
-   - Fix: Switch v2rayN core from Xray to sing-box
-
-**See full troubleshooting guide:** `docs/REALITY_TROUBLESHOOTING.md`
-
-### Code Examples & Patterns
-
-#### Correct Reality Configuration Generation
-
-```bash
-# From lib/config.sh:create_reality_inbound()
-
-create_reality_inbound() {
-  local uuid="$1"
-  local port="$2"
-  local listen_addr="$3"
-  local sni="$4"
-  local priv_key="$5"
-  local short_id="$6"
-
-  # Input validation
-  [[ -n "$uuid" ]] || { err "UUID cannot be empty"; return 1; }
-  [[ -n "$priv_key" ]] || { err "Private key cannot be empty"; return 1; }
-  [[ -n "$short_id" ]] || { err "Short ID cannot be empty"; return 1; }
-
-  # Generate configuration with jq (ensures type safety)
-  jq -n \
-    --arg uuid "$uuid" \
-    --arg port "$port" \
-    --arg listen_addr "$listen_addr" \
-    --arg sni "$sni" \
-    --arg priv "$priv_key" \
-    --arg sid "$short_id" \
-    '{
-      type: "vless",
-      tag: "in-reality",
-      listen: $listen_addr,
-      listen_port: ($port | tonumber),
-      users: [{ uuid: $uuid, flow: "xtls-rprx-vision" }],
-      tls: {
-        enabled: true,
-        server_name: $sni,
-        reality: {
-          enabled: true,
-          private_key: $priv,
-          short_id: [$sid],  # Array format
-          handshake: { server: $sni, server_port: 443 },
-          max_time_difference: "1m"
-        },
-        alpn: ["h2", "http/1.1"]
-      }
-    }'
-}
-```
-
-#### Correct Material Generation
-
-```bash
-# From install_multi.sh:gen_materials()
-
-gen_materials() {
-  # 1. Generate UUID
-  UUID=$(generate_uuid)
-
-  # 2. Generate Reality keypair
-  keypair=$(generate_reality_keypair) || die "Failed to generate Reality keypair"
-  read -r PRIV PUB <<< "$keypair"
-
-  # 3. Generate short ID (CORRECT: 8 chars)
-  SID=$(openssl rand -hex 4)
-
-  # 4. IMMEDIATELY validate
-  validate_short_id "$SID" || die "Generated invalid short ID: $SID"
-
-  # 5. Export for use in config generation
-  export UUID PRIV PUB SID
-}
-```
-
-### Security Reminders
-
-**NEVER in Production:**
-- ❌ Skip short ID validation
-- ❌ Use hardcoded test keys
-- ❌ Disable config validation
-- ❌ Skip service health checks
-- ❌ Export private keys to clients (only public keys!)
-
-**ALWAYS in Production:**
-- ✅ Generate fresh keypairs for each deployment
-- ✅ Validate configuration before restart
-- ✅ Monitor logs after changes
-- ✅ Keep backups: `sbx backup create --encrypt`
-- ✅ Test client connection after deployment
-
-## Code Architecture & Critical Functions
-
-### Installation Flow (install_multi.sh)
-- `_load_modules()` - **Smart module loader** (NEW: 2025-10-17)
-  - Automatically detects execution context (local vs remote)
-  - Downloads missing modules from GitHub for one-liner installations
-  - Creates secure temporary directory with 700 permissions
-  - Implements timeout protection (10s connection, 30s download per module)
-  - Supports curl and wget with graceful fallback
-  - Automatic cleanup via `trap` on script exit
-  - Downloads 10 modules: common, network, validation, certificate, caddy, config, service, ui, backup, export
-- `install_flow()` - Main entry point orchestrating all installation steps
-- `check_existing_installation()` - Detects existing installations and presents upgrade menu (uses `lib/ui.sh`)
-- `gen_materials()` - Handles DOMAIN/IP detection, generates Reality keypairs, UUIDs, short_ids, passwords
-- `download_singbox()` - Downloads and installs latest sing-box binary
-- `save_client_info()` - Saves configuration to `/etc/sing-box/client-info.txt`
-- `install_manager_script()` - Installs management tools and library modules
-- `uninstall_flow()` - Complete removal with confirmation
-
-### Security-Critical Functions (lib/validation.sh, lib/common.sh)
-- `sanitize_input()` - Removes dangerous shell metacharacters from user input (lib/validation.sh)
-- `cleanup()` - Secure cleanup function with `trap` integration for temporary file removal (lib/common.sh)
-- `safe_http_get()` - Network operations with timeout and retry protection (lib/network.sh)
-- `validate_cert_files()` - Certificate file validation with proper error handling (lib/validation.sh)
-- `validate_domain()` - Domain format validation with length limits (lib/validation.sh)
-- `validate_ip_address()` - Enhanced IP validation with octet range checks (lib/validation.sh)
-
-### Network Operations (lib/network.sh)
-- `get_public_ip()` - Auto-detects server public IP with timeout protection and validation
-- `allocate_port()` - Implements retry logic (3 attempts, 2-second intervals) for port allocation
-- `detect_ipv6_support()` - IPv6 capability detection and configuration
-- `port_in_use()` - Port occupancy checking
-- Primary ports: 443 (Reality), 8444 (WS-TLS), 8443 (Hysteria2)
-- Fallback ports: 24443, 24444, 24445
-
-### Configuration Generation (lib/config.sh)
-- `write_config()` - Complete sing-box JSON configuration generation using `jq`
-- `create_base_config()` - Base configuration with DNS settings (IPv4-only or dual-stack)
-- `create_reality_inbound()` - VLESS-REALITY inbound with XTLS-RPRX-Vision
-- `create_ws_inbound()` - VLESS-WS-TLS inbound configuration
-- `create_hysteria2_inbound()` - Hysteria2 protocol configuration
-- `add_route_config()` - Modern route rules with `action: "sniff"` (sing-box 1.12.0+)
-- `add_outbound_config()` - Outbound configuration with TCP Fast Open
-- Atomic configuration writes with validation before applying
-
-### Service Management (lib/service.sh)
-- `setup_service()` - Creates systemd service, validates config, starts service
-- `create_service_file()` - Generates systemd unit file with proper dependencies
-- `validate_port_listening()` - Port verification with retries (up to 5 attempts)
-- `check_service_status()` - Service status checking
-- `restart_service()` - Restart with configuration validation
-- `stop_service()` - Graceful shutdown with timeout
-- `remove_service()` - Clean service uninstallation
-
-### Certificate Integration (lib/certificate.sh, lib/caddy.sh)
-- `maybe_issue_cert()` - Automatic certificate issuance when domain is provided
-- Certificate files stored in `/etc/ssl/sbx/<domain>/`
-- Certificate expiry checking and validation support
-- **Caddy Integration** (lib/caddy.sh):
-  - `caddy_install()` - Installs latest Caddy from GitHub releases
-  - `caddy_setup_auto_tls()` - Configures Caddy for automatic HTTPS on port 8445
-  - `caddy_setup_cert_sync()` - Syncs certificates from Caddy to sing-box directory
-  - `caddy_wait_for_cert()` - Waits for Let's Encrypt certificate issuance (60s timeout)
-  - `caddy_create_renewal_hook()` - Daily systemd timer for certificate sync
-  - Caddy runs on dedicated ports to avoid conflicts with sing-box:
-    - Port 80: HTTP (ACME HTTP-01 challenge)
-    - Port 8445: HTTPS (certificate management only)
-    - Port 8080: Fallback handler
-  - sing-box uses standard ports for proxy traffic:
-    - Port 443: VLESS-REALITY
-    - Port 8444: VLESS-WS-TLS
-    - Port 8443: Hysteria2
-
-### User Interface (lib/ui.sh)
-- `show_logo()` - Display application banner
-- `show_existing_installation_menu()` - Interactive upgrade/reconfigure menu
-- `prompt_yes_no()`, `prompt_input()` - User input prompts with validation
-- `show_config_summary()` - Display configuration summary
-- `show_installation_summary()` - Post-installation information
-- `show_error()` - Error display with context and suggestions
-
-### Backup & Export (lib/backup.sh, lib/export.sh)
-- `backup_create()` - Create backups with optional AES-256 encryption (lib/backup.sh)
-- `backup_restore()` - Restore from encrypted/unencrypted backups (lib/backup.sh)
-- `export_v2rayn_json()` - v2rayN/v2rayNG configuration export (lib/export.sh)
-- `export_clash_yaml()` - Clash/Clash Meta configuration export (lib/export.sh)
-- `export_uri()` - Generate share URIs for client import (lib/export.sh)
-- `export_qr_codes()` - Generate QR code images (lib/export.sh)
-
-## Environment Variables & Configuration
-
-### Optional Variables (Reality-only mode works without any variables)
-- `DOMAIN=your.domain.com` - Target domain or IP address
-  - **Not required for Reality-only**: Script auto-detects server IP if omitted
-  - **IP addresses supported**: `DOMAIN=1.2.3.4` enables Reality-only mode
-  - **Domains enable full mode**: Can add WS-TLS and Hysteria2 with certificates
-
-### Version Management (Optional) ⭐ NEW
-- **Version Selection**:
-  - `SINGBOX_VERSION=stable` - Latest stable release (default, no pre-releases)
-  - `SINGBOX_VERSION=latest` - Absolute latest release (including beta/alpha)
-  - `SINGBOX_VERSION=v1.10.7` - Specific version with 'v' prefix
-  - `SINGBOX_VERSION=1.10.7` - Specific version (auto-prefixed with 'v')
-  - `SINGBOX_VERSION=v1.11.0-beta.1` - Pre-release version
-- **Default**: Uses `stable` if not specified
-- **Case Insensitive**: `STABLE`, `LATEST`, `stable`, `latest` all work
-- **GitHub Token** (optional): `GITHUB_TOKEN=ghp_xxx` for higher API rate limits
-
-**Examples**:
-```bash
-# Latest stable (default)
-bash install_multi.sh
-
-# Explicit stable
-SINGBOX_VERSION=stable bash install_multi.sh
-
-# Latest including pre-releases
-SINGBOX_VERSION=latest bash install_multi.sh
-
-# Specific version
-SINGBOX_VERSION=v1.10.7 bash install_multi.sh
-SINGBOX_VERSION=1.10.7 bash install_multi.sh  # Auto-prefixed
-
-# Pre-release
-SINGBOX_VERSION=v1.11.0-beta.1 bash install_multi.sh
-```
-
-### Certificate Configuration
-- **Automatic Mode** (default when domain is provided): Uses Caddy for Let's Encrypt HTTP-01 challenge
-- `CERT_MODE=caddy` - Explicitly use Caddy for automatic TLS (default for domain-based installations)
-- `CERT_FULLCHAIN=/path/fullchain.pem` + `CERT_KEY=/path/privkey.pem` - Use existing certificates
-- **Port Requirements**: Port 80 must be open for HTTP-01 ACME challenge verification
-
-### Port Overrides (Optional)
-- **sing-box Ports**:
-  - `REALITY_PORT=443` (default), `WS_PORT=8444` (default), `HY2_PORT=8443` (default)
-  - Fallback ports (24443, 24444, 24445) used automatically if primary ports occupied
-- **Caddy Ports** (for certificate management):
-  - `CADDY_HTTP_PORT=80` (default) - HTTP and ACME HTTP-01 challenge
-  - `CADDY_HTTPS_PORT=8445` (default) - HTTPS certificate management only
-  - `CADDY_FALLBACK_PORT=8080` (default) - Fallback handler
-
-### Security Configuration (Optional)
-- **Binary Verification**:
-  - `SKIP_CHECKSUM=1` - Skip SHA256 checksum verification (NOT recommended)
-  - **Default**: Checksum verification enabled automatically
-  - **Security**: Downloads official `.sha256sum` files from GitHub releases
-  - **Tools**: Supports both `sha256sum` and `shasum` utilities
-  - **Behavior**: Gracefully degrades if checksum files unavailable (with warning)
-  - **Fatal on mismatch**: Installation aborts if checksums don't match
-
-### Logging Configuration (Optional) ⭐ NEW
-- **Debug Logging**:
-  - `DEBUG=1` - Enable debug output for troubleshooting
-  - Shows detailed operation logs, configuration steps, internal decisions
-  - Includes function entry/exit, variable values, intermediate results
-  - Example: `DEBUG=1 bash install_multi.sh`
-
-- **Timestamp Logging**:
-  - `LOG_TIMESTAMPS=1` - Add timestamps to all log messages
-  - Format: `[YYYY-MM-DD HH:MM:SS]` prefix on every log line
-  - Useful for performance analysis and timeline reconstruction
-  - Example: `LOG_TIMESTAMPS=1 bash install_multi.sh`
-
-- **Structured JSON Logging**:
-  - `LOG_FORMAT=json` - Output logs in JSON format
-  - Structure: `{"timestamp":"ISO-8601","level":"LEVEL","message":"text"}`
-  - Ideal for log aggregation systems (ELK, Splunk, CloudWatch)
-  - Example: `LOG_FORMAT=json bash install_multi.sh`
-
-- **Log File Output**:
-  - `LOG_FILE=/path/to/file.log` - Write logs to file (in addition to stderr)
-  - Creates file with secure permissions (600)
-  - Dual output: both console and file simultaneously
-  - Auto-rotation at 10MB with 5 log retention
-  - Example: `LOG_FILE=/var/log/sbx-install.log bash install_multi.sh`
-
-- **Log Level Filtering**:
-  - `LOG_LEVEL_FILTER=LEVEL` - Filter logs by severity
-  - Levels: `ERROR` (errors only), `WARN` (warnings+errors), `INFO` (default, all except debug), `DEBUG` (everything with DEBUG=1)
-  - **Case-insensitive**: `error`, `ERROR`, `Error` all work
-  - **Auto-validation**: Invalid values trigger warning and use safe default (INFO)
-  - Hierarchical: ERROR < WARN < INFO < DEBUG
-  - Example: `LOG_LEVEL_FILTER=ERROR bash install_multi.sh`
-
-**Combined Usage Examples**:
-```bash
-# Debug mode with timestamps
-DEBUG=1 LOG_TIMESTAMPS=1 bash install_multi.sh
-
-# JSON logging to file for production monitoring
-LOG_FORMAT=json LOG_FILE=/var/log/sbx.log bash install_multi.sh
-
-# Full troubleshooting mode
-DEBUG=1 LOG_TIMESTAMPS=1 LOG_FILE=/tmp/debug.log bash install_multi.sh
-
-# Silent mode (errors only)
-LOG_LEVEL_FILTER=ERROR bash install_multi.sh 2>/dev/null
-```
-
-**Logging Best Practices**:
-- Use `DEBUG=1` for initial installation troubleshooting
-- Use `LOG_FILE` for automated/unattended installations
-- Use `LOG_FORMAT=json` for integration with monitoring systems
-- Use `LOG_TIMESTAMPS=1` for performance analysis
-- Regular installations need no logging flags (sensible defaults)
-
-## Critical Implementation Details
-
-### Security & Validation Rules
-- Short IDs must be exactly 8 hexadecimal characters (sing-box limitation, not Xray's 16-char limit)
-- Use `[[ "$SID" =~ ^[0-9a-fA-F]{1,8}$ ]]` pattern for validation
-- **Enhanced Input Sanitization**: `sanitize_input()` function removes shell metacharacters (`;&|`$()`)
-- **Command Injection Protection**: Input validation with `[[ ! "$choice" =~ ^[1-6]$ ]]` prevents injection attacks
-- **Robust Domain Validation**: Length limits (253 chars), format checks, reserved name filtering
-- **Enhanced IP Address Validation**: `validate_ip_address()` with octet range checks and reserved address filtering
-- **Secure File Permissions**: Certificate files get 600 permissions, config files 600, temp dirs 700
-- **Secure Temporary Files**: All temporary files created with `mktemp` and secure permissions
-- **Certificate Validation**: Proper certificate-key matching verification with modulus comparison
-
-### Configuration Generation Patterns
-- Use `"$SB_BIN" generate reality-keypair` for Reality key generation (not openssl)
-- **JSON config built via `jq`** for robust generation and type safety with comprehensive error checking
-- **All jq operations have explicit error handling**: Each jq command checks for success and calls `die()` on failure
-- Validate generated short_id immediately after creation with die() on failure
-- Always use `openssl rand -hex 4` for 8-character short_ids (not -hex 8)
-- **ATOMIC CONFIG WRITES**: Use secure temporary files (`mktemp`) and validation before applying
-- **🚨 MANDATORY POST-GENERATION VALIDATION**: After every config change, MUST run complete validation (see Development Commands section)
-- **Enhanced Certificate Validation**: Expiry checks, key compatibility with proper modulus comparison
-- **Secure IP Detection**: Multi-service redundancy with `timeout` protection and enhanced validation
-- **sing-box 1.12.0+ DNS Configuration**: Use explicit DNS servers with `type: "local"` format and global `dns.strategy` instead of deprecated `domain_strategy` in outbounds
-
-### sing-box 1.12.0 Compliance Rules (⚠️ CRITICAL FOR IPv6 ISSUE PREVENTION)
-- **NEVER use deprecated inbound fields**: `sniff`, `sniff_override_destination`, `domain_strategy`
-- **🚨 NEVER use deprecated outbound fields**: `domain_strategy` (use global `dns.strategy` instead) - **THIS CAUSES IPv6 CONNECTION FAILURES**
-- **ALWAYS include route configuration**: Required for sniffing and DNS handling
-- **Dynamic route rules**: Adapt inbound list based on enabled protocols (Reality-only vs full mode)
-- **🚨 IPv6 dual-stack**: Always use `listen: "::"` for dual-stack support (sing-box 1.12.0 standard) - **NEVER use "0.0.0.0"**
-- **Security parameters**: Include `max_time_difference: "1m"` in REALITY configuration
-- **Optimized logging**: Default to `warn` level with timestamps enabled
-- **🚨 DNS Strategy Configuration**: Use `dns.strategy: "ipv4_only"` for IPv4-only networks instead of deprecated outbound options - **CRITICAL FOR PREVENTING IPv6 ERRORS**
-
-### Service Management Best Practices  
-- Fresh install: Stop service → Wait 10s for shutdown → Check ports → Continue
-- Use `systemctl is-active sing-box >/dev/null 2>&1` for status checks
-- Port allocation: 3 retries with 2-second intervals before fallback
-- Both primary and fallback ports must be validated before proceeding
-- **CRITICAL**: Service restart required after config changes (see setup_service() function)
-- Post-allocation port validation prevents race conditions (see gen_materials() function)
-- **Enhanced Error Handling**: `trap cleanup EXIT INT TERM` for automatic cleanup with secure temp file removal
-- **Network Operations**: Retry logic with timeout protection for download failures
-- **Secure Cleanup**: Use `find` with time limits instead of shell globbing for temporary file cleanup
-
-### Installation Flow States
-1. **Fresh install** - Stops service, backs up config to `.backup.YYYYMMDD_HHMMSS`, clean reinstall
-2. **Upgrade binary only** - Sets `SKIP_CONFIG_GEN=1`, preserves existing configuration  
-3. **Reconfigure** - Sets `SKIP_BINARY_DOWNLOAD=1`, regenerates configuration only
-4. **Complete uninstall** - Removes binary, config, service, certificates, management scripts
-5. **Show current config** - Displays existing config.json and returns to menu
-
-## Key File Locations
+### Code Quality Requirements
+- Use `[[ ]]` for conditionals (NOT `[ ]`)
+- Local variables in functions: `local var_name="$1"`
+- Check command success: `command || die "Error message"`
+- **NO Chinese characters** in output (use English only for compatibility)
+- Network operations: Always use timeout protection
+- Error handling: Check jq operations with `|| die "message"`
+
+## File Locations
 
 ### Runtime Files
 - Binary: `/usr/local/bin/sing-box`
 - Config: `/etc/sing-box/config.json`
-- Client info: `/etc/sing-box/client-info.txt` (persisted for `sbx info` command)
+- Client info: `/etc/sing-box/client-info.txt`
 - Service: `/etc/systemd/system/sing-box.service`
 - Certificates: `/etc/ssl/sbx/<domain>/fullchain.pem` and `privkey.pem`
 
 ### Management Tools
 - Manager script: `/usr/local/bin/sbx-manager`
-- Manager symlink: `/usr/local/bin/sbx`
-- Library modules: `/usr/local/lib/sbx/*.sh` (9 modules installed during setup)
+- Symlink: `/usr/local/bin/sbx`
+- Library modules: `/usr/local/lib/sbx/*.sh`
 
 ### Backup & Data
 - Backup directory: `/var/backups/sbx/`
 - Backup files: `sbx-backup-YYYYMMDD-HHMMSS.tar.gz[.enc]`
-- Backup retention: 30 days (configurable via `sbx backup cleanup`)
+- Backup retention: 30 days
 
-## Official Documentation Access (Git Submodule)
+## Environment Variables
 
-This project includes the official sing-box repository as a git submodule for easy access to the latest documentation, configuration examples, and source code reference.
-
-### Submodule Location
-- **Path**: `docs/sing-box-official/`
-- **Contains**: Complete official sing-box repository
-- **Key Resources**:
-  - Documentation: `docs/sing-box-official/docs/`
-  - Configuration Examples: `docs/sing-box-official/test/config/`
-  - Source Code: `docs/sing-box-official/protocol/`, `docs/sing-box-official/option/`
-  - Release Configs: `docs/sing-box-official/release/config/`
-
-### Submodule Management Commands
+### Installation Variables (All Optional)
 ```bash
-# Initialize and update submodule (after cloning this repository)
+# Domain/IP (auto-detects if omitted)
+DOMAIN=your.domain.com    # Enables full setup (WS-TLS + Hysteria2)
+DOMAIN=1.2.3.4            # Reality-only with explicit IP
+
+# Version selection
+SINGBOX_VERSION=stable    # Latest stable (default)
+SINGBOX_VERSION=latest    # Including pre-releases
+SINGBOX_VERSION=v1.10.7   # Specific version
+
+# Certificate mode
+CERT_MODE=caddy           # Auto TLS (default with domain)
+CERT_FULLCHAIN=/path/fullchain.pem
+CERT_KEY=/path/privkey.pem
+
+# Port overrides
+REALITY_PORT=443          # Default 443, fallback 24443
+WS_PORT=8444              # Default 8444, fallback 24444
+HY2_PORT=8443             # Default 8443, fallback 24445
+
+# Security
+SKIP_CHECKSUM=1           # NOT recommended
+
+# Debugging
+DEBUG=1                   # Enable debug output
+LOG_TIMESTAMPS=1          # Add timestamps
+LOG_FORMAT=json           # JSON output
+LOG_FILE=/path/file.log   # Log to file
+LOG_LEVEL_FILTER=ERROR    # Filter by severity (ERROR/WARN/INFO/DEBUG)
+```
+
+## Documentation References
+
+### User Documentation
+- **Installation & Usage**: @README.md - Quick start, commands, client setup
+- **Troubleshooting**: @docs/REALITY_TROUBLESHOOTING.md - Common issues and solutions
+- **Changelog**: @CHANGELOG.md - Version history and migration notes
+
+### Developer Documentation
+- **Best Practices**: @docs/REALITY_BEST_PRACTICES.md - Production-grade deployment patterns
+- **Compliance Review**: @docs/REALITY_COMPLIANCE_REVIEW.md - Full audit vs sing-box official standards
+- **Improvement Plan**: @docs/MULTI_PHASE_IMPROVEMENT_PLAN.md - Development roadmap
+- **sing-box vs Xray**: @docs/SING_BOX_VS_XRAY.md - Migration guide for Xray users
+
+### Official sing-box Documentation (Git Submodule)
+```bash
+# Initialize submodule (first time)
 git submodule update --init --recursive
 
-# Update submodule to latest official version
+# Update to latest
 git submodule update --remote docs/sing-box-official
 
-# Check submodule status
-git submodule status
-
-# Update all submodules to latest
-git submodule update --remote --merge
+# Key paths
+docs/sing-box-official/docs/configuration/inbound/vless.md
+docs/sing-box-official/docs/configuration/shared/tls.md
+docs/sing-box-official/docs/migration.md
 ```
 
-### Key Documentation Paths
-- **Listen Configuration**: `docs/sing-box-official/docs/configuration/shared/listen/`
-- **Inbound Configuration**: `docs/sing-box-official/docs/configuration/inbound/`
-- **VLESS Documentation**: `docs/sing-box-official/docs/configuration/inbound/vless/`
-- **Reality Configuration**: `docs/sing-box-official/docs/configuration/shared/tls/`
-- **Migration Guide**: `docs/sing-box-official/docs/migration.md`
+**Online access**:
+- VLESS: https://sing-box.sagernet.org/configuration/inbound/vless/
+- Reality/TLS: https://sing-box.sagernet.org/configuration/shared/tls/
+- Migration: https://sing-box.sagernet.org/migration/
 
-### Configuration Reference Examples
-- **VLESS-Reality**: `docs/sing-box-official/test/config/vless-server.json`
-- **System Service**: `docs/sing-box-official/release/config/sing-box.service`
-- **Example Configurations**: `docs/sing-box-official/release/config/config.json`
+## Common Workflows
 
-### Using Submodule for Development
+### Adding a New Feature
+1. **Read documentation**: Check @docs/REALITY_COMPLIANCE_REVIEW.md for compliance requirements
+2. **Write code**: Follow bash coding standards above
+3. **Add tests**: Create unit tests in `tests/` directory
+4. **Validate**: Run `bash tests/test_reality.sh`
+5. **Test integration**: Run `bash tests/integration/test_reality_connection.sh`
+6. **Update docs**: Update relevant documentation files
+7. **Commit**: Follow conventional commits (feat:, fix:, docs:, etc.)
+
+### Modifying Reality Configuration
+1. **ALWAYS** read current config structure
+2. **Generate materials** with proper validation
+3. **Create config** using `jq` (never string manipulation)
+4. **Validate immediately**: `sing-box check -c /etc/sing-box/config.json`
+5. **Verify structure**: Check Reality nesting, short_id type, flow field
+6. **Restart service**: `systemctl restart sing-box`
+7. **Monitor logs**: `journalctl -u sing-box -f` for 10-15 seconds
+
+### Debugging Installation Issues
 ```bash
-# View official configuration examples
-ls docs/sing-box-official/test/config/
+# Enable full debug logging
+DEBUG=1 LOG_TIMESTAMPS=1 LOG_FILE=/tmp/debug.log bash install_multi.sh
 
-# Read official documentation
-cat docs/sing-box-official/docs/configuration/inbound/vless/index.md
+# Check log for errors
+grep -i error /tmp/debug.log
 
-# Check latest migration requirements
-cat docs/sing-box-official/docs/migration.md
-
-# Reference systemd service configuration
-cat docs/sing-box-official/release/config/sing-box.service
+# Test in bash -e mode (like CI)
+bash -e install_multi.sh
 ```
 
-This ensures you always have access to the most up-to-date official documentation and can reference official configuration examples when modifying this deployment script.
+## Testing Requirements
 
-## Bash Coding Standards & Security Best Practices
-
-### Code Quality Standards
-- Always use `set -euo pipefail` at script start
-- Use existing logging functions: `msg()`, `warn()`, `err()`, `success()`, `die()`
-- Wrap all variables in quotes: `"$VARIABLE"` not `$VARIABLE`
-- **Strict mode variable references**: Always use safe expansion `${VAR:-default}` for constants and readonly variables
-  - Example: `${LOG_LEVEL:-warn}` instead of `$LOG_LEVEL`
-  - Prevents "unbound variable" errors in strict mode (`set -u`)
-  - Apply to all readonly constants from `lib/common.sh`: `SERVICE_STARTUP_MAX_WAIT_SEC`, `BACKUP_RETENTION_DAYS`, `CLEANUP_OLD_FILES_MIN`, etc.
-  - Also use for indirect variable expansion: `${!var_name:-}` instead of `${!var_name}`
-- Use `[[ ]]` for conditionals, not `[ ]`
-- Local variables in functions: `local var_name="$1"`
-- Error handling: Check command success with `|| die "Error message"`
-
-### Security Requirements
-- **Input Validation**: All user input MUST be validated before use
-- **Temporary Files**: Use `mktemp` with secure permissions (600 for files, 700 for directories)
-- **Command Injection**: Never use unvalidated input in shell commands
-- **Privilege Escalation**: Run with minimum required privileges
-- **Error Information**: Don't leak sensitive information in error messages
-- **Network Operations**: Always use timeout protection
-- **JSON Generation**: Use `jq` with explicit error checking, never string concatenation
-- **Cleanup**: Use `trap` for reliable cleanup on exit/interrupt
-- **Character Encoding**: Never use Chinese characters in script output - use only English to ensure compatibility with terminals that don't support Unicode display
-
-### Common Bash Pitfalls & CI/CD Gotchas
-
-#### 🚨 CRITICAL: bash -e Mode Arithmetic Traps
-**Problem**: GitHub Actions and many CI systems run scripts with `bash -e` (exit on error). Arithmetic expressions that evaluate to 0 trigger immediate exit.
-
-**Symptom**: Script exits silently at `((count++))` when count=0, no error message, exit code 1
-
-**Why it fails**:
+### Before Every Config Change
 ```bash
-# WRONG - Fails in bash -e mode when count=0
-count=0
-((count++))  # Returns 0 (the old value), which is FALSE in arithmetic context
-# Script exits here with code 1 in bash -e mode!
+# 1. Validate config syntax
+sing-box check -c /etc/sing-box/config.json
 
-# CORRECT - Always safe in bash -e mode
-count=0
-count=$((count + 1))  # Returns 1 (the new value), always non-zero
+# 2. Verify content
+cat /etc/sing-box/config.json | head -30
+
+# 3. Restart and check
+systemctl restart sing-box && sleep 3 && systemctl status sing-box
+
+# 4. Monitor logs
+journalctl -u sing-box -f  # Watch for 10-15 seconds
 ```
 
-**Root Cause**: `((count++))` post-increment returns the OLD value before incrementing. When count=0, it returns 0 (false), triggering bash -e exit.
-
-**Safe Alternatives**:
+### Before Committing Code
 ```bash
-# Method 1: Use assignment (recommended)
-count=$((count + 1))
+# Run all tests
+bash tests/test_reality.sh
 
-# Method 2: Pre-increment (but less readable)
-((++count))  # Returns new value (1), safe
+# Validate with ShellCheck (if installed)
+make check
 
-# Method 3: Disable -e for that line (not recommended)
-((count++)) || true
+# Test actual installation (if possible)
+bash install_multi.sh
 ```
 
-**Detection**: Always test scripts locally with `bash -e` before CI:
-```bash
-bash -e your_script.sh
-```
+## Version Information
 
-#### 🚨 CRITICAL: ShellCheck Source Directives
-**Problem**: Explicit `# shellcheck source=lib/file.sh` directives cause recursive analysis, leading to hangs with complex dependency trees.
-
-**Symptom**: ShellCheck hangs indefinitely on files with source statements, CI timeout after 5-10 minutes
-
-**Why it fails**:
-```bash
-# WRONG - Causes recursive analysis
-# shellcheck source=lib/common.sh
-source "${_LIB_DIR}/common.sh"
-# ShellCheck follows the chain: backup.sh → common.sh → logging.sh → ...
-# With 11 modules, this creates exponential complexity!
-
-# CORRECT - Prevents recursive analysis
-# shellcheck source=/dev/null
-source "${_LIB_DIR}/common.sh"
-# ShellCheck treats the source as empty, no recursion
-```
-
-**Why NOT to use `disable=SC1091`**:
-```bash
-# WRONG - Still tries to analyze the file!
-# shellcheck disable=SC1091
-source "${_LIB_DIR}/common.sh"
-# This only disables the WARNING, but shellcheck still attempts
-# to follow and analyze the source file
-```
-
-**Correct Pattern for Modular Projects**:
-```bash
-# At top of each library module
-# shellcheck source=/dev/null
-source "${_LIB_DIR}/dependency.sh"
-
-# In CI workflow, use -S error to ignore SC2154 warnings
-shellcheck -e SC1090 -e SC1091 -S error file.sh
-```
-
-**Side Effects**: You'll see SC2154 warnings (referenced but not assigned) for variables from sourced files. This is expected and safe - use `-S error` to filter these out.
-
-#### Debugging CI Failures
-When CI fails but local tests pass:
-
-1. **Reproduce CI environment**:
-   ```bash
-   # GitHub Actions runs with bash -e by default
-   bash -e your_script.sh
-   ```
-
-2. **Add comprehensive logging**:
-   ```bash
-   # Capture exit codes
-   command 2>&1
-   exit_code=$?
-   echo "Command exited with: $exit_code"
-
-   # Show which step failed
-   echo "Step 1: Doing X..."
-   do_x
-   echo "Step 2: Doing Y..."
-   do_y
-   ```
-
-3. **Check for hidden failures**:
-   ```bash
-   # These all fail silently in bash -e:
-   ((count++))         # When count=0
-   grep "pattern" file # When no match found
-   [[ $? -eq 0 ]]     # When checking previous false result
-   ```
-
-## Client Compatibility Requirements
-- Script generates sing-box-compatible Reality configurations
-- v2rayN users must switch from Xray core to sing-box core in client settings
-- Generated URIs include aliases: `#Reality-domain`, `#WS-TLS-domain`, `#Hysteria2-domain`
-- Short IDs are 8 characters (sing-box limit), not 16 characters (Xray limit)
-
-## sing-box 1.12.0 Configuration Standards
-
-### Current Implementation (Fully Compliant)
-- **Modern DNS Configuration**: Using explicit DNS servers with 1.12.0+ format (`type: "local"`) instead of implicit configuration
-- **Default Domain Resolver**: Configured `route.default_domain_resolver` for 1.14.0 compatibility
-- **Modern Route Rules**: Using `action: "sniff"` and `action: "hijack-dns"` for traffic handling
-- **Global DNS Strategy**: Using `dns.strategy: "ipv4_only"` for IPv4-only networks instead of deprecated outbound options
-- **Dual-Stack Listen**: Always using `listen: "::"` for optimal network support
-- **Auto Interface Detection**: Enabled `auto_detect_interface: true` to prevent routing loops
-
-### Performance & Security Features
-- **Log Level Optimization**: Default `warn` level with timestamps enabled
-- **Anti-Replay Protection**: `max_time_difference: "1m"` in REALITY configuration
-- **TCP Fast Open**: Enabled by default for reduced connection latency (~5-10% improvement)
-
-### Configuration Structure (1.12.0+)
-```json
-{
-  "log": { "level": "warn", "timestamp": true },
-  "dns": {
-    "servers": [
-      {
-        "type": "local",
-        "tag": "dns-local"
-      }
-    ],
-    "strategy": "ipv4_only"  // IPv4-only networks
-  },
-  "inbounds": [
-    {
-      "type": "vless",
-      "tag": "in-reality",
-      "listen": "::",  // IPv4/IPv6 dual-stack
-      "users": [{ "uuid": "UUID", "flow": "xtls-rprx-vision" }],
-      "tls": {
-        "reality": {
-          "max_time_difference": "1m"  // Anti-replay protection
-        }
-      }
-    }
-  ],
-  "outbounds": [
-    {
-      "type": "direct",
-      "tag": "direct",
-      "tcp_fast_open": true  // Performance optimization
-    },
-    { "type": "block", "tag": "block" }
-  ],
-  "route": {
-    "rules": [
-      { "inbound": ["in-reality"], "action": "sniff" },
-      { "protocol": "dns", "action": "hijack-dns" }
-    ],
-    "auto_detect_interface": true,
-    "default_domain_resolver": {
-      "server": "dns-local"  // 1.14.0 compatibility
-    }
-  }
-}
-```
-
-## Recent Updates
-
-### Latest Version: v2.2.0 (2025-11-17) - Phase 4 Complete ✅
-**Focus**: Advanced features - schema validation, version compatibility, integration testing
-
-**Phase 4 Implementation**:
-- **JSON Schema Validation**: Comprehensive Reality configuration schema validation
-  - Created `schema/reality-config.schema.json` with sing-box 1.12.0+ standards
-  - Implemented `lib/schema_validator.sh` with manual jq-based validation
-  - Validates Reality nesting, short_id format, flow fields, TLS configuration
-- **Version Compatibility Checks**: Automated version validation and requirements
-  - Enhanced `lib/version.sh` with `validate_singbox_version()`
-  - Minimum version enforcement (1.8.0 for Reality support)
-  - Recommended version warnings (1.12.0 for modern config)
-  - Version comparison and compatibility checking functions
-- **Integration Testing**: Comprehensive post-installation validation
-  - Created `tests/integration/test_reality_connection.sh`
-  - Tests binary, configuration, service, Reality structure, exports
-  - 14 integration test cases covering full deployment validation
-- **CI/CD Enhancements**: Automated Phase 4 testing in GitHub Actions
-  - Added `phase4-advanced-features` job to test workflow
-  - Schema validation tests in CI
-  - Version compatibility verification
-  - Coverage reporting includes Phase 4 functions
-
-**Key Features**:
-- Schema validation catches configuration errors before deployment
-- Version checks prevent incompatible installations
-- Integration tests validate complete Reality setup
-- All Phase 4 tests run automatically in CI/CD
-
-**Multi-Phase Progress**:
-- ✅ **Phase 0**: Foundation (submodule initialization)
-- ✅ **Phase 1**: Documentation & Knowledge Base
-- ✅ **Phase 2**: Testing Infrastructure (unit tests)
-- ✅ **Phase 3**: Code Enhancements (validation, constants, error messages)
-- ✅ **Phase 4**: Advanced Features (schema, version checks, integration tests)
-- ⏭️ **Phase 5**: Documentation Finalization (next)
-
-**For detailed phase information**, see `docs/MULTI_PHASE_IMPROVEMENT_PLAN.md`
-
-### Previous Versions
-
-#### v2.1.0 (2025-10-17)
-**Focus**: Security hardening and stability improvements
-
-**Key Improvements**:
-- Fixed 7 critical/high-priority security vulnerabilities
-- Enhanced backup encryption to full 256-bit entropy
-- Improved service startup with intelligent polling (2-10s adaptive)
-- Added domain validation to prevent command injection
-- Removed 88 lines of dead code, extracted 8 magic number constants
-- All changes backward compatible
-
-**For detailed release notes**, see `CHANGELOG.md`
-
-### Architecture Evolution
-- **v2.2.0** (2025-11-17): Phase 4 - Advanced features (schema, version checks, integration tests)
-- **v2.1.0** (2025-10-17): Security audit and stability hardening
-- **v2.0.0** (2025-10-08): Modular architecture with 9 library modules
-- **v1.x** (2025-08): Single-file deployment, Reality-only support
-
-## Critical Configuration Notes
-
-### IPv6 Connection Issue (sing-box 1.12.0+)
-
-**Symptom**: "network unreachable" errors on IPv4-only servers
-
-**Root Cause**: Deprecated `domain_strategy` in outbounds causes IPv6 connection attempts
-
-**Solution**: Use global DNS strategy (1.12.0+ compliant)
-```json
-{
-  "dns": {
-    "servers": [{"type": "local", "tag": "dns-local"}],
-    "strategy": "ipv4_only"  // For IPv4-only servers
-  },
-  "inbounds": [{"listen": "::"}],  // Dual-stack listen
-  "outbounds": [{"type": "direct"}]  // NO domain_strategy field
-}
-```
-
-**Key Rules**:
-- Use `dns.strategy: "ipv4_only"` for IPv4-only networks
-- Use `listen: "::"` for dual-stack (NEVER "0.0.0.0")
-- Remove deprecated `domain_strategy` from outbounds
-- Configure `route.default_domain_resolver` for 1.14.0 compatibility
-
-## Troubleshooting
-
-### Quick Diagnostics
-```bash
-# Verify service status
-systemctl status sing-box
-
-# Validate configuration
-/usr/local/bin/sing-box check -c /etc/sing-box/config.json
-
-# Check logs for errors
-journalctl -u sing-box -n 50
-
-# Verify port listening
-ss -lntp | grep -E ':(443|8443|8444)'
-```
-
-### Common Issues
-
-**Service fails to start**: Check config validation and logs above
-
-**Port conflicts**: Script automatically uses fallback ports (24443, 24444, 24445) if primary ports occupied
-
-**"unbound variable" errors in strict mode**:
-- **Symptom**: Script fails with `variable: unbound variable` errors (e.g., `LOG_LEVEL: unbound variable`)
-- **Root cause**: Readonly constants referenced without default values in `set -euo pipefail` strict mode
-- **Quick fix**: Use safe expansion `${VAR:-default}` instead of `$VAR`
-- **Affected files**: `lib/config.sh`, `lib/service.sh`, `lib/backup.sh`, `lib/common.sh`
-- **See**: [Bash Coding Standards](#bash-coding-standards--security-best-practices) section for complete guidelines and examples
-
-**Timing issues**: Service startup uses intelligent polling (up to 10s) to handle slow systems
+- **Current**: v2.2.0 (Phase 4 complete)
+- **Architecture**: Modular v2.0 (11 library modules)
+- **sing-box compatibility**: 1.8.0+ (recommended 1.12.0+)
+- **License**: MIT
