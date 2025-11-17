@@ -24,11 +24,12 @@ jobs:
 
       - name: Run ShellCheck on test suite
         run: |
+          shellcheck tests/test_validation_simple.sh || true
           shellcheck tests/test_reality.sh || true
 
-      - name: Run Reality unit tests
+      - name: Run Reality validation tests
         run: |
-          bash tests/test_reality.sh
+          bash tests/test_validation_simple.sh
 
       - name: Generate test report
         if: always()
