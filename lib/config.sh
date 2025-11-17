@@ -48,51 +48,36 @@ create_base_config() {
   local ipv6_supported="${1:-false}"
   local log_level="${2:-warn}"
 
-  local base_config
-
+  # Determine DNS strategy
+  local dns_strategy=""
   if [[ "$ipv6_supported" == "false" ]]; then
     msg "  - Applying IPv4-only DNS configuration for network compatibility"
-    if ! base_config=$(jq -n \
-      --arg log_level "$log_level" \
-      '{
-        log: { level: $log_level, timestamp: true },
-        dns: {
-          servers: [{
-            type: "local",
-            tag: "dns-local"
-          }],
-          strategy: "ipv4_only"
-        },
-        inbounds: [],
-        outbounds: [
-          { type: "direct", tag: "direct" },
-          { type: "block", tag: "block" }
-        ]
-      }' 2>/dev/null); then
-      err "Failed to create base configuration with jq"
-      return 1
-    fi
+    dns_strategy="ipv4_only"
   else
     msg "  - Using default DNS configuration for dual-stack network"
-    if ! base_config=$(jq -n \
-      --arg log_level "$log_level" \
-      '{
-        log: { level: $log_level, timestamp: true },
-        dns: {
-          servers: [{
-            type: "local",
-            tag: "dns-local"
-          }]
-        },
-        inbounds: [],
-        outbounds: [
-          { type: "direct", tag: "direct" },
-          { type: "block", tag: "block" }
-        ]
-      }' 2>/dev/null); then
-      err "Failed to create base configuration with jq"
-      return 1
-    fi
+  fi
+
+  # Build configuration with conditional DNS strategy injection
+  local base_config
+  if ! base_config=$(jq -n \
+    --arg log_level "$log_level" \
+    --arg dns_strategy "$dns_strategy" \
+    '{
+      log: { level: $log_level, timestamp: true },
+      dns: ({
+        servers: [{
+          type: "local",
+          tag: "dns-local"
+        }]
+      } + if $dns_strategy != "" then {strategy: $dns_strategy} else {} end),
+      inbounds: [],
+      outbounds: [
+        { type: "direct", tag: "direct" },
+        { type: "block", tag: "block" }
+      ]
+    }' 2>/dev/null); then
+    err "Failed to create base configuration with jq"
+    return 1
   fi
 
   echo "$base_config"
