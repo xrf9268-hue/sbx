@@ -4,10 +4,34 @@
 
 set -euo pipefail
 
+# Prevent cleanup() from interfering with test execution
+export SBX_TEST_MODE=1
+
 # Test framework configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 LIB_DIR="$PROJECT_ROOT/lib"
+
+# Source library modules at top level (before any functions are called)
+# shellcheck source=/dev/null
+source "$LIB_DIR/common.sh"
+
+# shellcheck source=/dev/null
+source "$LIB_DIR/validation.sh"
+
+# shellcheck source=/dev/null
+source "$LIB_DIR/generators.sh"
+
+# shellcheck source=/dev/null
+source "$LIB_DIR/config.sh"
+
+# shellcheck source=/dev/null
+source "$LIB_DIR/export.sh"
+
+# Disable all traps from sourced libraries to prevent interference with tests
+# This MUST be done at top level, not inside a function, to work correctly
+# Libraries like common.sh set EXIT traps that can cause test failures
+trap - EXIT INT TERM HUP QUIT ERR RETURN
 
 # Test counters
 TESTS_RUN=0
@@ -15,20 +39,8 @@ TESTS_PASSED=0
 TESTS_FAILED=0
 TESTS_SKIPPED=0
 
-# Color output (if supported)
-if [[ -t 1 ]]; then
-  RED='\033[0;31m'
-  GREEN='\033[0;32m'
-  YELLOW='\033[1;33m'
-  BLUE='\033[0;34m'
-  NC='\033[0m'
-else
-  RED=''
-  GREEN=''
-  YELLOW=''
-  BLUE=''
-  NC=''
-fi
+# Color variables are provided by lib/common.sh
+# Using library's color scheme: R (red), G (green), Y (yellow), BLUE, N (reset)
 
 #==============================================================================
 # Test Framework Functions
@@ -38,7 +50,7 @@ fi
 pass() {
   TESTS_PASSED=$((TESTS_PASSED + 1))
   TESTS_RUN=$((TESTS_RUN + 1))
-  echo -e "${GREEN}✓${NC} ${FUNCNAME[1]}"
+  echo -e "${G}✓${N} ${FUNCNAME[1]}"
 }
 
 # Mark test as failed
@@ -46,7 +58,7 @@ fail() {
   local message="${1:-No error message provided}"
   TESTS_FAILED=$((TESTS_FAILED + 1))
   TESTS_RUN=$((TESTS_RUN + 1))
-  echo -e "${RED}✗${NC} ${FUNCNAME[1]}: $message"
+  echo -e "${R}✗${N} ${FUNCNAME[1]}: $message"
   return 1
 }
 
@@ -55,7 +67,7 @@ skip() {
   local reason="${1:-No reason provided}"
   TESTS_SKIPPED=$((TESTS_SKIPPED + 1))
   TESTS_RUN=$((TESTS_RUN + 1))
-  echo -e "${YELLOW}⊘${NC} ${FUNCNAME[1]}: SKIPPED - $reason"
+  echo -e "${Y}⊘${N} ${FUNCNAME[1]}: SKIPPED - $reason"
   return 0
 }
 
@@ -106,44 +118,18 @@ assert_failure() {
 
 # Global setup - runs once before all tests
 setup_suite() {
-  echo -e "${BLUE}Setting up test suite...${NC}"
-
-  # Source library modules
-  if [[ -f "$LIB_DIR/common.sh" ]]; then
-    # shellcheck source=/dev/null
-    source "$LIB_DIR/common.sh"
-  fi
-
-  if [[ -f "$LIB_DIR/validation.sh" ]]; then
-    # shellcheck source=/dev/null
-    source "$LIB_DIR/validation.sh"
-  fi
-
-  if [[ -f "$LIB_DIR/generators.sh" ]]; then
-    # shellcheck source=/dev/null
-    source "$LIB_DIR/generators.sh"
-  fi
-
-  if [[ -f "$LIB_DIR/config.sh" ]]; then
-    # shellcheck source=/dev/null
-    source "$LIB_DIR/config.sh"
-  fi
-
-  if [[ -f "$LIB_DIR/export.sh" ]]; then
-    # shellcheck source=/dev/null
-    source "$LIB_DIR/export.sh"
-  fi
+  echo -e "${BLUE}Setting up test suite...${N}"
 
   # Create temporary directory for test artifacts
   TEST_TMP_DIR=$(mktemp -d)
   export TEST_TMP_DIR
 
-  echo -e "${BLUE}Test artifacts directory: $TEST_TMP_DIR${NC}"
+  echo -e "${BLUE}Test artifacts directory: $TEST_TMP_DIR${N}"
 }
 
 # Global teardown - runs once after all tests
 teardown_suite() {
-  echo -e "${BLUE}Cleaning up test suite...${NC}"
+  echo -e "${BLUE}Cleaning up test suite...${N}"
 
   # Remove temporary directory
   if [[ -n "${TEST_TMP_DIR:-}" && -d "$TEST_TMP_DIR" ]]; then
@@ -569,7 +555,7 @@ PUBLIC_KEY=$PUBLIC_KEY
 SHORT_ID=$SHORT_ID
 EOF
 
-  export CLIENT_INFO="$TEST_TEMP/client-info.txt"
+  export TEST_CLIENT_INFO="$TEST_TEMP/client-info.txt"
 
   local uri
   uri=$(export_uri reality 2>/dev/null) || {
@@ -646,7 +632,7 @@ PUBLIC_KEY=$PUBLIC_KEY
 SHORT_ID=$SHORT_ID
 EOF
 
-  export CLIENT_INFO="$TEST_TEMP/client-info.txt"
+  export TEST_CLIENT_INFO="$TEST_TEMP/client-info.txt"
 
   # Test v2rayN JSON export
   local v2rayn_json
@@ -708,7 +694,7 @@ PUBLIC_KEY=$PUBLIC_KEY
 SHORT_ID=$SHORT_ID
 EOF
 
-  export CLIENT_INFO="$TEST_TEMP/client-info.txt"
+  export TEST_CLIENT_INFO="$TEST_TEMP/client-info.txt"
 
   # Ensure exports use public key, not private key
   local v2rayn_json
@@ -801,17 +787,17 @@ run_tests() {
   echo "==============================================="
   echo "Test Results"
   echo "==============================================="
-  echo -e "Tests run:    ${BLUE}$TESTS_RUN${NC}"
-  echo -e "Passed:       ${GREEN}$TESTS_PASSED${NC}"
-  echo -e "Failed:       ${RED}$TESTS_FAILED${NC}"
-  echo -e "Skipped:      ${YELLOW}$TESTS_SKIPPED${NC}"
+  echo -e "Tests run:    ${BLUE}$TESTS_RUN${N}"
+  echo -e "Passed:       ${G}$TESTS_PASSED${N}"
+  echo -e "Failed:       ${R}$TESTS_FAILED${N}"
+  echo -e "Skipped:      ${Y}$TESTS_SKIPPED${N}"
   echo ""
 
   if [[ $TESTS_FAILED -eq 0 ]]; then
-    echo -e "${GREEN}✓ All tests passed!${NC}"
+    echo -e "${G}✓ All tests passed!${N}"
     return 0
   else
-    echo -e "${RED}✗ Some tests failed${NC}"
+    echo -e "${R}✗ Some tests failed${N}"
     return 1
   fi
 }

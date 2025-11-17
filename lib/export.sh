@@ -20,9 +20,11 @@ source "${_LIB_DIR}/common.sh"
 
 # Load client info from saved configuration
 load_client_info() {
-  [[ -f "$CLIENT_INFO" ]] || die "Client info not found. Run: sbx info"
+  # Support test mode with alternative client info path
+  local client_info_file="${TEST_CLIENT_INFO:-$CLIENT_INFO}"
+  [[ -f "$client_info_file" ]] || die "Client info not found. Run: sbx info"
   # shellcheck source=/dev/null
-  source "$CLIENT_INFO"
+  source "$client_info_file"
 
   # Set defaults for missing variables to ensure valid URIs
   REALITY_PORT="${REALITY_PORT:-443}"
