@@ -120,50 +120,24 @@ validate_cert_files() {
   local fullchain="$1"
   local key="$2"
 
-  # Step 1: Basic path validation
-  if [[ -z "$fullchain" || -z "$key" ]]; then
-    err "Certificate paths cannot be empty"
+  # Step 1: Basic file integrity validation (existence, readability, non-empty)
+  if ! validate_file_integrity "$fullchain" true 1; then
+    err "Certificate file validation failed: $fullchain"
+    return 1
+  fi
+  if ! validate_file_integrity "$key" true 1; then
+    err "Private key file validation failed: $key"
     return 1
   fi
 
-  # Step 2: File existence check
-  if [[ ! -f "$fullchain" ]]; then
-    err "Certificate file not found: $fullchain"
-    return 1
-  fi
-  if [[ ! -f "$key" ]]; then
-    err "Private key file not found: $key"
-    return 1
-  fi
-
-  # Step 3: File readability check
-  if [[ ! -r "$fullchain" ]]; then
-    err "Certificate file not readable: $fullchain"
-    return 1
-  fi
-  if [[ ! -r "$key" ]]; then
-    err "Private key file not readable: $key"
-    return 1
-  fi
-
-  # Step 4: Non-empty file check
-  if [[ ! -s "$fullchain" ]]; then
-    err "Certificate file is empty: $fullchain"
-    return 1
-  fi
-  if [[ ! -s "$key" ]]; then
-    err "Private key file is empty: $key"
-    return 1
-  fi
-
-  # Step 5: Certificate format validation
+  # Step 2: Certificate format validation
   if ! openssl x509 -in "$fullchain" -noout 2>/dev/null; then
     err "Invalid certificate format (not a valid X.509 certificate)"
     err "  File: $fullchain"
     return 1
   fi
 
-  # Step 6: Private key format validation
+  # Step 3: Private key format validation
   # Try to parse as any valid key type (RSA, EC, Ed25519, etc.)
   if ! openssl pkey -in "$key" -noout 2>/dev/null; then
     err "Invalid private key format (not a valid private key)"
@@ -171,12 +145,12 @@ validate_cert_files() {
     return 1
   fi
 
-  # Step 7: Certificate expiration check (warning only)
+  # Step 4: Certificate expiration check (warning only)
   if ! openssl x509 -in "$fullchain" -checkend 2592000 -noout 2>/dev/null; then
     warn "Certificate will expire within 30 days"
   fi
 
-  # Step 8: Certificate-Key matching validation
+  # Step 5: Certificate-Key matching validation
   # Extract public key hash from certificate
   local cert_pubkey
   cert_pubkey=$(openssl x509 -in "$fullchain" -noout -pubkey 2>/dev/null | openssl md5 2>/dev/null | awk '{print $2}')
@@ -701,9 +675,215 @@ validate_transport_security_pairing() {
 }
 
 #==============================================================================
+# Parameter Validation Helpers
+#==============================================================================
+
+# Require a variable to be non-empty
+#
+# Usage: require VAR_NAME ["description"] || return 1
+#
+# Args:
+#   $1 - Variable name (not the value!)
+#   $2 - Optional description (defaults to variable name)
+#
+# Returns:
+#   0 if variable is non-empty
+#   1 if variable is empty or unset
+#
+# Examples:
+#   require UUID || return 1
+#   require DOMAIN "domain name" || return 1
+#
+require() {
+  local var_name="$1"
+  local description="${2:-$var_name}"
+
+  # Use indirect variable expansion to get the value
+  local var_value="${!var_name:-}"
+
+  if [[ -z "$var_value" ]]; then
+    err "Required parameter missing: $description"
+    err "Variable: $var_name"
+    return 1
+  fi
+
+  return 0
+}
+
+# Require multiple variables to be non-empty
+#
+# Usage: require_all VAR1 VAR2 VAR3 ... || return 1
+#
+# Args:
+#   $@ - Variable names to check
+#
+# Returns:
+#   0 if all variables are non-empty
+#   1 if any variable is empty or unset
+#
+# Example:
+#   require_all UUID DOMAIN PORT || return 1
+#
+require_all() {
+  local var_name
+  local failed=0
+
+  for var_name in "$@"; do
+    if ! require "$var_name"; then
+      failed=1
+    fi
+  done
+
+  return $failed
+}
+
+# Require variable and validate with function
+#
+# Usage: require_valid VAR_NAME "description" validator_function || return 1
+#
+# Args:
+#   $1 - Variable name
+#   $2 - Description
+#   $3 - Validator function name
+#
+# Returns:
+#   0 if variable exists and passes validation
+#   1 if variable is empty or fails validation
+#
+# Example:
+#   require_valid UUID "UUID" validate_uuid || return 1
+#   require_valid DOMAIN "domain name" validate_domain || return 1
+#
+require_valid() {
+  local var_name="$1"
+  local description="$2"
+  local validator="$3"
+
+  # First check if variable exists
+  require "$var_name" "$description" || return 1
+
+  # Get the variable value
+  local var_value="${!var_name}"
+
+  # Run validator function
+  if ! "$validator" "$var_value"; then
+    err "Validation failed for: $description"
+    err "Variable: $var_name"
+    err "Value: $var_value"
+    return 1
+  fi
+
+  return 0
+}
+
+#==============================================================================
+# File Integrity Validation Helpers
+#==============================================================================
+
+# Validate file exists, readable, and optionally non-empty
+#
+# Usage: validate_file_integrity <file_path> [require_content] [min_size_bytes]
+#
+# Args:
+#   $1 - File path to validate
+#   $2 - Require non-empty content (default: true)
+#   $3 - Minimum size in bytes (default: 1)
+#
+# Returns:
+#   0 if file passes all checks
+#   1 if any validation fails
+#
+# Examples:
+#   validate_file_integrity "/etc/config.json" || return 1
+#   validate_file_integrity "/tmp/data" true 100 || return 1
+#   validate_file_integrity "/tmp/empty.txt" false || return 1
+#
+validate_file_integrity() {
+  local file_path="$1"
+  local require_content="${2:-true}"
+  local min_size="${3:-1}"
+
+  # Check file exists
+  if [[ ! -e "$file_path" ]]; then
+    err "File not found: $file_path"
+    err "Please ensure the file exists and path is correct"
+    return 1
+  fi
+
+  # Check it's a regular file (not directory, symlink, etc.)
+  if [[ ! -f "$file_path" ]]; then
+    err "Not a regular file: $file_path"
+    if [[ -d "$file_path" ]]; then
+      err "Type: directory"
+    else
+      err "Type: $(file -b "$file_path" 2>/dev/null || echo "unknown")"
+    fi
+    return 1
+  fi
+
+  # Check readable
+  if [[ ! -r "$file_path" ]]; then
+    err "File not readable: $file_path"
+    err "Permissions: $(ls -l "$file_path" 2>/dev/null | awk '{print $1}' || echo "unknown")"
+    err "Try: sudo chmod +r \"$file_path\""
+    return 1
+  fi
+
+  # Check size if required
+  if [[ "$require_content" == "true" ]]; then
+    if [[ ! -s "$file_path" ]]; then
+      err "File is empty: $file_path"
+      err "Size: 0 bytes"
+      return 1
+    fi
+
+    # Check minimum size if specified
+    local actual_size
+    actual_size=$(get_file_size "$file_path")
+    if [[ "$actual_size" -lt "$min_size" ]]; then
+      err "File too small: $file_path"
+      err "Expected: at least $min_size bytes"
+      err "Actual: $actual_size bytes"
+      return 1
+    fi
+  fi
+
+  return 0
+}
+
+# Validate multiple files at once
+#
+# Usage: validate_files_integrity <file1> <file2> ...
+#
+# Args:
+#   $@ - File paths to validate
+#
+# Returns:
+#   0 if all files pass validation
+#   1 if any file fails validation
+#
+# Example:
+#   validate_files_integrity "$CERT" "$KEY" || return 1
+#
+validate_files_integrity() {
+  local file
+  local failed=0
+
+  for file in "$@"; do
+    if ! validate_file_integrity "$file"; then
+      failed=1
+    fi
+  done
+
+  return $failed
+}
+
+#==============================================================================
 # Export Functions
 #==============================================================================
 
 export -f sanitize_input validate_port validate_domain validate_cert_files validate_env_vars
 export -f validate_short_id validate_reality_sni validate_menu_choice validate_yes_no
 export -f validate_singbox_config validate_json_syntax validate_transport_security_pairing
+export -f require require_all require_valid
+export -f validate_file_integrity validate_files_integrity

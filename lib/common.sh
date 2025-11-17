@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# lib/common.sh - Core utilities, global variables, and color initialization
+# lib/common.sh - Core utilities and global variables
 # Part of sbx-lite modular architecture v2.2.0
 #
 # This is the core module that provides constants, global variables,
-# color initialization, and essential utility functions.
-# It also loads the logging and generators modules.
+# and essential utility functions.
+# It also loads the colors, logging, and generators modules.
 
 # Strict mode for error handling and safety
 set -euo pipefail
@@ -12,6 +12,11 @@ set -euo pipefail
 # Prevent multiple sourcing
 [[ -n "${_SBX_COMMON_LOADED:-}" ]] && return 0
 readonly _SBX_COMMON_LOADED=1
+
+# Source colors first (needed by logging)
+_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=/dev/null
+source "${_LIB_DIR}/colors.sh"
 
 #==============================================================================
 # Global Constants
@@ -64,6 +69,10 @@ declare -r CADDY_CERT_WAIT_TIMEOUT_SEC=60
 # Service operation wait times
 [[ -z "${SERVICE_WAIT_SHORT_SEC:-}" ]] && declare -r SERVICE_WAIT_SHORT_SEC=1
 [[ -z "${SERVICE_WAIT_MEDIUM_SEC:-}" ]] && declare -r SERVICE_WAIT_MEDIUM_SEC=2
+
+# Logging configuration
+# Check for log rotation every 100 writes (1% overhead - negligible performance impact)
+declare -r LOG_ROTATION_CHECK_INTERVAL=100
 
 #==============================================================================
 # Reality Protocol Constants
@@ -125,30 +134,6 @@ HY2_PORT_CHOSEN="${HY2_PORT_CHOSEN:-}"
 # Process-specific temporary directory for secure cleanup
 # Created with secure permissions and cleaned up automatically
 SBX_TMP_DIR="${SBX_TMP_DIR:-}"
-
-#==============================================================================
-# Color Definitions
-#==============================================================================
-
-_init_colors() {
-  if command -v tput >/dev/null 2>&1 && tput colors >/dev/null 2>&1; then
-    B="$(tput bold)"
-    N="$(tput sgr0)"
-    R="$(tput setaf 1)"
-    G="$(tput setaf 2)"
-    Y="$(tput setaf 3)"
-    BLUE="$(tput setaf 4)"
-    PURPLE="$(tput setaf 5)"
-    CYAN="$(tput setaf 6)"
-  else
-    # No color support
-    B="" N="" R="" G="" Y="" BLUE="" PURPLE="" CYAN=""
-  fi
-
-  # Export for use in other modules
-  export B N R G Y BLUE PURPLE CYAN
-  readonly B N R G Y BLUE PURPLE CYAN
-}
 
 #==============================================================================
 # Utility Functions
@@ -256,14 +241,83 @@ cleanup() {
 }
 
 #==============================================================================
+# Temporary File Management
+#==============================================================================
+
+# Create temporary directory with consistent error handling
+#
+# Usage: temp_dir=$(create_temp_dir) || return 1
+# Args:
+#   $1: Optional prefix for temp directory name
+# Returns:
+#   Path to created temporary directory
+# Example:
+#   temp_dir=$(create_temp_dir "backup") || return 1
+create_temp_dir() {
+  local prefix="${1:-sbx}"
+  local temp_dir
+
+  if ! temp_dir=$(mktemp -d -t "${prefix}.XXXXXX" 2>&1); then
+    err "Failed to create temporary directory"
+    err "Possible causes:"
+    err "  - Disk full (check: df -h /tmp)"
+    err "  - No write permission to /tmp"
+    err "  - SELinux/AppArmor restrictions"
+    err "Details: $temp_dir"
+    return 1
+  fi
+
+  # Set secure permissions
+  chmod 700 "$temp_dir" || {
+    err "Failed to set permissions on temp directory: $temp_dir"
+    rm -rf "$temp_dir" 2>/dev/null
+    return 1
+  }
+
+  echo "$temp_dir"
+  return 0
+}
+
+# Create temporary file with consistent error handling
+#
+# Usage: tmpfile=$(create_temp_file) || return 1
+# Args:
+#   $1: Optional prefix for temp file name
+# Returns:
+#   Path to created temporary file
+# Example:
+#   tmpfile=$(create_temp_file "config") || return 1
+create_temp_file() {
+  local prefix="${1:-sbx}"
+  local tmpfile
+
+  if ! tmpfile=$(mktemp -t "${prefix}.XXXXXX" 2>&1); then
+    err "Failed to create temporary file"
+    err "Possible causes:"
+    err "  - Disk full (check: df -h /tmp)"
+    err "  - No write permission to /tmp"
+    err "  - SELinux/AppArmor restrictions"
+    err "Details: $tmpfile"
+    return 1
+  fi
+
+  # Set secure permissions
+  chmod 600 "$tmpfile" || {
+    err "Failed to set permissions on temp file: $tmpfile"
+    rm -f "$tmpfile" 2>/dev/null
+    return 1
+  }
+
+  echo "$tmpfile"
+  return 0
+}
+
+#==============================================================================
 # Module Initialization
 #==============================================================================
 
-# Initialize colors first (needed by logging module)
-_init_colors
-
 # Source logging module (provides msg, warn, err, info, success, debug, die)
-_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Colors are already loaded from colors.sh at the top of this file
 # shellcheck source=/dev/null
 source "${_LIB_DIR}/logging.sh"
 
@@ -275,6 +329,6 @@ source "${_LIB_DIR}/generators.sh"
 trap cleanup EXIT INT TERM
 
 # Export core utility functions
-export -f need_root have safe_rm_temp get_file_size cleanup
+export -f need_root have safe_rm_temp get_file_size cleanup create_temp_dir create_temp_file
 
 # Note: Logging and generator functions are exported by their respective modules

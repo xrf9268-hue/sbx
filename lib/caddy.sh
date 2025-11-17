@@ -116,8 +116,7 @@ caddy_install() {
 
   arch=$(caddy_detect_arch) || return 1
 
-  tmpdir=$(mktemp -d)
-  chmod 700 "$tmpdir"
+  tmpdir=$(create_temp_dir "caddy") || return 1
 
   archive="caddy_${version:1}_linux_${arch}.tar.gz"
   tmpfile="${tmpdir}/${archive}"

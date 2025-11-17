@@ -31,7 +31,7 @@ backup_create() {
   local backup_name
   backup_name="sbx-backup-$(date +%Y%m%d-%H%M%S)"
   local temp_dir
-  temp_dir=$(mktemp -d) || die "Failed to create temp directory"
+  temp_dir=$(create_temp_dir "backup") || return 1
   local backup_root="$temp_dir/$backup_name"
 
   msg "Creating backup: $backup_name"
@@ -183,7 +183,7 @@ backup_restore() {
   fi
 
   local temp_dir
-  temp_dir=$(mktemp -d) || die "Failed to create temp directory"
+  temp_dir=$(create_temp_dir "restore") || return 1
 
   # Decrypt if encrypted
   local archive_to_extract="$backup_file"

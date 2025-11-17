@@ -242,6 +242,34 @@ Contributions are welcome! Please:
 
 See [CLAUDE.md](CLAUDE.md) for development guidelines and coding standards.
 
+### Code Quality
+
+sbx-lite maintains high code quality standards through:
+
+**Modular Architecture:**
+- 18 library modules (11 core + 7 specialized)
+- ~4,100 lines of production code
+- Clear separation of concerns
+
+**Code Quality Improvements (2025-11-17):**
+- ✅ Helper functions reduce duplication:
+  - `create_temp_dir()` / `create_temp_file()` - Secure temp file creation
+  - `require()` / `require_all()` / `require_valid()` - Parameter validation
+  - `validate_file_integrity()` - Certificate/key validation
+  - `json_parse()` / `json_build()` - JSON operations with fallbacks
+  - `crypto_random_hex()` / `crypto_sha256()` - Crypto operations
+- ✅ Magic numbers extracted to named constants
+- ✅ Consistent error messaging via centralized templates
+- ✅ Comprehensive validation pipeline for configurations
+
+**Testing:**
+- 23 unit tests (100% pass rate)
+- 14 integration tests
+- CI/CD with ShellCheck validation
+- Coverage tracking for critical functions
+
+See [docs/CODE_QUALITY_IMPROVEMENT_PLAN.md](docs/CODE_QUALITY_IMPROVEMENT_PLAN.md) for detailed refactoring history.
+
 ## License
 
 MIT License - See [LICENSE](LICENSE) for details

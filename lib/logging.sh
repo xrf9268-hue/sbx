@@ -15,10 +15,9 @@ readonly _SBX_LOGGING_LOADED=1
 
 # Source dependencies
 _LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# Note: We need colors from common.sh, but common.sh will source us
-# So only source common.sh if it hasn't been loaded yet
-if [[ -z "${_SBX_COMMON_LOADED:-}" ]]; then
-    source "${_LIB_DIR}/common.sh"
+# Source colors module (no circular dependency)
+if [[ -z "${_SBX_COLORS_LOADED:-}" ]]; then
+    source "${_LIB_DIR}/colors.sh"
 fi
 
 #==============================================================================
@@ -76,9 +75,9 @@ _log_timestamp() {
 _log_to_file() {
   [[ -z "${LOG_FILE}" ]] && return 0
 
-  # Periodic rotation check (every 100 writes to minimize overhead)
+  # Periodic rotation check (configurable interval via LOG_ROTATION_CHECK_INTERVAL)
   LOG_WRITE_COUNT=$((LOG_WRITE_COUNT + 1))
-  if [[ $((LOG_WRITE_COUNT % 100)) == 0 ]]; then
+  if [[ $((LOG_WRITE_COUNT % LOG_ROTATION_CHECK_INTERVAL)) == 0 ]]; then
     rotate_logs_if_needed
   fi
 
