@@ -15,10 +15,9 @@ readonly _SBX_LOGGING_LOADED=1
 
 # Source dependencies
 _LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# Note: We need colors from common.sh, but common.sh will source us
-# So only source common.sh if it hasn't been loaded yet
-if [[ -z "${_SBX_COMMON_LOADED:-}" ]]; then
-    source "${_LIB_DIR}/common.sh"
+# Source colors module (no circular dependency)
+if [[ -z "${_SBX_COLORS_LOADED:-}" ]]; then
+    source "${_LIB_DIR}/colors.sh"
 fi
 
 #==============================================================================

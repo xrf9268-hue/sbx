@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# lib/common.sh - Core utilities, global variables, and color initialization
+# lib/common.sh - Core utilities and global variables
 # Part of sbx-lite modular architecture v2.2.0
 #
 # This is the core module that provides constants, global variables,
-# color initialization, and essential utility functions.
-# It also loads the logging and generators modules.
+# and essential utility functions.
+# It also loads the colors, logging, and generators modules.
 
 # Strict mode for error handling and safety
 set -euo pipefail
@@ -12,6 +12,11 @@ set -euo pipefail
 # Prevent multiple sourcing
 [[ -n "${_SBX_COMMON_LOADED:-}" ]] && return 0
 readonly _SBX_COMMON_LOADED=1
+
+# Source colors first (needed by logging)
+_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=/dev/null
+source "${_LIB_DIR}/colors.sh"
 
 #==============================================================================
 # Global Constants
@@ -127,30 +132,6 @@ HY2_PORT_CHOSEN="${HY2_PORT_CHOSEN:-}"
 SBX_TMP_DIR="${SBX_TMP_DIR:-}"
 
 #==============================================================================
-# Color Definitions
-#==============================================================================
-
-_init_colors() {
-  if command -v tput >/dev/null 2>&1 && tput colors >/dev/null 2>&1; then
-    B="$(tput bold)"
-    N="$(tput sgr0)"
-    R="$(tput setaf 1)"
-    G="$(tput setaf 2)"
-    Y="$(tput setaf 3)"
-    BLUE="$(tput setaf 4)"
-    PURPLE="$(tput setaf 5)"
-    CYAN="$(tput setaf 6)"
-  else
-    # No color support
-    B="" N="" R="" G="" Y="" BLUE="" PURPLE="" CYAN=""
-  fi
-
-  # Export for use in other modules
-  export B N R G Y BLUE PURPLE CYAN
-  readonly B N R G Y BLUE PURPLE CYAN
-}
-
-#==============================================================================
 # Utility Functions
 #==============================================================================
 
@@ -259,11 +240,8 @@ cleanup() {
 # Module Initialization
 #==============================================================================
 
-# Initialize colors first (needed by logging module)
-_init_colors
-
 # Source logging module (provides msg, warn, err, info, success, debug, die)
-_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Colors are already loaded from colors.sh at the top of this file
 # shellcheck source=/dev/null
 source "${_LIB_DIR}/logging.sh"
 

@@ -701,9 +701,112 @@ validate_transport_security_pairing() {
 }
 
 #==============================================================================
+# Parameter Validation Helpers
+#==============================================================================
+
+# Require a variable to be non-empty
+#
+# Usage: require VAR_NAME ["description"] || return 1
+#
+# Args:
+#   $1 - Variable name (not the value!)
+#   $2 - Optional description (defaults to variable name)
+#
+# Returns:
+#   0 if variable is non-empty
+#   1 if variable is empty or unset
+#
+# Examples:
+#   require UUID || return 1
+#   require DOMAIN "domain name" || return 1
+#
+require() {
+  local var_name="$1"
+  local description="${2:-$var_name}"
+
+  # Use indirect variable expansion to get the value
+  local var_value="${!var_name:-}"
+
+  if [[ -z "$var_value" ]]; then
+    err "Required parameter missing: $description"
+    err "Variable: $var_name"
+    return 1
+  fi
+
+  return 0
+}
+
+# Require multiple variables to be non-empty
+#
+# Usage: require_all VAR1 VAR2 VAR3 ... || return 1
+#
+# Args:
+#   $@ - Variable names to check
+#
+# Returns:
+#   0 if all variables are non-empty
+#   1 if any variable is empty or unset
+#
+# Example:
+#   require_all UUID DOMAIN PORT || return 1
+#
+require_all() {
+  local var_name
+  local failed=0
+
+  for var_name in "$@"; do
+    if ! require "$var_name"; then
+      failed=1
+    fi
+  done
+
+  return $failed
+}
+
+# Require variable and validate with function
+#
+# Usage: require_valid VAR_NAME "description" validator_function || return 1
+#
+# Args:
+#   $1 - Variable name
+#   $2 - Description
+#   $3 - Validator function name
+#
+# Returns:
+#   0 if variable exists and passes validation
+#   1 if variable is empty or fails validation
+#
+# Example:
+#   require_valid UUID "UUID" validate_uuid || return 1
+#   require_valid DOMAIN "domain name" validate_domain || return 1
+#
+require_valid() {
+  local var_name="$1"
+  local description="$2"
+  local validator="$3"
+
+  # First check if variable exists
+  require "$var_name" "$description" || return 1
+
+  # Get the variable value
+  local var_value="${!var_name}"
+
+  # Run validator function
+  if ! "$validator" "$var_value"; then
+    err "Validation failed for: $description"
+    err "Variable: $var_name"
+    err "Value: $var_value"
+    return 1
+  fi
+
+  return 0
+}
+
+#==============================================================================
 # Export Functions
 #==============================================================================
 
 export -f sanitize_input validate_port validate_domain validate_cert_files validate_env_vars
 export -f validate_short_id validate_reality_sni validate_menu_choice validate_yes_no
 export -f validate_singbox_config validate_json_syntax validate_transport_security_pairing
+export -f require require_all require_valid

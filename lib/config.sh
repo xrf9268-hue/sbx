@@ -26,30 +26,17 @@ source "${_LIB_DIR}/config_validator.sh"
 
 # Validate all required configuration variables are set
 validate_config_vars() {
-  local errors=0
-  local var_name var_value var_desc
-
   msg "Validating configuration parameters..."
 
   # Required variables for all installations
-  for var_spec in \
-    "UUID:UUID" \
-    "REALITY_PORT_CHOSEN:Reality port" \
-    "PRIV:Reality private key" \
-    "SID:Reality short ID"; do
+  # Using require_all helper for cleaner validation
+  if ! require_all UUID REALITY_PORT_CHOSEN PRIV SID; then
+    err "Configuration validation failed - see errors above"
+    return 1
+  fi
 
-    IFS=':' read -r var_name var_desc <<< "$var_spec"
-    var_value="${!var_name:-}"
-
-    if [[ -z "$var_value" ]]; then
-      err "  ✗ $var_desc is not set"
-      ((errors++))
-    else
-      success "  ✓ $var_desc configured"
-    fi
-  done
-
-  return $errors
+  success "  ✓ All required configuration parameters validated"
+  return 0
 }
 
 #==============================================================================
@@ -382,6 +369,84 @@ add_outbound_config() {
 }
 
 #==============================================================================
+# Configuration Generation Helpers
+#==============================================================================
+
+# Validate certificate-based configuration requirements
+_validate_certificate_config() {
+  local cert_fullchain="$1"
+  local cert_key="$2"
+
+  if [[ -z "$cert_fullchain" || -z "$cert_key" ]]; then
+    return 0  # No certificates provided, skip validation
+  fi
+
+  if [[ ! -f "$cert_fullchain" || ! -f "$cert_key" ]]; then
+    return 0  # Files don't exist, skip (handled elsewhere)
+  fi
+
+  # Validate certificate files
+  validate_cert_files "$cert_fullchain" "$cert_key" || die "Certificate validation failed"
+
+  # Validate required variables for certificate-based configurations
+  [[ -n "$WS_PORT_CHOSEN" ]] || die "WebSocket port is not set for certificate configuration."
+  [[ -n "$HY2_PORT_CHOSEN" ]] || die "Hysteria2 port is not set for certificate configuration."
+  [[ -n "$DOMAIN" ]] || die "Domain is not set for certificate configuration."
+  [[ -n "$HY2_PASS" ]] || die "Hysteria2 password is not set for certificate configuration."
+
+  return 0
+}
+
+# Create all inbound configurations
+_create_all_inbounds() {
+  local base_config="$1"
+  local uuid="$2"
+  local reality_port="$3"
+  local listen_addr="$4"
+  local sni="$5"
+  local priv_key="$6"
+  local short_id="$7"
+  local cert_fullchain="${8:-}"
+  local cert_key="${9:-}"
+
+  # Add Reality inbound (always present)
+  local reality_config
+  reality_config=$(create_reality_inbound "$uuid" "$reality_port" "$listen_addr" \
+    "$sni" "$priv_key" "$short_id") || \
+    die "Failed to create Reality inbound"
+
+  base_config=$(echo "$base_config" | jq --argjson reality "$reality_config" \
+    '.inbounds += [$reality]' 2>/dev/null) || \
+    die "Failed to add Reality configuration to base config"
+
+  # Add WS-TLS and Hysteria2 inbounds if certificates are available
+  local has_certs="false"
+  if [[ -n "$cert_fullchain" && -n "$cert_key" && -f "$cert_fullchain" && -f "$cert_key" ]]; then
+    has_certs="true"
+
+    # Add WS-TLS inbound
+    local ws_config
+    ws_config=$(create_ws_inbound "$uuid" "$WS_PORT_CHOSEN" "$listen_addr" \
+      "$DOMAIN" "$cert_fullchain" "$cert_key") || \
+      die "Failed to create WS-TLS inbound"
+
+    # Add Hysteria2 inbound
+    local hy2_config
+    hy2_config=$(create_hysteria2_inbound "$HY2_PASS" "$HY2_PORT_CHOSEN" "$listen_addr" \
+      "$cert_fullchain" "$cert_key") || \
+      die "Failed to create Hysteria2 inbound"
+
+    # Add both WS and Hysteria2 inbounds
+    base_config=$(echo "$base_config" | jq --argjson ws "$ws_config" \
+      --argjson hy2 "$hy2_config" '.inbounds += [$ws, $hy2]' 2>/dev/null) || \
+      die "Failed to add WS-TLS and Hysteria2 configurations"
+  fi
+
+  # Return updated config and has_certs flag
+  echo "$has_certs|$base_config"
+}
+
+#==============================================================================
 # Main Configuration Generation
 #==============================================================================
 
@@ -407,16 +472,8 @@ write_config() {
   # Validate all required variables
   validate_config_vars || die "Configuration validation failed. Please check the errors above."
 
-  # Certificate validation if provided
-  if [[ -n "$CERT_FULLCHAIN" && -n "$CERT_KEY" && -f "$CERT_FULLCHAIN" && -f "$CERT_KEY" ]]; then
-    validate_cert_files "$CERT_FULLCHAIN" "$CERT_KEY" || die "Certificate validation failed"
-
-    # Validate additional variables for certificate-based configurations
-    [[ -n "$WS_PORT_CHOSEN" ]] || die "WebSocket port is not set for certificate configuration."
-    [[ -n "$HY2_PORT_CHOSEN" ]] || die "Hysteria2 port is not set for certificate configuration."
-    [[ -n "$DOMAIN" ]] || die "Domain is not set for certificate configuration."
-    [[ -n "$HY2_PASS" ]] || die "Hysteria2 password is not set for certificate configuration."
-  fi
+  # Validate certificate configuration if provided
+  _validate_certificate_config "${CERT_FULLCHAIN:-}" "${CERT_KEY:-}"
 
   # Create temporary file for atomic write with secure permissions
   local temp_conf
@@ -424,7 +481,6 @@ write_config() {
   chmod 600 "$temp_conf" || die "Failed to set secure permissions on temporary file"
 
   # Setup automatic cleanup on function exit/error
-  # This trap will clean up temp file on RETURN, ERR, EXIT, INT, or TERM
   cleanup_write_config() {
     [[ -f "$temp_conf" ]] && rm -f "$temp_conf" 2>/dev/null || true
   }
@@ -435,45 +491,17 @@ write_config() {
   base_config=$(create_base_config "$ipv6_supported" "${LOG_LEVEL:-warn}") || \
     die "Failed to create base configuration"
 
-  # Add Reality inbound
-  local reality_config
-  reality_config=$(create_reality_inbound "$UUID" "$REALITY_PORT_CHOSEN" "$listen_addr" \
-    "${SNI_DEFAULT:-www.microsoft.com}" "$PRIV" "$SID") || \
-    die "Failed to create Reality inbound"
+  # Create all inbounds (Reality + optional WS-TLS and Hysteria2)
+  local inbound_result has_certs
+  inbound_result=$(_create_all_inbounds "$base_config" "$UUID" "$REALITY_PORT_CHOSEN" \
+    "$listen_addr" "${SNI_DEFAULT:-www.microsoft.com}" "$PRIV" "$SID" \
+    "${CERT_FULLCHAIN:-}" "${CERT_KEY:-}")
+  has_certs="${inbound_result%%|*}"
+  base_config="${inbound_result#*|}"
 
-  # Add Reality inbound to base config
-  base_config=$(echo "$base_config" | jq --argjson reality "$reality_config" \
-    '.inbounds += [$reality]' 2>/dev/null) || \
-    die "Failed to add Reality configuration to base config"
-
-  # Add WS-TLS and Hysteria2 inbounds if certificates are available
-  local has_certs="false"
-  if [[ -n "$CERT_FULLCHAIN" && -n "$CERT_KEY" && -f "$CERT_FULLCHAIN" && -f "$CERT_KEY" ]]; then
-    has_certs="true"
-
-    # Add WS-TLS inbound
-    local ws_config
-    ws_config=$(create_ws_inbound "$UUID" "$WS_PORT_CHOSEN" "$listen_addr" \
-      "$DOMAIN" "$CERT_FULLCHAIN" "$CERT_KEY") || \
-      die "Failed to create WS-TLS inbound"
-
-    # Add Hysteria2 inbound
-    local hy2_config
-    hy2_config=$(create_hysteria2_inbound "$HY2_PASS" "$HY2_PORT_CHOSEN" "$listen_addr" \
-      "$CERT_FULLCHAIN" "$CERT_KEY") || \
-      die "Failed to create Hysteria2 inbound"
-
-    # Add both WS and Hysteria2 inbounds
-    base_config=$(echo "$base_config" | jq --argjson ws "$ws_config" \
-      --argjson hy2 "$hy2_config" '.inbounds += [$ws, $hy2]' 2>/dev/null) || \
-      die "Failed to add WS-TLS and Hysteria2 configurations"
-  fi
-
-  # Add route configuration
+  # Add route and outbound configurations
   base_config=$(add_route_config "$base_config" "$has_certs") || \
     die "Failed to add route configuration"
-
-  # Add outbound configuration
   base_config=$(add_outbound_config "$base_config")
 
   # Write configuration to temporary file
@@ -509,3 +537,4 @@ write_config() {
 export -f validate_config_vars create_base_config create_reality_inbound
 export -f create_ws_inbound create_hysteria2_inbound add_route_config
 export -f add_outbound_config write_config
+# Note: _validate_certificate_config and _create_all_inbounds are private helpers (not exported)
