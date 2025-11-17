@@ -237,6 +237,78 @@ cleanup() {
 }
 
 #==============================================================================
+# Temporary File Management
+#==============================================================================
+
+# Create temporary directory with consistent error handling
+#
+# Usage: temp_dir=$(create_temp_dir) || return 1
+# Args:
+#   $1: Optional prefix for temp directory name
+# Returns:
+#   Path to created temporary directory
+# Example:
+#   temp_dir=$(create_temp_dir "backup") || return 1
+create_temp_dir() {
+  local prefix="${1:-sbx}"
+  local temp_dir
+
+  if ! temp_dir=$(mktemp -d -t "${prefix}.XXXXXX" 2>&1); then
+    err "Failed to create temporary directory"
+    err "Possible causes:"
+    err "  - Disk full (check: df -h /tmp)"
+    err "  - No write permission to /tmp"
+    err "  - SELinux/AppArmor restrictions"
+    err "Details: $temp_dir"
+    return 1
+  fi
+
+  # Set secure permissions
+  chmod 700 "$temp_dir" || {
+    err "Failed to set permissions on temp directory: $temp_dir"
+    rm -rf "$temp_dir" 2>/dev/null
+    return 1
+  }
+
+  echo "$temp_dir"
+  return 0
+}
+
+# Create temporary file with consistent error handling
+#
+# Usage: tmpfile=$(create_temp_file) || return 1
+# Args:
+#   $1: Optional prefix for temp file name
+# Returns:
+#   Path to created temporary file
+# Example:
+#   tmpfile=$(create_temp_file "config") || return 1
+create_temp_file() {
+  local prefix="${1:-sbx}"
+  local tmpfile
+
+  if ! tmpfile=$(mktemp -t "${prefix}.XXXXXX" 2>&1); then
+    err "Failed to create temporary file"
+    err "Possible causes:"
+    err "  - Disk full (check: df -h /tmp)"
+    err "  - No write permission to /tmp"
+    err "  - SELinux/AppArmor restrictions"
+    err "Details: $tmpfile"
+    return 1
+  fi
+
+  # Set secure permissions
+  chmod 600 "$tmpfile" || {
+    err "Failed to set permissions on temp file: $tmpfile"
+    rm -f "$tmpfile" 2>/dev/null
+    return 1
+  }
+
+  echo "$tmpfile"
+  return 0
+}
+
+#==============================================================================
 # Module Initialization
 #==============================================================================
 
@@ -253,6 +325,6 @@ source "${_LIB_DIR}/generators.sh"
 trap cleanup EXIT INT TERM
 
 # Export core utility functions
-export -f need_root have safe_rm_temp get_file_size cleanup
+export -f need_root have safe_rm_temp get_file_size cleanup create_temp_dir create_temp_file
 
 # Note: Logging and generator functions are exported by their respective modules

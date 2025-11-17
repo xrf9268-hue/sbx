@@ -145,10 +145,7 @@ verify_singbox_binary() {
 
     # Create temporary file for checksum
     local checksum_file
-    checksum_file=$(mktemp) || {
-        err "Failed to create temporary file"
-        return 1
-    }
+    checksum_file=$(create_temp_file "checksum") || return 1
 
     # Ensure cleanup (use variable expansion at trap time to avoid unbound variable in set -u)
     # shellcheck disable=SC2064
