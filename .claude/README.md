@@ -1,8 +1,69 @@
-# .claude/ Directory - Project Memory Reference Files
+# .claude/ Directory - Claude Code Configuration
 
-This directory contains detailed reference documentation imported into CLAUDE.md for efficient context management.
+This directory contains:
+1. **Reference documentation** imported into CLAUDE.md for efficient context management
+2. **SessionStart hook** for automatic environment setup in Claude Code web/iOS
 
-## Files
+## SessionStart Hook (Automated Setup)
+
+When you start a new Claude Code session (web/iOS), the SessionStart hook automatically:
+- ✅ Installs git hooks for code quality enforcement
+- ✅ Verifies/installs dependencies (jq, openssl)
+- ✅ Validates bootstrap constants configuration
+- ✅ Displays project information and quick commands
+
+### Files
+
+- **settings.json** - Hook configuration (committed)
+- **settings.local.json** - User-specific overrides (gitignored)
+- **scripts/session-start.sh** - SessionStart hook implementation (committed)
+
+### How It Works
+
+The hook is triggered only on **new session startup** (not resume/clear):
+
+```json
+{
+  "hooks": {
+    "SessionStart": [{
+      "matcher": "startup",
+      "hooks": [{
+        "type": "command",
+        "command": "$CLAUDE_PROJECT_DIR/.claude/scripts/session-start.sh"
+      }]
+    }]
+  }
+}
+```
+
+### What Gets Installed
+
+| Component | Purpose | Auto-Installed |
+|-----------|---------|----------------|
+| **Git Hooks** | Pre-commit validation | ✅ Yes (web/iOS) |
+| **jq** | JSON processing | ✅ Yes (if missing) |
+| **openssl** | Cryptographic operations | ✅ Yes (if missing) |
+| **Bootstrap Tests** | Constant validation | ✅ Runs automatically |
+
+### Desktop vs Web Behavior
+
+- **Claude Code Web/iOS** (`CLAUDE_CODE_REMOTE=true`): Full auto-setup
+- **Desktop**: Shows manual installation instructions
+
+### Bypassing for Testing
+
+To disable the hook temporarily:
+1. Create `.claude/settings.local.json`:
+   ```json
+   {
+     "hooks": {
+       "SessionStart": []
+     }
+   }
+   ```
+2. Restart Claude session
+
+## Reference Documentation
 
 ### CODING_STANDARDS.md (107 lines)
 Bash coding standards and best practices:
