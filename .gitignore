@@ -1,1 +1,4 @@
 *Zone.Identifier
+
+# Claude Code user-specific settings (keep personal overrides private)
+.claude/settings.local.json

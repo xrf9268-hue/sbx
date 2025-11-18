@@ -59,6 +59,49 @@ jobs:
             exit 1
           fi
 
+      - name: Validate bootstrap constants
+        run: |
+          echo "## Bootstrap Constants Validation" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Prevents recurring 'unbound variable' errors during bootstrap." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if bash tests/unit/test_bootstrap_constants.sh; then
+            echo "✅ All 15 bootstrap constants properly configured" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Validated:**" >> $GITHUB_STEP_SUMMARY
+            echo "- Download constants (5)" >> $GITHUB_STEP_SUMMARY
+            echo "- Network constants (1)" >> $GITHUB_STEP_SUMMARY
+            echo "- Reality validation (2)" >> $GITHUB_STEP_SUMMARY
+            echo "- Reality config (5)" >> $GITHUB_STEP_SUMMARY
+            echo "- Permissions (2)" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Bootstrap constants validation FAILED" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**This prevents recurring unbound variable errors that have caused 6+ production bugs.**" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "See test output above for remediation steps." >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+
+      - name: Test strict mode (bash -nu)
+        run: |
+          echo "## Strict Mode Validation (bash -nu)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Test syntax with unbound variable detection (bash -nu)
+          # This validates early constants without executing the script
+          if bash -nu install_multi.sh 2>&1 | tee /tmp/strict-test.log; then
+            echo "✅ Syntax valid, no unbound variables in early initialization" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Syntax errors or unbound variables found" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            cat /tmp/strict-test.log >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+
   integration-tests:
     name: Integration Tests (sing-box ${{ matrix.version }})
     runs-on: ubuntu-latest

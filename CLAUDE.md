@@ -22,6 +22,43 @@ Project guidance for Claude Code when working with sbx-lite, a sing-box proxy de
 - Online: https://sing-box.sagernet.org/
 - Local submodule: `docs/sing-box-official/`
 
+## 🤖 Automated Quality Enforcement (NEW)
+
+This project has **automated enforcement** at every stage to prevent recurring bugs:
+
+### For Claude Code Users (Web/iOS)
+**SessionStart hook runs automatically when you start a new session:**
+- ✅ Installs git hooks (pre-commit validation)
+- ✅ Verifies/installs dependencies (jq, openssl)
+- ✅ Validates bootstrap constants (prevents unbound variable errors)
+- ✅ Displays helpful project information
+
+**Configuration:** `.claude/settings.json` (see `.claude/README.md`)
+
+### For All Developers
+**Pre-commit hooks run automatically on every commit:**
+```bash
+# One-time setup (REQUIRED for contributors)
+bash hooks/install-hooks.sh
+
+# Then commit normally - hooks run automatically
+git commit -m "my changes"
+```
+
+**What gets validated:**
+1. Bash syntax (all .sh files)
+2. Bootstrap constants (15 constants verified)
+3. Strict mode enforcement (set -euo pipefail)
+4. ShellCheck linting (if installed)
+5. Unbound variable detection (bash -u)
+
+**See:** `CONTRIBUTING.md` for complete developer guide.
+
+### In CI/CD
+GitHub Actions runs same validation on every push/PR.
+
+**Impact:** The manual checklist below is now **automatically enforced**. You can still reference it for understanding, but the hooks catch issues before commit.
+
 ## ⚠️ CRITICAL WARNINGS - READ BEFORE CODING ⚠️
 
 ### DO NOT Make These Common Mistakes (Repeatedly Caused Bugs)
@@ -239,18 +276,30 @@ local var="" other="" more="" all="" initialized=""
 local result=$(some_command)  # Never unbound, worst case is empty string
 ```
 
-**🚨 MANDATORY PRE-COMMIT CHECKLIST 🚨**
+**🚨 PRE-COMMIT VALIDATION (AUTOMATED) 🚨**
 
-Before committing ANY code with local variables:
+**Good news:** This checklist is now **automatically enforced** by pre-commit hooks!
+
+Install once with: `bash hooks/install-hooks.sh`
+
+The hooks automatically verify:
+1. ✅ All local variables declared with `local`
+2. ✅ Variables initialized at declaration
+3. ✅ No unbound variable usage (`bash -u` test)
+4. ✅ Bash syntax validation (`bash -n`)
+5. ✅ Strict mode enabled (`set -euo pipefail`)
+
+**For reference (auto-checked by hooks):**
+Before committing code with local variables:
 1. [ ] Did I declare the variable with `local`?
 2. [ ] Did I initialize it at declaration? `local var=""`
 3. [ ] If assigned in a conditional, is it used outside that conditional?
 4. [ ] If yes to #3, did I verify initialization at declaration?
-5. [ ] Did I test with `bash -u script.sh` to catch unbound variables?
+5. [ ] Did I test with `bash -u script.sh`? ← **Hooks do this automatically**
 
-**Testing for unbound variables:**
+**Manual testing (if needed):**
 ```bash
-# Test your changes with strict mode
+# Test your changes with strict mode (hooks run this automatically)
 bash -u install_multi.sh  # Should NOT show "unbound variable" errors
 bash -n install_multi.sh  # Should pass syntax check
 ```
