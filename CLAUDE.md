@@ -492,9 +492,89 @@ Use thinking modes for planning complex features:
 "Add certificate validation"  # Too vague!
 ```
 
+## Recent Improvements (2025-11-18)
+
+### Optional jq Dependency
+**Status:** ✅ Implemented
+**Impact:** HIGH - Works on minimal systems (Alpine, BusyBox, containers)
+
+- jq moved from required to optional in `ensure_tools()`
+- Fallback chain: jq → python3 → python2 (via lib/tools.sh)
+- User-friendly info messages when jq not available
+- Full functionality maintained with python fallbacks
+
+**Benefits:**
+- Faster installation (no package manager calls)
+- Works in restricted/minimal environments
+- Better for Docker/container deployments
+- Maintains backward compatibility
+
+**Testing:**
+```bash
+# Test without jq
+apt-get remove jq  # or similar
+bash install_multi.sh  # Should work with python fallback
+```
+
+### Alpine Linux Support (musl libc Detection)
+**Status:** ✅ Implemented
+**Impact:** HIGH - Proper support for Alpine/musl-based systems
+
+- New `detect_libc()` function with 3 detection methods:
+  1. Check for `/lib/ld-musl-*.so.1` (most reliable)
+  2. Parse `ldd` output for musl references
+  3. Check `/etc/os-release` for Alpine Linux
+- Automatic download of musl-specific binaries when available
+- Fallback to generic Linux binary with warning
+- Checksum verification updated for musl variants
+
+**Platform Detection:**
+```bash
+# Now detects:
+linux-amd64        # glibc (Ubuntu, Debian, CentOS)
+linux-amd64-musl   # musl (Alpine, embedded)
+linux-arm64        # glibc (ARM servers)
+linux-arm64-musl   # musl (ARM embedded)
+```
+
+**Benefits:**
+- Proper Alpine Linux support (Docker-friendly)
+- Correct binary for embedded Linux systems
+- Prevents runtime crashes on musl systems
+- Backward compatible with glibc systems
+
+**Testing:**
+```bash
+# Test on Alpine
+docker run --rm -it alpine:latest sh -c \
+  "apk add bash curl && curl -fsSL ... | bash"
+
+# Test on Ubuntu (should still work)
+docker run --rm -it ubuntu:latest bash -c \
+  "curl -fsSL ... | bash"
+```
+
+### Bootstrapping Fix (get_file_size)
+**Status:** ✅ Implemented
+**Impact:** CRITICAL - Fixes one-liner installation
+
+- Added early `get_file_size()` implementation before module loading
+- Exported for parallel download subshells
+- Prevents "command not found" errors during bootstrap
+- Overridden by lib/common.sh after modules load
+
+**Technical Details:**
+- Function needed during module download validation
+- Previously caused bootstrap failure on clean systems
+- Now available before any modules are loaded
+- Maintains cross-platform compatibility (Linux/BSD/macOS)
+
+**Reference:** See `docs/INSTALLATION_SCRIPT_IMPROVEMENTS.md` for detailed analysis
+
 ## Version Information
 
 - **Current:** v2.2.0 (Phase 4 complete)
+- **Recent:** Improvements from Claude Code bootstrap.sh analysis
 - **Architecture:** Modular v2.0 (11 library modules)
 - **sing-box:** 1.8.0+ (recommended 1.12.0+)
 - **License:** MIT
