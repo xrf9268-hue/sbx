@@ -83,19 +83,34 @@ declare -r LOG_VIEW_DEFAULT_HISTORY="5 minutes ago"
 # Reality Protocol Constants
 #==============================================================================
 
-# Reality configuration defaults
+# Reality configuration defaults (conditionally set if not already defined in install_multi.sh)
 declare -r REALITY_DEFAULT_SNI="www.microsoft.com"
-declare -r REALITY_DEFAULT_HANDSHAKE_PORT=443
-declare -r REALITY_MAX_TIME_DIFF="1m"
-declare -r REALITY_FLOW_VISION="xtls-rprx-vision"
 
-# Reality validation constraints
-declare -r REALITY_SHORT_ID_MIN_LENGTH=1
-declare -r REALITY_SHORT_ID_MAX_LENGTH=8
+if [[ -z "${REALITY_MAX_TIME_DIFF:-}" ]]; then
+  declare -r REALITY_MAX_TIME_DIFF="1m"
+fi
+if [[ -z "${REALITY_DEFAULT_HANDSHAKE_PORT:-}" ]]; then
+  declare -r REALITY_DEFAULT_HANDSHAKE_PORT=443
+fi
+if [[ -z "${REALITY_FLOW_VISION:-}" ]]; then
+  declare -r REALITY_FLOW_VISION="xtls-rprx-vision"
+fi
 
-# ALPN protocols for Reality
-declare -r REALITY_ALPN_H2="h2"
-declare -r REALITY_ALPN_HTTP11="http/1.1"
+# Reality validation constraints (conditionally set if not already defined in install_multi.sh)
+if [[ -z "${REALITY_SHORT_ID_MIN_LENGTH:-}" ]]; then
+  declare -r REALITY_SHORT_ID_MIN_LENGTH=1
+fi
+if [[ -z "${REALITY_SHORT_ID_MAX_LENGTH:-}" ]]; then
+  declare -r REALITY_SHORT_ID_MAX_LENGTH=8
+fi
+
+# ALPN protocols for Reality (conditionally set if not already defined in install_multi.sh)
+if [[ -z "${REALITY_ALPN_H2:-}" ]]; then
+  declare -r REALITY_ALPN_H2="h2"
+fi
+if [[ -z "${REALITY_ALPN_HTTP11:-}" ]]; then
+  declare -r REALITY_ALPN_HTTP11="http/1.1"
+fi
 
 # Reality fingerprint options
 declare -r REALITY_FINGERPRINT_CHROME="chrome"

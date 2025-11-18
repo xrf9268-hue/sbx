@@ -27,6 +27,17 @@ readonly MIN_MANAGER_FILE_SIZE_BYTES=5000  # Manager script validation (~15KB ex
 # Network configuration
 readonly NETWORK_TIMEOUT_SEC=5  # Used by get_public_ip() during bootstrap
 
+# Reality validation constraints (used by lib/validation.sh during bootstrap)
+readonly REALITY_SHORT_ID_MIN_LENGTH=1
+readonly REALITY_SHORT_ID_MAX_LENGTH=8
+
+# Reality configuration defaults (used by lib/config.sh during bootstrap)
+readonly REALITY_FLOW_VISION="xtls-rprx-vision"
+readonly REALITY_DEFAULT_HANDSHAKE_PORT=443
+readonly REALITY_MAX_TIME_DIFF="1m"
+readonly REALITY_ALPN_H2="h2"
+readonly REALITY_ALPN_HTTP11="http/1.1"
+
 # File permissions (octal)
 readonly SECURE_DIR_PERMISSIONS=700
 readonly SECURE_FILE_PERMISSIONS=600
@@ -555,14 +566,8 @@ _load_modules
 : "${CERT_DIR_BASE:=/etc/ssl/sbx}"
 : "${CERT_FULLCHAIN:=}"
 : "${CERT_KEY:=}"
-: "${B:=}"
-: "${N:=}"
-: "${G:=}"
-: "${Y:=}"
-: "${R:=}"
-: "${CYAN:=}"
-: "${BLUE:=}"
-: "${PURPLE:=}"
+# Color variables (B, N, G, Y, R, CYAN, BLUE, PURPLE) are defined and made readonly by lib/colors.sh
+# No need to declare them here - they're already initialized
 
 #==============================================================================
 # Additional Helper Functions
