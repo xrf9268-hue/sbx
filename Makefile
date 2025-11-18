@@ -1,6 +1,6 @@
 # Makefile for sbx-lite development
 
-.PHONY: all check test lint syntax security coverage benchmark install-hooks clean help
+.PHONY: all check test test-unit test-installer test-quick test-integration lint syntax security coverage benchmark install-hooks clean help
 
 # Default target
 all: check
@@ -10,15 +10,20 @@ help:
 	@echo "sbx-lite Development Makefile"
 	@echo ""
 	@echo "Targets:"
-	@echo "  check         - Run all checks (lint + syntax + security)"
-	@echo "  test          - Run unit and integration tests"
-	@echo "  coverage      - Generate code coverage report"
-	@echo "  benchmark     - Run performance benchmarks"
-	@echo "  lint          - Run ShellCheck linting"
-	@echo "  syntax        - Validate bash syntax"
-	@echo "  security      - Run security checks"
-	@echo "  install-hooks - Install git pre-commit hooks"
-	@echo "  clean         - Clean temporary files"
+	@echo "  check            - Run all checks (lint + syntax + security)"
+	@echo "  test             - Run all tests (unit + installer + integration)"
+	@echo "  test-unit        - Run unit tests only (fast)"
+	@echo "  test-installer   - Run one-liner installer tests"
+	@echo "  test-quick       - Quick Reality validation tests"
+	@echo "  test-integration - Full integration tests (requires sing-box)"
+	@echo "  coverage         - Generate code coverage report"
+	@echo "  benchmark        - Run performance benchmarks (quick)"
+	@echo "  benchmark-full   - Run full benchmark suite"
+	@echo "  lint             - Run ShellCheck linting"
+	@echo "  syntax           - Validate bash syntax"
+	@echo "  security         - Run security checks"
+	@echo "  install-hooks    - Install git pre-commit hooks"
+	@echo "  clean            - Clean temporary files"
 	@echo ""
 
 # Run all checks
@@ -60,8 +65,8 @@ security:
 	}
 	@echo "✓ Security checks passed"
 
-# Run unit and integration tests
-test:
+# Run all tests (unit + installer + integration)
+test: test-unit test-installer
 	@echo "→ Running Reality protocol test suite..."
 	@if [ -f tests/test_reality.sh ]; then \
 		bash tests/test_reality.sh || exit 1; \
@@ -70,6 +75,33 @@ test:
 		exit 1; \
 	fi
 	@echo "✓ All tests passed"
+
+# Run unit tests only (fast, no external dependencies)
+test-unit:
+	@echo "→ Running unit tests..."
+	@failed=0; \
+	for test in tests/unit/test_*.sh; do \
+		[ -f "$$test" ] || continue; \
+		echo ""; \
+		echo "Running $$(basename $$test)..."; \
+		bash "$$test" || failed=$$((failed + 1)); \
+	done; \
+	echo ""; \
+	if [ $$failed -eq 0 ]; then \
+		echo "✓ All unit tests passed!"; \
+	else \
+		echo "✗ $$failed unit test(s) failed"; \
+		exit 1; \
+	fi
+
+# Run one-liner installer tests
+test-installer:
+	@echo "→ Running one-liner installer tests..."
+	@bash tests/unit/test_module_dependencies.sh || exit 1
+	@bash tests/unit/test_bootstrap_functions.sh || exit 1
+	@bash tests/unit/test_module_loading_sequence.sh || exit 1
+	@bash tests/integration/test_oneliner_install.sh || exit 1
+	@echo "✓ Installer tests passed"
 
 # Run quick Reality tests only (validation)
 test-quick:

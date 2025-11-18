@@ -78,19 +78,20 @@ cd - >/dev/null || exit
 rm -rf "$temp_test_dir"
 
 #==============================================================================
-# Test 3: Verify all 14 modules downloaded
+# Test 3: Verify all 21 modules downloaded (all lib/*.sh files)
 #==============================================================================
-test_start "All 14 modules downloaded"
+test_start "All 21 modules downloaded"
 temp_test_dir=$(mktemp -d)
 cp "${INSTALL_SCRIPT}" "$temp_test_dir/"
 cd "$temp_test_dir" || exit
 
 output=$(timeout 30 bash install_multi.sh --version 2>&1 || true)
 
-if echo "$output" | grep -qE "14/14 modules downloaded"; then
+if echo "$output" | grep -qE "21/21 modules downloaded"; then
     test_pass
 else
-    test_fail "Not all modules downloaded"
+    test_fail "Not all modules downloaded (expected 21)"
+    echo "$output" | grep -E "[0-9]+/[0-9]+ modules"
 fi
 
 cd - >/dev/null || exit
