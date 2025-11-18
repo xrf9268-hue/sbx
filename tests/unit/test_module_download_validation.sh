@@ -156,24 +156,13 @@ done
 duplicates=$(sort "$temp_functions" | uniq -d)
 rm -f "$temp_functions"
 
-# Known acceptable duplicates (different implementations for different contexts)
-known_duplicates="validate_json_syntax"
-
 if [[ -z "$duplicates" ]]; then
     test_pass
 else
-    # Filter out known acceptable duplicates
-    unexpected=$(echo "$duplicates" | grep -v "$known_duplicates" || true)
-    if [[ -z "$unexpected" ]]; then
-        test_pass
-        echo ""
-        echo "    (Note: Known duplicates: $duplicates - should be refactored eventually)"
-    else
-        echo ""
-        echo "  Unexpected duplicate functions found:"
-        echo "$unexpected" | sed 's/^/    /'
-        test_fail "Found unexpected duplicate function definitions"
-    fi
+    echo ""
+    echo "  Duplicate functions found:"
+    echo "$duplicates" | sed 's/^/    /'
+    test_fail "Found duplicate function definitions"
 fi
 
 #==============================================================================

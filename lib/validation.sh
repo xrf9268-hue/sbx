@@ -13,6 +13,8 @@ readonly _SBX_VALIDATION_LOADED=1
 _LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=/dev/null
 source "${_LIB_DIR}/common.sh"
+# shellcheck source=/dev/null
+source "${_LIB_DIR}/tools.sh"
 
 #==============================================================================
 # Module Constants
@@ -477,28 +479,9 @@ validate_singbox_config() {
   return 0
 }
 
-# Validate JSON syntax using jq
-validate_json_syntax() {
-  local json_file="$1"
-
-  [[ -f "$json_file" ]] || return 1
-
-  if have jq; then
-    jq empty < "$json_file" 2>/dev/null || return 1
-  else
-    # Fallback: basic JSON validation with python
-    if have python3; then
-      python3 -c "import json; json.load(open('$json_file'))" 2>/dev/null || return 1
-    elif have python; then
-      python -c "import json; json.load(open('$json_file'))" 2>/dev/null || return 1
-    else
-      warn "Neither jq nor python available for JSON validation"
-      return 0
-    fi
-  fi
-
-  return 0
-}
+# NOTE: validate_json_syntax() is now provided by lib/tools.sh
+# This module sources lib/tools.sh which contains the authoritative implementation.
+# The function is re-exported here for backward compatibility.
 
 # Validate transport+security+flow pairing for VLESS/Reality
 # Ensures compatible combinations according to sing-box requirements
@@ -827,6 +810,7 @@ validate_files_integrity() {
 # Export Functions
 #==============================================================================
 
+# Note: validate_json_syntax is defined in lib/tools.sh and re-exported here for compatibility
 export -f sanitize_input validate_port validate_domain validate_cert_files validate_env_vars
 export -f validate_short_id validate_reality_sni validate_menu_choice validate_yes_no
 export -f validate_singbox_config validate_json_syntax validate_transport_security_pairing

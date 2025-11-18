@@ -111,6 +111,89 @@ json_build() {
     fi
 }
 
+# Validate JSON file syntax
+#
+# Usage: validate_json_syntax <json_file> [verbose]
+# Example: validate_json_syntax /path/to/config.json
+#          validate_json_syntax /path/to/config.json verbose
+#
+# Args:
+#   $1 - Path to JSON file
+#   $2 - (optional) "verbose" for detailed error messages
+#
+# Returns: 0 if valid, 1 if invalid
+# Output: Error messages if verbose mode or validation fails
+#
+# Features:
+#   - Checks file exists and is readable
+#   - Validates file is not empty (contains non-whitespace)
+#   - Validates JSON syntax using jq (preferred) or python fallback
+#   - Supports python3 and python2 for maximum compatibility
+#   - Verbose mode provides detailed error context
+#
+# Note: This is the authoritative implementation. Previously duplicated in
+#       lib/config_validator.sh and lib/validation.sh (now removed).
+validate_json_syntax() {
+    local json_file="$1"
+    local verbose="${2:-}"
+
+    # Check file exists
+    if [[ ! -f "$json_file" ]]; then
+        [[ "$verbose" == "verbose" ]] && err "JSON file not found: $json_file"
+        return 1
+    fi
+
+    # Check file is readable
+    if [[ ! -r "$json_file" ]]; then
+        [[ "$verbose" == "verbose" ]] && err "JSON file not readable: $json_file"
+        return 1
+    fi
+
+    # Check file is not empty and contains non-whitespace content
+    if [[ ! -s "$json_file" ]] || ! grep -q '[^[:space:]]' "$json_file" 2>/dev/null; then
+        [[ "$verbose" == "verbose" ]] && err "JSON file is empty: $json_file"
+        return 1
+    fi
+
+    # Primary: Validate with jq
+    if have jq; then
+        if jq empty < "$json_file" 2>/dev/null; then
+            return 0
+        else
+            [[ "$verbose" == "verbose" ]] && err "Invalid JSON syntax in: $json_file"
+            return 1
+        fi
+    fi
+
+    # Fallback 1: Python 3
+    if have python3; then
+        if python3 -c "import json; json.load(open('$json_file'))" 2>/dev/null; then
+            return 0
+        else
+            [[ "$verbose" == "verbose" ]] && err "Invalid JSON syntax in: $json_file"
+            return 1
+        fi
+    fi
+
+    # Fallback 2: Python 2 (for legacy systems)
+    if have python; then
+        if python -c "import json; json.load(open('$json_file'))" 2>/dev/null; then
+            return 0
+        else
+            [[ "$verbose" == "verbose" ]] && err "Invalid JSON syntax in: $json_file"
+            return 1
+        fi
+    fi
+
+    # No validation tools available - warn and assume valid
+    # This prevents installation failures on minimal systems
+    if [[ "$verbose" == "verbose" ]]; then
+        warn "No JSON validation tools available (jq, python3, python)"
+        warn "Skipping syntax validation for: $json_file"
+    fi
+    return 0
+}
+
 #==============================================================================
 # Cryptographic Operations
 #==============================================================================

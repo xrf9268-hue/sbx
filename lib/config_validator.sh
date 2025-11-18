@@ -29,52 +29,9 @@ fi
 # JSON Syntax Validation
 #==============================================================================
 
-# Validate JSON syntax using jq or python
-#
-# Usage: validate_json_syntax <config_file>
-# Args:
-#   $1: Path to JSON configuration file
-# Returns:
-#   0 on valid JSON, 1 on invalid JSON
-# Example:
-#   validate_json_syntax "/etc/sing-box/config.json"
-validate_json_syntax() {
-    local config_file="$1"
-
-    # Check file exists
-    if [[ ! -f "$config_file" ]]; then
-        err "Configuration file not found: $config_file"
-        return 1
-    fi
-
-    # Check file is not empty and contains non-whitespace content
-    if [[ ! -s "$config_file" ]] || ! grep -q '[^[:space:]]' "$config_file" 2>/dev/null; then
-        err "Configuration file is empty: $config_file"
-        return 1
-    fi
-
-    # Validate JSON syntax using jq
-    if have jq; then
-        if ! jq '.' "$config_file" >/dev/null 2>&1; then
-            err "Invalid JSON syntax in: $config_file"
-            return 1
-        fi
-        return 0
-    fi
-
-    # Fallback to python3
-    if have python3; then
-        if ! python3 -c "import json; json.load(open('$config_file'))" 2>/dev/null; then
-            err "Invalid JSON syntax in: $config_file"
-            return 1
-        fi
-        return 0
-    fi
-
-    # No JSON validator available
-    warn "No JSON validator available (jq or python3), skipping syntax check"
-    return 0
-}
+# NOTE: validate_json_syntax() is now provided by lib/tools.sh
+# This module sources lib/tools.sh which contains the authoritative implementation.
+# All callers in this file use verbose mode for detailed error reporting.
 
 #==============================================================================
 # sing-box Schema Validation
@@ -96,7 +53,7 @@ validate_singbox_schema() {
     local config_file="$1"
 
     # First validate JSON syntax
-    validate_json_syntax "$config_file" || return 1
+    validate_json_syntax "$config_file" verbose || return 1
 
     # Check required sections using jq
     if have jq; then
@@ -174,7 +131,7 @@ validate_port_conflicts() {
     local config_file="$1"
 
     # First validate JSON syntax
-    validate_json_syntax "$config_file" || return 1
+    validate_json_syntax "$config_file" verbose || return 1
 
     if have jq; then
         # Extract all listen_port values
@@ -248,7 +205,7 @@ validate_tls_config() {
     local config_file="$1"
 
     # First validate JSON syntax
-    validate_json_syntax "$config_file" || return 1
+    validate_json_syntax "$config_file" verbose || return 1
 
     if have jq; then
         # Check each inbound with TLS enabled
@@ -314,7 +271,7 @@ validate_route_rules() {
     local config_file="$1"
 
     # First validate JSON syntax
-    validate_json_syntax "$config_file" || return 1
+    validate_json_syntax "$config_file" verbose || return 1
 
     local has_errors=0
 
@@ -436,7 +393,7 @@ validate_config_pipeline() {
 
     # Step 1: JSON syntax
     msg "  [1/6] Validating JSON syntax..."
-    if ! validate_json_syntax "$config_file"; then
+    if ! validate_json_syntax "$config_file" verbose; then
         err "Configuration validation failed at step 1: JSON syntax"
         return 1
     fi
@@ -494,5 +451,6 @@ validate_config_pipeline() {
 # Export Functions
 #==============================================================================
 
-export -f validate_json_syntax validate_singbox_schema validate_port_conflicts
+# Note: validate_json_syntax is exported from lib/tools.sh
+export -f validate_singbox_schema validate_port_conflicts
 export -f validate_tls_config validate_route_rules validate_config_pipeline
