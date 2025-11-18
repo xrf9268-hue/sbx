@@ -23,10 +23,6 @@ concurrency:
 permissions:
   contents: read
 
-env:
-  SHELLCHECK_VERSION: "0.10.0"
-  JQ_VERSION: "1.6"
-
 jobs:
   shellcheck:
     name: ShellCheck Static Analysis
@@ -51,7 +47,7 @@ jobs:
       - name: Install ShellCheck
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y shellcheck=${SHELLCHECK_VERSION}*
+          sudo apt-get install -y shellcheck
           shellcheck --version
 
       - name: Run ShellCheck
@@ -242,7 +238,7 @@ jobs:
       - name: Install test dependencies
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y jq=${JQ_VERSION}*
+          sudo apt-get install -y jq
           jq --version
 
       - name: Run unit tests
