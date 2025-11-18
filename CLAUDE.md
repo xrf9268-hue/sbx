@@ -22,6 +22,59 @@ Project guidance for Claude Code when working with sbx-lite, a sing-box proxy de
 - Online: https://sing-box.sagernet.org/
 - Local submodule: `docs/sing-box-official/`
 
+## ⚠️ CRITICAL WARNINGS - READ BEFORE CODING ⚠️
+
+### DO NOT Make These Common Mistakes (Repeatedly Caused Bugs)
+
+**1. UNINITIALIZED LOCAL VARIABLES** 🔴 **MOST COMMON ERROR**
+
+This codebase uses `set -u` (strict mode). **ALL local variables MUST be initialized**, even to empty string.
+
+```bash
+❌ WRONG - Causes "unbound variable" errors:
+if [[ -n "$condition" ]]; then
+    local var=$(command)  # Only assigned if condition true
+fi
+if [[ -z "$var" ]]; then  # ERROR: var unbound if condition was false
+    ...
+fi
+
+✅ CORRECT - Always initialize:
+local var=""  # Initialize at declaration
+if [[ -n "$condition" ]]; then
+    var=$(command)
+fi
+if [[ -z "$var" ]]; then  # SAFE: var always defined
+    ...
+fi
+```
+
+**Bugs caused by this mistake:**
+- `url` variable - Installation failed on glibc systems (commit 49e4b91)
+- `HTTP_DOWNLOAD_TIMEOUT_SEC` - API fetches failed (commit a078273)
+- `get_file_size()` - Bootstrap failures (multiple commits)
+
+**How to prevent:**
+1. Initialize all local variables: `local var="" other="" more=""`
+2. Test with strict mode: `bash -u install_multi.sh`
+3. Check the pre-commit checklist in "Bootstrapping Fixes" section below
+
+**2. Reality Protocol Configuration Errors**
+
+See @.claude/REALITY_CONFIG.md for full details:
+- Short ID: MUST be 8 chars max (use `openssl rand -hex 4`)
+- Reality: MUST be nested under `tls.reality` (NOT top-level)
+- Flow: In `users[]` array (NOT at inbound level)
+
+**3. Validation After Changes**
+
+Always run after ANY configuration or code change:
+```bash
+sing-box check -c /etc/sing-box/config.json
+bash -u install_multi.sh  # Test for unbound variables
+bash -n install_multi.sh  # Syntax check
+```
+
 ## Quick Commands
 
 **Essential Development Commands:**
@@ -135,32 +188,72 @@ When adding constants or functions that are:
 - Fix 2: `HTTP_DOWNLOAD_TIMEOUT_SEC` constant - Available for safe_http_get() (commit a078273)
 - Fix 3: `url` variable initialization - Prevent unbound variable in conditional flow (install_multi.sh:836)
 
-### Variable Initialization Pattern (Critical for set -u)
+### Variable Initialization Pattern (CRITICAL - DO NOT SKIP)
 
-**When declaring local variables used in conditionals:**
+⚠️ **THIS PATTERN HAS CAUSED MULTIPLE RECURRING BUGS - READ CAREFULLY** ⚠️
+
+**CRITICAL RULE**: With `set -u` (strict mode), **ALL local variables MUST be initialized at declaration**, even if just to an empty string. Failure to do this causes "unbound variable" errors.
+
+**❌ WRONG PATTERN (Has caused 3+ production bugs):**
 ```bash
-# ❌ WRONG: Unbound if condition false
+# DANGEROUS: Variable only assigned in conditional block
 if [[ -n "$some_condition" ]]; then
-    local var=$(some_command)
+    local var=$(some_command)  # Only assigned if condition true!
 fi
-if [[ -z "$var" ]]; then  # ERROR: var unbound if condition was false
+
+# FAILS: If condition was false, var is completely unbound
+if [[ -z "$var" ]]; then  # ERROR: bash: var: unbound variable
     ...
 fi
+```
 
-# ✅ CORRECT: Always initialize
-local var=""
+**Real-world failures this pattern has caused:**
+- `url` variable (install_multi.sh:836) - Installation failed on glibc systems
+- `HTTP_DOWNLOAD_TIMEOUT_SEC` - GitHub API fetches failed
+- Multiple other instances caught during audits
+
+**✅ CORRECT PATTERN (Always use this):**
+```bash
+# SAFE: Variable declared and initialized
+local var=""  # Initialize to empty string
+
+# Assignment in conditional block
 if [[ -n "$some_condition" ]]; then
     var=$(some_command)
 fi
-if [[ -z "$var" ]]; then  # SAFE: var is always defined
+
+# SAFE: var is always defined (empty or with value)
+if [[ -z "$var" ]]; then  # Works correctly
     ...
 fi
-
-# ✅ ALSO CORRECT: Initialize at declaration
-local var="" other="" more=""
 ```
 
-**Rule**: All local variables MUST be initialized (even to empty string) when using `set -u`.
+**✅ ALSO CORRECT: Initialize multiple at once**
+```bash
+local var="" other="" more="" all="" initialized=""
+```
+
+**✅ ALSO CORRECT: Initialize with command substitution**
+```bash
+# This is safe because command substitution always returns a value (even if empty)
+local result=$(some_command)  # Never unbound, worst case is empty string
+```
+
+**🚨 MANDATORY PRE-COMMIT CHECKLIST 🚨**
+
+Before committing ANY code with local variables:
+1. [ ] Did I declare the variable with `local`?
+2. [ ] Did I initialize it at declaration? `local var=""`
+3. [ ] If assigned in a conditional, is it used outside that conditional?
+4. [ ] If yes to #3, did I verify initialization at declaration?
+5. [ ] Did I test with `bash -u script.sh` to catch unbound variables?
+
+**Testing for unbound variables:**
+```bash
+# Test your changes with strict mode
+bash -u install_multi.sh  # Should NOT show "unbound variable" errors
+bash -n install_multi.sh  # Should pass syntax check
+```
 
 **Error Signatures:**
 ```
