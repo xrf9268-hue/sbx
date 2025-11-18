@@ -579,6 +579,42 @@ detect_arch() {
     echo "$detected_arch"
 }
 
+# Detect libc implementation (glibc vs musl)
+# Returns: "-musl" suffix for musl systems, empty string for glibc
+detect_libc() {
+    # Skip on non-Linux systems
+    [[ "$(uname -s)" != "Linux" ]] && { echo ""; return; }
+
+    # Method 1: Check for musl shared library (most reliable)
+    if ls /lib/ld-musl-*.so.1 2>/dev/null | grep -q .; then
+        msg "Detected musl libc (Alpine/embedded Linux)"
+        echo "-musl"
+        return
+    fi
+
+    # Method 2: Parse ldd output
+    if command -v ldd >/dev/null 2>&1; then
+        if ldd /bin/sh 2>/dev/null | grep -q musl; then
+            msg "Detected musl libc via ldd"
+            echo "-musl"
+            return
+        fi
+    fi
+
+    # Method 3: Check /etc/os-release for Alpine Linux
+    if [[ -f /etc/os-release ]]; then
+        if grep -qi "alpine" /etc/os-release; then
+            msg "Detected Alpine Linux (musl-based)"
+            echo "-musl"
+            return
+        fi
+    fi
+
+    # Default to glibc (empty suffix for backward compatibility)
+    [[ "${DEBUG:-0}" == "1" ]] && msg "Detected glibc (standard Linux)"
+    echo ""
+}
+
 # Get installed sing-box version
 get_installed_version() {
     if [[ -x "$SB_BIN" ]]; then
@@ -740,14 +776,26 @@ check_existing_installation() {
 
 # Ensure required tools are installed
 ensure_tools() {
+    local required=(curl tar gzip openssl systemctl)
+    local optional=(jq)
     local missing=()
+    local missing_optional=()
 
-    for tool in curl tar gzip jq openssl systemctl; do
+    # Check required tools
+    for tool in "${required[@]}"; do
         if ! have "$tool"; then
             missing+=("$tool")
         fi
     done
 
+    # Check optional tools
+    for tool in "${optional[@]}"; do
+        if ! have "$tool"; then
+            missing_optional+=("$tool")
+        fi
+    done
+
+    # Install required tools if missing
     if [[ ${#missing[@]} -gt 0 ]]; then
         err "Missing required tools: ${missing[*]}"
         msg "Installing missing tools..."
@@ -761,6 +809,13 @@ ensure_tools() {
         else
             die "Cannot install missing tools automatically. Please install: ${missing[*]}"
         fi
+    fi
+
+    # Inform about optional tools
+    if [[ ${#missing_optional[@]} -gt 0 ]]; then
+        info "  ℹ Optional tools not available: ${missing_optional[*]}"
+        info "  ℹ Installation will use fallback methods (python3/python)"
+        info "  ℹ For best performance, install: ${missing_optional[*]}"
     fi
 
     success "All required tools are available"
@@ -777,8 +832,9 @@ download_singbox() {
         fi
     fi
 
-    local arch tmp api url tag raw
+    local arch libc_suffix tmp api url tag raw
     arch="$(detect_arch)"
+    libc_suffix="$(detect_libc)"  # "-musl" or ""
     tmp=$(create_temp_dir "download") || die "Failed to create temporary directory"
 
     # Resolve version using modular version resolver
@@ -791,14 +847,28 @@ download_singbox() {
     # Get release information for the resolved version
     api="https://api.github.com/repos/SagerNet/sing-box/releases/tags/${tag}"
 
-    msg "Fetching sing-box ${tag} release info for $arch..."
+    msg "Fetching sing-box ${tag} release info for $arch${libc_suffix}..."
     raw=$(safe_http_get "$api") || {
         rm -rf "$tmp"
         die "Failed to fetch release information from GitHub"
     }
 
-    # Extract download URL (explicitly match linux-${arch}.tar.gz to avoid android builds)
-    url=$(echo "$raw" | grep '"browser_download_url":' | grep -E "linux-${arch}\.tar\.gz\"" | head -1 | cut -d'"' -f4)
+    # Extract download URL (try libc-specific first, then generic)
+    # Examples: linux-amd64-musl.tar.gz, linux-amd64.tar.gz
+    if [[ -n "$libc_suffix" ]]; then
+        # Try musl-specific binary first
+        url=$(echo "$raw" | grep '"browser_download_url":' | grep -E "linux-${arch}${libc_suffix}\.tar\.gz\"" | head -1 | cut -d'"' -f4)
+
+        if [[ -z "$url" ]]; then
+            warn "musl-specific binary not found for ${tag}, trying generic Linux binary"
+            warn "This may work but could cause issues on musl systems"
+        fi
+    fi
+
+    # Fallback to generic linux binary if musl-specific not found or not needed
+    if [[ -z "$url" ]]; then
+        url=$(echo "$raw" | grep '"browser_download_url":' | grep -E "linux-${arch}\.tar\.gz\"" | head -1 | cut -d'"' -f4)
+    fi
 
     if [[ -z "$url" ]]; then
         rm -rf "$tmp"
@@ -816,7 +886,9 @@ download_singbox() {
     # Use modular checksum verification from lib/checksum.sh
     # Skip verification if SKIP_CHECKSUM environment variable is set
     if [[ "${SKIP_CHECKSUM:-0}" != "1" ]]; then
-        if ! verify_singbox_binary "$pkg" "$tag" "linux-${arch}"; then
+        # Construct platform string with libc suffix (e.g., "linux-amd64-musl" or "linux-amd64")
+        local platform="linux-${arch}${libc_suffix}"
+        if ! verify_singbox_binary "$pkg" "$tag" "$platform"; then
             rm -rf "$tmp"
             die "Binary verification failed, aborting installation"
         fi
