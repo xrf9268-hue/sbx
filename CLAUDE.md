@@ -231,6 +231,59 @@ count=$((count + 1))  # Returns 1 (new value)
 source "${_LIB_DIR}/common.sh"
 ```
 
+### GitHub Actions Best Practices (CI/CD)
+
+**CRITICAL: Don't Pin System Package Versions**
+```bash
+# ❌ WRONG - Ubuntu package versions use complex Debian formats
+env:
+  SHELLCHECK_VERSION: "0.10.0"  # Doesn't match Ubuntu's "0.9.0-1"
+  JQ_VERSION: "1.6"              # Doesn't match Ubuntu's "1.7.1-3ubuntu0.24.04.1"
+
+steps:
+  - run: sudo apt-get install -y shellcheck=${SHELLCHECK_VERSION}*  # FAILS!
+
+# ✅ CORRECT - Let GitHub Actions runner OS provide version pinning
+steps:
+  - run: sudo apt-get install -y shellcheck jq  # Works reliably
+```
+
+**Why This Works:**
+- GitHub Actions runners use specific Ubuntu versions (e.g., `ubuntu-24.04`)
+- Each runner OS has **snapshot/frozen package repositories** with locked versions
+- Package versions are **implicitly pinned by the runner OS version**
+- Ubuntu package versions use complex Debian formats incompatible with simple version strings
+- Reference: [xray project](https://github.com/xrf9268-hue/xray/.github/workflows/test.yml)
+
+**What TO Pin (Security-Critical):**
+```yaml
+# ✅ Pin GitHub Actions to commit SHAs (prevents supply chain attacks)
+- uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+- uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
+
+# ✅ Use Dependabot to automate SHA updates
+# .github/dependabot.yml handles this automatically
+```
+
+**Cache Key Best Practices:**
+```yaml
+# ✅ Include content hashes and version prefixes
+cache:
+  key: ${{ runner.os }}-shellcheck-v1-${{ hashFiles('lib/**/*.sh', 'bin/**/*.sh') }}
+  restore-keys: |
+    ${{ runner.os }}-shellcheck-v1-
+    ${{ runner.os }}-shellcheck-
+
+# ❌ AVOID workflow file hash only (rarely changes, risks cache poisoning)
+# key: ${{ hashFiles('.github/workflows/shellcheck.yml') }}
+```
+
+**Lesson Learned (2025-01-18):**
+Initial CI/CD modernization attempted system package version pinning following general best practices, but failed because:
+1. Ubuntu package versions (e.g., `1.7.1-3ubuntu0.24.04.1`) don't match simple version strings (e.g., `1.6`)
+2. GitHub Actions runners already provide implicit version pinning via OS-level package snapshots
+3. The xray reference project demonstrated the correct approach: no apt version pinning, SHA-pinned GitHub Actions only
+
 ### Code Quality Requirements
 - Use `[[ ]]` for conditionals (NOT `[ ]`)
 - Local variables in functions: `local var_name="$1"`

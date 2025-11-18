@@ -26,17 +26,18 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           submodules: recursive
 
       - name: Cache dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
         with:
           path: |
             ~/.cache/apt
-          key: ${{ runner.os }}-test-deps-${{ hashFiles('.github/workflows/test.yml') }}
+          key: ${{ runner.os }}-test-deps-v1-${{ hashFiles('.github/workflows/test.yml') }}
           restore-keys: |
+            ${{ runner.os }}-test-deps-v1-
             ${{ runner.os }}-test-deps-
 
       - name: Install dependencies
@@ -72,16 +73,16 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           submodules: recursive
 
       - name: Cache sing-box binary
         id: cache-singbox
-        uses: actions/cache@v4
+        uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
         with:
           path: /tmp/sing-box-download
-          key: ${{ runner.os }}-singbox-${{ matrix.version }}-${{ hashFiles('.github/workflows/test.yml') }}
+          key: ${{ runner.os }}-singbox-${{ matrix.version }}-v1-${{ hashFiles('.github/workflows/test.yml') }}
 
       - name: Install sing-box ${{ matrix.version }}
         if: steps.cache-singbox.outputs.cache-hit != 'true'
@@ -229,16 +230,16 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           submodules: recursive
 
       - name: Cache sing-box binary
         id: cache-singbox
-        uses: actions/cache@v4
+        uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
         with:
           path: /tmp/sing-box-download
-          key: ${{ runner.os }}-singbox-latest-${{ hashFiles('.github/workflows/test.yml') }}
+          key: ${{ runner.os }}-singbox-latest-v1-${{ hashFiles('.github/workflows/test.yml') }}
 
       - name: Install sing-box
         if: steps.cache-singbox.outputs.cache-hit != 'true'
@@ -346,7 +347,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Generate coverage report
         run: |
