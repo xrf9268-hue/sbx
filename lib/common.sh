@@ -142,7 +142,10 @@ declare -r CADDY_CERT_POLL_INTERVAL_SEC=3
 #==============================================================================
 
 # HTTP download timeout (for large file downloads)
-declare -r HTTP_DOWNLOAD_TIMEOUT_SEC=30
+# May be defined early in install_multi.sh for bootstrap phase
+if [[ -z "${HTTP_DOWNLOAD_TIMEOUT_SEC:-}" ]]; then
+  declare -r HTTP_DOWNLOAD_TIMEOUT_SEC=30
+fi
 
 #==============================================================================
 # Global Variables (from environment)
