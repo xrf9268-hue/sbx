@@ -382,6 +382,187 @@ tmpdir=$(create_temp_dir "restore") || return 1
 # Both helpers provide detailed error diagnostics on failure
 ```
 
+## Constants Reference
+
+### Global Configuration Constants
+
+All constants are defined in `lib/common.sh` and available globally after module loading.
+
+#### Certificate Management
+| Constant | Value | Purpose |
+|----------|-------|---------|
+| `CERT_EXPIRY_WARNING_DAYS` | 30 | Days before expiry to show warning |
+| `CERT_EXPIRY_WARNING_SEC` | 2592000 | Seconds (30 days) for openssl -checkend |
+
+**Usage:**
+```bash
+# lib/validation.sh:149
+if ! openssl x509 -in "$fullchain" -checkend "$CERT_EXPIRY_WARNING_SEC" -noout; then
+  warn "Certificate will expire within ${CERT_EXPIRY_WARNING_DAYS} days"
+fi
+```
+
+#### Cryptographic Validation
+| Constant | Value | Purpose |
+|----------|-------|---------|
+| `X25519_KEY_MIN_LENGTH` | 42 | Minimum X25519 key length (base64url) |
+| `X25519_KEY_MAX_LENGTH` | 44 | Maximum X25519 key length (base64url) |
+| `X25519_KEY_BYTES` | 32 | X25519 key size in bytes |
+
+**Usage:**
+```bash
+# lib/validation.sh:408
+if [[ $priv_len -lt "$X25519_KEY_MIN_LENGTH" || $priv_len -gt "$X25519_KEY_MAX_LENGTH" ]]; then
+  err "Expected: ${X25519_KEY_MIN_LENGTH}-${X25519_KEY_MAX_LENGTH} characters"
+fi
+```
+
+#### Backup & Encryption
+| Constant | Value | Purpose |
+|----------|-------|---------|
+| `BACKUP_PASSWORD_RANDOM_BYTES` | 48 | Random bytes for password generation |
+| `BACKUP_PASSWORD_LENGTH` | 64 | Final password length (chars) |
+| `BACKUP_PASSWORD_MIN_LENGTH` | 32 | Minimum acceptable password length |
+
+**Usage:**
+```bash
+# lib/backup.sh:112
+password=$(openssl rand -base64 "$BACKUP_PASSWORD_RANDOM_BYTES" | head -c "$BACKUP_PASSWORD_LENGTH")
+```
+
+#### Caddy Configuration
+| Constant | Value | Purpose |
+|----------|-------|---------|
+| `CADDY_HTTP_PORT_DEFAULT` | 80 | Default HTTP port |
+| `CADDY_HTTPS_PORT_DEFAULT` | 8445 | Default HTTPS port (cert management) |
+| `CADDY_FALLBACK_PORT_DEFAULT` | 8080 | Fallback HTTP port |
+| `CADDY_STARTUP_WAIT_SEC` | 2 | Wait time after starting Caddy |
+| `CADDY_CERT_POLL_INTERVAL_SEC` | 3 | Poll interval for cert availability |
+
+**Usage:**
+```bash
+# lib/caddy.sh:234
+local caddy_https_port="${CADDY_HTTPS_PORT:-$CADDY_HTTPS_PORT_DEFAULT}"
+```
+
+#### Network & Timeouts
+| Constant | Value | Purpose |
+|----------|-------|---------|
+| `NETWORK_TIMEOUT_SEC` | 5 | General network operation timeout |
+| `HTTP_DOWNLOAD_TIMEOUT_SEC` | 30 | Large file download timeout |
+
+**Usage:**
+```bash
+# lib/network.sh:50
+ip=$(timeout "$NETWORK_TIMEOUT_SEC" curl -s --max-time "$NETWORK_TIMEOUT_SEC" "$service")
+```
+
+#### Logging & Monitoring
+| Constant | Value | Purpose |
+|----------|-------|---------|
+| `LOG_VIEW_MAX_LINES` | 10000 | Maximum log lines to display |
+| `LOG_VIEW_DEFAULT_HISTORY` | "5 minutes ago" | Default log history window |
+| `LOG_ROTATION_CHECK_INTERVAL` | 100 | Check rotation every N writes |
+
+**Usage:**
+```bash
+# lib/service.sh:299
+if [[ "$lines" -gt "$LOG_VIEW_MAX_LINES" ]]; then
+  err "Invalid line count (must be 1-${LOG_VIEW_MAX_LINES})"
+fi
+```
+
+#### File Validation
+| Constant | Value | Purpose |
+|----------|-------|---------|
+| `MIN_MODULE_FILE_SIZE_BYTES` | 100 | Minimum module file size |
+| `MIN_MANAGER_FILE_SIZE_BYTES` | 5000 | Minimum manager script size (~15KB expected) |
+
+**Usage:**
+```bash
+# install_multi.sh:398
+if [[ "${mgr_size}" -lt "$MIN_MANAGER_FILE_SIZE_BYTES" ]]; then
+  echo "ERROR: Downloaded sbx-manager.sh is too small"
+fi
+```
+
+### Helper Functions Reference
+
+#### File Operations
+```bash
+# Get file size (cross-platform: Linux/BSD/macOS)
+size=$(get_file_size "/path/to/file")
+# Returns: Size in bytes, or "0" if error
+
+# Get file modification time (cross-platform)
+mtime=$(get_file_mtime "/path/to/file")
+# Returns: "YYYY-MM-DD HH:MM:SS" or empty string if error
+# Example: "2025-11-18 10:30:45"
+```
+
+#### Secure Temporary Files
+```bash
+# Create temporary file with secure permissions (600)
+tmpfile=$(create_temp_file "prefix") || return 1
+# Automatic permissions, detailed error diagnostics
+
+# Create temporary directory with secure permissions (700)
+tmpdir=$(create_temp_dir "prefix") || return 1
+# Automatic permissions, automatic cleanup on failure
+```
+
+#### JSON Operations
+```bash
+# Parse JSON with fallback (jq → python3 → python)
+value=$(json_parse "$json_string" ".field.path")
+
+# Build JSON with fallback
+json=$(json_build "$key" "$value")
+```
+
+#### Cryptographic Operations
+```bash
+# Generate random hex string with fallback (openssl → /dev/urandom)
+hex=$(crypto_random_hex 8)  # 8 bytes = 16 hex chars
+
+# Calculate SHA256 with fallback (openssl → shasum)
+hash=$(crypto_sha256 "$file_path")
+```
+
+### Best Practices for Constants
+
+**When to create a new constant:**
+- ✅ Magic number appears 2+ times
+- ✅ Value has semantic meaning (timeout, limit, size)
+- ✅ Value might need tuning/configuration
+- ✅ Value is security-critical (password length, key size)
+
+**Where to define constants:**
+- **lib/common.sh** - Global constants used across modules
+- **install_multi.sh (early)** - Boot-time constants needed before module loading
+- **Module-specific** - Only if constant is truly module-internal
+
+**Naming conventions:**
+- Use `SCREAMING_SNAKE_CASE`
+- Include units in name: `_SEC`, `_BYTES`, `_LENGTH`, `_DAYS`
+- Group related constants: `BACKUP_PASSWORD_*`, `CADDY_*_PORT_DEFAULT`
+- Make readonly: `declare -r CONSTANT_NAME=value`
+
+**Example:**
+```bash
+# ❌ BAD: Magic number
+sleep 5
+password=$(openssl rand -base64 48 | head -c 64)
+
+# ✅ GOOD: Named constant with clear intent
+declare -r SERVICE_STARTUP_WAIT_SEC=5
+declare -r BACKUP_PASSWORD_RANDOM_BYTES=48
+declare -r BACKUP_PASSWORD_LENGTH=64
+
+sleep "$SERVICE_STARTUP_WAIT_SEC"
+password=$(openssl rand -base64 "$BACKUP_PASSWORD_RANDOM_BYTES" | head -c "$BACKUP_PASSWORD_LENGTH")
+```
+
 ## File Locations
 
 ### Runtime Files
