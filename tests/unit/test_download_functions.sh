@@ -28,7 +28,6 @@ source "$PROJECT_ROOT/lib/retry.sh"
 #==============================================================================
 
 test_detect_downloader_curl() {
-    setup_test_env
 
     # Mock curl available
     if command -v curl &>/dev/null; then
@@ -36,11 +35,9 @@ test_detect_downloader_curl() {
         assert_equals "$result" "curl" "Should detect curl when available"
     fi
 
-    teardown_test_env
 }
 
 test_detect_downloader_wget() {
-    setup_test_env
 
     # Mock scenario where only wget available
     if command -v wget &>/dev/null && ! command -v curl &>/dev/null; then
@@ -48,7 +45,6 @@ test_detect_downloader_wget() {
         assert_equals "$result" "wget" "Should detect wget when curl unavailable"
     fi
 
-    teardown_test_env
 }
 
 #==============================================================================
@@ -56,7 +52,6 @@ test_detect_downloader_wget() {
 #==============================================================================
 
 test_check_curl_retry_support() {
-    setup_test_env
 
     if command -v curl &>/dev/null; then
         # Should detect retry support in modern curl
@@ -68,7 +63,6 @@ test_check_curl_retry_support() {
         fi
     fi
 
-    teardown_test_env
 }
 
 #==============================================================================
@@ -76,7 +70,6 @@ test_check_curl_retry_support() {
 #==============================================================================
 
 test_check_curl_continue_support() {
-    setup_test_env
 
     if command -v curl &>/dev/null; then
         # Should detect continue-at support
@@ -85,7 +78,6 @@ test_check_curl_continue_support() {
         fi
     fi
 
-    teardown_test_env
 }
 
 #==============================================================================
@@ -93,7 +85,6 @@ test_check_curl_continue_support() {
 #==============================================================================
 
 test_validate_download_url_valid_https() {
-    setup_test_env
 
     url="https://example.com/file.tar.gz"
     if validate_download_url "$url"; then
@@ -102,11 +93,9 @@ test_validate_download_url_valid_https() {
         assert_failure 1 "Valid HTTPS URL rejected"
     fi
 
-    teardown_test_env
 }
 
 test_validate_download_url_valid_http() {
-    setup_test_env
 
     url="http://example.com/file.tar.gz"
     if validate_download_url "$url"; then
@@ -115,11 +104,9 @@ test_validate_download_url_valid_http() {
         assert_failure 1 "Valid HTTP URL rejected"
     fi
 
-    teardown_test_env
 }
 
 test_validate_download_url_invalid_protocol() {
-    setup_test_env
 
     url="ftp://example.com/file.tar.gz"
     if validate_download_url "$url" 2>/dev/null; then
@@ -128,11 +115,9 @@ test_validate_download_url_invalid_protocol() {
         assert_success 0 "Correctly rejected FTP URL"
     fi
 
-    teardown_test_env
 }
 
 test_validate_download_url_empty() {
-    setup_test_env
 
     url=""
     if validate_download_url "$url" 2>/dev/null; then
@@ -141,11 +126,9 @@ test_validate_download_url_empty() {
         assert_success 0 "Correctly rejected empty URL"
     fi
 
-    teardown_test_env
 }
 
 test_validate_download_url_no_protocol() {
-    setup_test_env
 
     url="example.com/file.tar.gz"
     if validate_download_url "$url" 2>/dev/null; then
@@ -154,7 +137,6 @@ test_validate_download_url_no_protocol() {
         assert_success 0 "Correctly rejected URL without protocol"
     fi
 
-    teardown_test_env
 }
 
 #==============================================================================
@@ -162,7 +144,6 @@ test_validate_download_url_no_protocol() {
 #==============================================================================
 
 test_get_download_info_structure() {
-    setup_test_env
 
     platform="linux-amd64"
     version="v1.10.0"
@@ -181,7 +162,6 @@ test_get_download_info_structure() {
 
     unset DOWNLOAD_URLS
 
-    teardown_test_env
 }
 
 #==============================================================================
@@ -189,7 +169,6 @@ test_get_download_info_structure() {
 #==============================================================================
 
 test_download_file_invalid_url() {
-    setup_test_env
 
     invalid_url="not-a-url"
     dest="/tmp/test-download-$$"
@@ -202,11 +181,9 @@ test_download_file_invalid_url() {
 
     rm -f "$dest"
 
-    teardown_test_env
 }
 
 test_download_file_empty_destination() {
-    setup_test_env
 
     url="https://example.com/file.tar.gz"
     dest=""
@@ -217,7 +194,6 @@ test_download_file_empty_destination() {
         assert_success 0 "Correctly failed with empty destination"
     fi
 
-    teardown_test_env
 }
 
 #==============================================================================
@@ -225,7 +201,6 @@ test_download_file_empty_destination() {
 #==============================================================================
 
 test_verify_downloaded_file_missing() {
-    setup_test_env
 
     file="/tmp/nonexistent-file-$$"
 
@@ -235,11 +210,9 @@ test_verify_downloaded_file_missing() {
         assert_success 0 "Correctly failed for missing file"
     fi
 
-    teardown_test_env
 }
 
 test_verify_downloaded_file_empty() {
-    setup_test_env
 
     file="/tmp/empty-file-$$"
     touch "$file"
@@ -252,11 +225,9 @@ test_verify_downloaded_file_empty() {
 
     rm -f "$file"
 
-    teardown_test_env
 }
 
 test_verify_downloaded_file_valid() {
-    setup_test_env
 
     file="/tmp/valid-file-$$"
     echo "test content" > "$file"
@@ -269,7 +240,6 @@ test_verify_downloaded_file_valid() {
 
     rm -f "$file"
 
-    teardown_test_env
 }
 
 #==============================================================================
@@ -277,7 +247,6 @@ test_verify_downloaded_file_valid() {
 #==============================================================================
 
 test_download_file_with_retry_invalid_url() {
-    setup_test_env
 
     invalid_url="not-a-url"
     dest="/tmp/test-retry-$$"
@@ -290,7 +259,6 @@ test_download_file_with_retry_invalid_url() {
 
     rm -f "$dest"
 
-    teardown_test_env
 }
 
 #==============================================================================

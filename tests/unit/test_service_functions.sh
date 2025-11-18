@@ -26,7 +26,6 @@ source "$PROJECT_ROOT/lib/service.sh"
 #==============================================================================
 
 test_create_service_file_structure() {
-    setup_test_env
 
     result=$(create_service_file)
 
@@ -40,11 +39,9 @@ test_create_service_file_structure() {
     assert_contains "$result" "Restart=on-failure" "Should restart on failure"
     assert_contains "$result" "WantedBy=multi-user.target" "Should be wanted by multi-user"
 
-    teardown_test_env
 }
 
 test_create_service_file_security_hardening() {
-    setup_test_env
 
     result=$(create_service_file)
 
@@ -53,7 +50,6 @@ test_create_service_file_security_hardening() {
     assert_contains "$result" "ProtectSystem=strict" "Should protect system directories"
     assert_contains "$result" "PrivateTmp=true" "Should use private tmp"
 
-    teardown_test_env
 }
 
 #==============================================================================
@@ -61,7 +57,6 @@ test_create_service_file_security_hardening() {
 #==============================================================================
 
 test_check_service_status_output_structure() {
-    setup_test_env
 
     # This test checks the function structure, not actual systemctl
     # We'll test it doesn't crash with basic inputs
@@ -71,7 +66,6 @@ test_check_service_status_output_structure() {
         assert_success 0 "Function should handle nonexistent service gracefully"
     fi
 
-    teardown_test_env
 }
 
 #==============================================================================
@@ -79,7 +73,6 @@ test_check_service_status_output_structure() {
 #==============================================================================
 
 test_validate_port_listening_invalid_port() {
-    setup_test_env
 
     # Invalid port number
     if validate_port_listening "99999" 2>/dev/null; then
@@ -88,11 +81,9 @@ test_validate_port_listening_invalid_port() {
         assert_success 0 "Correctly rejected invalid port"
     fi
 
-    teardown_test_env
 }
 
 test_validate_port_listening_zero_port() {
-    setup_test_env
 
     # Port 0 is invalid
     if validate_port_listening "0" 2>/dev/null; then
@@ -101,11 +92,9 @@ test_validate_port_listening_zero_port() {
         assert_success 0 "Correctly rejected port 0"
     fi
 
-    teardown_test_env
 }
 
 test_validate_port_listening_negative_port() {
-    setup_test_env
 
     # Negative port is invalid
     if validate_port_listening "-1" 2>/dev/null; then
@@ -114,7 +103,6 @@ test_validate_port_listening_negative_port() {
         assert_success 0 "Correctly rejected negative port"
     fi
 
-    teardown_test_env
 }
 
 #==============================================================================
@@ -122,7 +110,6 @@ test_validate_port_listening_negative_port() {
 #==============================================================================
 
 test_show_service_logs_parameters() {
-    setup_test_env
 
     # Function should accept service name parameter
     # Test it doesn't crash with basic inputs
@@ -131,7 +118,6 @@ test_show_service_logs_parameters() {
         assert_success 0 "Function should handle parameters gracefully"
     fi
 
-    teardown_test_env
 }
 
 #==============================================================================
@@ -139,7 +125,6 @@ test_show_service_logs_parameters() {
 #==============================================================================
 
 test_stop_service_structure() {
-    setup_test_env
 
     # Test function exists and accepts parameters
     if command -v systemctl &>/dev/null; then
@@ -148,11 +133,9 @@ test_stop_service_structure() {
         assert_success 0 "Function should handle nonexistent service"
     fi
 
-    teardown_test_env
 }
 
 test_reload_service_structure() {
-    setup_test_env
 
     # Test function exists and accepts parameters
     if command -v systemctl &>/dev/null; then
@@ -161,11 +144,9 @@ test_reload_service_structure() {
         assert_success 0 "Function should handle nonexistent service"
     fi
 
-    teardown_test_env
 }
 
 test_restart_service_structure() {
-    setup_test_env
 
     # Test function exists and accepts parameters
     if command -v systemctl &>/dev/null; then
@@ -174,11 +155,9 @@ test_restart_service_structure() {
         assert_success 0 "Function should handle nonexistent service"
     fi
 
-    teardown_test_env
 }
 
 test_remove_service_structure() {
-    setup_test_env
 
     # Test function exists and accepts parameters
     if command -v systemctl &>/dev/null; then
@@ -187,7 +166,6 @@ test_remove_service_structure() {
         assert_success 0 "Function should handle nonexistent service"
     fi
 
-    teardown_test_env
 }
 
 #==============================================================================
@@ -195,7 +173,6 @@ test_remove_service_structure() {
 #==============================================================================
 
 test_setup_service_parameters() {
-    setup_test_env
 
     # Test that setup_service requires systemd
     if ! command -v systemctl &>/dev/null; then
@@ -203,7 +180,6 @@ test_setup_service_parameters() {
         assert_success 0 "Function should handle missing systemd"
     fi
 
-    teardown_test_env
 }
 
 #==============================================================================
@@ -211,7 +187,6 @@ test_setup_service_parameters() {
 #==============================================================================
 
 test_start_service_with_retry_invalid_service() {
-    setup_test_env
 
     # Test with nonexistent service
     if command -v systemctl &>/dev/null; then
@@ -222,7 +197,6 @@ test_start_service_with_retry_invalid_service() {
         fi
     fi
 
-    teardown_test_env
 }
 
 #==============================================================================

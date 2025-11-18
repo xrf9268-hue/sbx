@@ -46,7 +46,6 @@ test_validate_config_vars_success() {
 }
 
 test_validate_config_vars_empty_uuid() {
-    setup_test_env
 
     UUID=""
     PRIV="test-private-key"
@@ -60,11 +59,9 @@ test_validate_config_vars_empty_uuid() {
         assert_success 0 "Correctly rejected empty UUID"
     fi
 
-    teardown_test_env
 }
 
 test_validate_config_vars_empty_private_key() {
-    setup_test_env
 
     UUID="a1b2c3d4-e5f6-7890-1234-567890abcdef"
     PRIV=""
@@ -78,11 +75,9 @@ test_validate_config_vars_empty_private_key() {
         assert_success 0 "Correctly rejected empty private key"
     fi
 
-    teardown_test_env
 }
 
 test_validate_config_vars_empty_short_id() {
-    setup_test_env
 
     UUID="a1b2c3d4-e5f6-7890-1234-567890abcdef"
     PRIV="test-private-key"
@@ -96,11 +91,9 @@ test_validate_config_vars_empty_short_id() {
         assert_success 0 "Correctly rejected empty short ID"
     fi
 
-    teardown_test_env
 }
 
 test_validate_config_vars_empty_domain() {
-    setup_test_env
 
     UUID="a1b2c3d4-e5f6-7890-1234-567890abcdef"
     PRIV="test-private-key"
@@ -114,7 +107,6 @@ test_validate_config_vars_empty_domain() {
         assert_success 0 "Correctly rejected empty domain"
     fi
 
-    teardown_test_env
 }
 
 #==============================================================================
@@ -122,7 +114,6 @@ test_validate_config_vars_empty_domain() {
 #==============================================================================
 
 test_create_reality_inbound_basic() {
-    setup_test_env
 
     UUID="a1b2c3d4-e5f6-7890-1234-567890abcdef"
     PRIV="test-private-key-12345678901234567890123456"
@@ -142,11 +133,9 @@ test_create_reality_inbound_basic() {
     assert_contains "$result" '"private_key": "test-private-key-12345678901234567890123456"' "Should contain private key"
     assert_contains "$result" '"short_id": ["a1b2c3d4"]' "Should contain short ID array"
 
-    teardown_test_env
 }
 
 test_create_reality_inbound_custom_port() {
-    setup_test_env
 
     UUID="test-uuid"
     PRIV="test-priv"
@@ -158,7 +147,6 @@ test_create_reality_inbound_custom_port() {
 
     assert_contains "$result" '"listen_port": 8443' "Should use custom port"
 
-    teardown_test_env
 }
 
 #==============================================================================
@@ -166,7 +154,6 @@ test_create_reality_inbound_custom_port() {
 #==============================================================================
 
 test_add_outbound_config() {
-    setup_test_env
 
     result=$(add_outbound_config)
 
@@ -175,7 +162,6 @@ test_add_outbound_config() {
     assert_contains "$result" '"tag": "direct"' "Should contain direct tag"
     assert_contains "$result" '"tcp_fast_open": true' "Should enable TCP Fast Open"
 
-    teardown_test_env
 }
 
 #==============================================================================
@@ -183,7 +169,6 @@ test_add_outbound_config() {
 #==============================================================================
 
 test_add_route_config() {
-    setup_test_env
 
     result=$(add_route_config)
 
@@ -192,7 +177,6 @@ test_add_route_config() {
     assert_contains "$result" '"protocol": ["dns"]' "Should contain DNS protocol rule"
     assert_contains "$result" '"outbound": "dns-out"' "Should contain DNS outbound"
 
-    teardown_test_env
 }
 
 #==============================================================================
@@ -200,7 +184,6 @@ test_add_route_config() {
 #==============================================================================
 
 test_create_ws_inbound() {
-    setup_test_env
 
     UUID="a1b2c3d4-e5f6-7890-1234-567890abcdef"
     WS_PORT="8444"
@@ -226,7 +209,6 @@ test_create_ws_inbound() {
     # Cleanup
     rm -f "$CERT_FULLCHAIN" "$CERT_KEY"
 
-    teardown_test_env
 }
 
 #==============================================================================
@@ -234,7 +216,6 @@ test_create_ws_inbound() {
 #==============================================================================
 
 test_create_hysteria2_inbound() {
-    setup_test_env
 
     UUID="a1b2c3d4-e5f6-7890-1234-567890abcdef"
     HY2_PORT="8443"
@@ -257,7 +238,6 @@ test_create_hysteria2_inbound() {
     # Cleanup
     rm -f "$CERT_FULLCHAIN" "$CERT_KEY"
 
-    teardown_test_env
 }
 
 #==============================================================================

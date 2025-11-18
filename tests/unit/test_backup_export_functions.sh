@@ -30,7 +30,6 @@ source "$PROJECT_ROOT/lib/export.sh" 2>/dev/null || true
 #==============================================================================
 
 test_backup_list_no_backups() {
-    setup_test_env
 
     # Create temp backup directory
     BACKUP_DIR="/tmp/sbx-backup-test-$$"
@@ -42,11 +41,9 @@ test_backup_list_no_backups() {
     assert_success 0 "Should handle empty backup directory"
 
     rm -rf "$BACKUP_DIR"
-    teardown_test_env
 }
 
 test_backup_list_with_backups() {
-    setup_test_env
 
     # Create temp backup directory with test backups
     BACKUP_DIR="/tmp/sbx-backup-test-$$"
@@ -59,7 +56,6 @@ test_backup_list_with_backups() {
     assert_success 0 "Should list existing backups"
 
     rm -rf "$BACKUP_DIR"
-    teardown_test_env
 }
 
 #==============================================================================
@@ -67,7 +63,6 @@ test_backup_list_with_backups() {
 #==============================================================================
 
 test_backup_cleanup_structure() {
-    setup_test_env
 
     # Create temp backup directory
     BACKUP_DIR="/tmp/sbx-backup-test-$$"
@@ -82,7 +77,6 @@ test_backup_cleanup_structure() {
     assert_success 0 "Should handle backup cleanup"
 
     rm -rf "$BACKUP_DIR"
-    teardown_test_env
 }
 
 #==============================================================================
@@ -90,7 +84,6 @@ test_backup_cleanup_structure() {
 #==============================================================================
 
 test_load_client_info_missing_file() {
-    setup_test_env
 
     CLIENT_INFO_FILE="/tmp/missing-client-info-$$"
 
@@ -100,11 +93,9 @@ test_load_client_info_missing_file() {
         assert_success 0 "Correctly handled missing file"
     fi
 
-    teardown_test_env
 }
 
 test_load_client_info_valid_file() {
-    setup_test_env
 
     CLIENT_INFO_FILE="/tmp/test-client-info-$$"
 
@@ -128,7 +119,6 @@ EOF
     fi
 
     rm -f "$CLIENT_INFO_FILE"
-    teardown_test_env
 }
 
 #==============================================================================
@@ -136,7 +126,6 @@ EOF
 #==============================================================================
 
 test_export_config_missing_info() {
-    setup_test_env
 
     CLIENT_INFO_FILE="/tmp/missing-$$"
 
@@ -147,11 +136,9 @@ test_export_config_missing_info() {
         assert_success 0 "Correctly handled missing client info"
     fi
 
-    teardown_test_env
 }
 
 test_export_config_invalid_format() {
-    setup_test_env
 
     CLIENT_INFO_FILE="/tmp/test-client-info-$$"
     cat > "$CLIENT_INFO_FILE" << 'EOF'
@@ -168,7 +155,6 @@ EOF
     fi
 
     rm -f "$CLIENT_INFO_FILE"
-    teardown_test_env
 }
 
 #==============================================================================
@@ -176,7 +162,6 @@ EOF
 #==============================================================================
 
 test_export_qr_codes_missing_dir() {
-    setup_test_env
 
     output_dir="/tmp/nonexistent-dir-$$/qr"
 
@@ -185,7 +170,6 @@ test_export_qr_codes_missing_dir() {
     assert_success 0 "Should handle directory creation"
 
     rm -rf "/tmp/nonexistent-dir-$$"
-    teardown_test_env
 }
 
 #==============================================================================
@@ -193,7 +177,6 @@ test_export_qr_codes_missing_dir() {
 #==============================================================================
 
 test_export_subscription_structure() {
-    setup_test_env
 
     CLIENT_INFO_FILE="/tmp/test-client-info-$$"
     cat > "$CLIENT_INFO_FILE" << 'EOF'
@@ -216,7 +199,6 @@ EOF
     fi
 
     rm -f "$CLIENT_INFO_FILE"
-    teardown_test_env
 }
 
 #==============================================================================
@@ -224,7 +206,6 @@ EOF
 #==============================================================================
 
 test_export_clash_yaml_structure() {
-    setup_test_env
 
     CLIENT_INFO_FILE="/tmp/test-client-info-$$"
     cat > "$CLIENT_INFO_FILE" << 'EOF'
@@ -246,7 +227,6 @@ EOF
     fi
 
     rm -f "$CLIENT_INFO_FILE"
-    teardown_test_env
 }
 
 #==============================================================================

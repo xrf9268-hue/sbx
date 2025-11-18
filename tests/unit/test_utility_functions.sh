@@ -30,7 +30,6 @@ source "$PROJECT_ROOT/lib/network.sh" 2>/dev/null || true
 #==============================================================================
 
 test_create_temp_dir_success() {
-    setup_test_env
 
     result=$(create_temp_dir "test")
 
@@ -43,11 +42,9 @@ test_create_temp_dir_success() {
     # Cleanup
     rm -rf "$result"
 
-    teardown_test_env
 }
 
 test_create_temp_dir_with_prefix() {
-    setup_test_env
 
     prefix="mytest"
     result=$(create_temp_dir "$prefix")
@@ -58,7 +55,6 @@ test_create_temp_dir_with_prefix() {
     # Cleanup
     rm -rf "$result"
 
-    teardown_test_env
 }
 
 #==============================================================================
@@ -66,7 +62,6 @@ test_create_temp_dir_with_prefix() {
 #==============================================================================
 
 test_create_temp_file_success() {
-    setup_test_env
 
     result=$(create_temp_file "test")
 
@@ -79,11 +74,9 @@ test_create_temp_file_success() {
     # Cleanup
     rm -f "$result"
 
-    teardown_test_env
 }
 
 test_create_temp_file_with_prefix() {
-    setup_test_env
 
     prefix="mytest"
     result=$(create_temp_file "$prefix")
@@ -94,7 +87,6 @@ test_create_temp_file_with_prefix() {
     # Cleanup
     rm -f "$result"
 
-    teardown_test_env
 }
 
 #==============================================================================
@@ -102,7 +94,6 @@ test_create_temp_file_with_prefix() {
 #==============================================================================
 
 test_get_file_mtime_existing_file() {
-    setup_test_env
 
     testfile="/tmp/test-mtime-$$"
     echo "test" > "$testfile"
@@ -115,11 +106,9 @@ test_get_file_mtime_existing_file() {
 
     rm -f "$testfile"
 
-    teardown_test_env
 }
 
 test_get_file_mtime_missing_file() {
-    setup_test_env
 
     testfile="/tmp/missing-$$"
 
@@ -129,7 +118,6 @@ test_get_file_mtime_missing_file() {
         assert_success 0 "Correctly handled missing file"
     fi
 
-    teardown_test_env
 }
 
 #==============================================================================
@@ -137,7 +125,6 @@ test_get_file_mtime_missing_file() {
 #==============================================================================
 
 test_safe_rm_temp_valid_path() {
-    setup_test_env
 
     tmpdir="/tmp/test-safe-rm-$$"
     mkdir -p "$tmpdir"
@@ -148,21 +135,17 @@ test_safe_rm_temp_valid_path() {
     # Directory should be removed
     assert_dir_not_exists "$tmpdir" "Should remove temp directory"
 
-    teardown_test_env
 }
 
 test_safe_rm_temp_invalid_path() {
-    setup_test_env
 
     # Should not crash with invalid path
     safe_rm_temp "/invalid/path/$$" 2>/dev/null || true
     assert_success 0 "Should handle invalid path safely"
 
-    teardown_test_env
 }
 
 test_safe_rm_temp_dangerous_path() {
-    setup_test_env
 
     # Should reject dangerous paths like root
     safe_rm_temp "/" 2>/dev/null || true
@@ -172,7 +155,6 @@ test_safe_rm_temp_dangerous_path() {
     # These should be safely rejected
     assert_success 0 "Should reject dangerous paths"
 
-    teardown_test_env
 }
 
 #==============================================================================
@@ -180,7 +162,6 @@ test_safe_rm_temp_dangerous_path() {
 #==============================================================================
 
 test_retry_with_custom_backoff_success_first_try() {
-    setup_test_env
 
     # Command that succeeds immediately
     if retry_with_custom_backoff 3 1 "true"; then
@@ -189,11 +170,9 @@ test_retry_with_custom_backoff_success_first_try() {
         assert_failure 1 "Unexpected failure"
     fi
 
-    teardown_test_env
 }
 
 test_retry_with_custom_backoff_fail_all() {
-    setup_test_env
 
     # Command that always fails
     if retry_with_custom_backoff 2 1 "false" 2>/dev/null; then
@@ -202,7 +181,6 @@ test_retry_with_custom_backoff_fail_all() {
         assert_success 0 "Correctly failed after retries"
     fi
 
-    teardown_test_env
 }
 
 #==============================================================================
@@ -210,13 +188,11 @@ test_retry_with_custom_backoff_fail_all() {
 #==============================================================================
 
 test_get_retry_stats_structure() {
-    setup_test_env
 
     # Should not crash
     result=$(get_retry_stats 2>/dev/null || echo "stats")
     assert_success 0 "Should provide retry statistics"
 
-    teardown_test_env
 }
 
 #==============================================================================
@@ -224,39 +200,31 @@ test_get_retry_stats_structure() {
 #==============================================================================
 
 test_compare_versions_equal() {
-    setup_test_env
 
     result=$(compare_versions "1.2.3" "1.2.3")
     assert_equals "$result" "0" "Equal versions should return 0"
 
-    teardown_test_env
 }
 
 test_compare_versions_less_than() {
-    setup_test_env
 
     result=$(compare_versions "1.2.3" "1.2.4")
     assert_equals "$result" "-1" "Lesser version should return -1"
 
-    teardown_test_env
 }
 
 test_compare_versions_greater_than() {
-    setup_test_env
 
     result=$(compare_versions "1.2.4" "1.2.3")
     assert_equals "$result" "1" "Greater version should return 1"
 
-    teardown_test_env
 }
 
 test_compare_versions_major_difference() {
-    setup_test_env
 
     result=$(compare_versions "2.0.0" "1.9.9")
     assert_equals "$result" "1" "Major version increase should return 1"
 
-    teardown_test_env
 }
 
 #==============================================================================
@@ -264,7 +232,6 @@ test_compare_versions_major_difference() {
 #==============================================================================
 
 test_validate_singbox_version_valid() {
-    setup_test_env
 
     if validate_singbox_version "v1.10.0"; then
         assert_success 0 "Should accept valid version"
@@ -272,11 +239,9 @@ test_validate_singbox_version_valid() {
         assert_failure 1 "Valid version rejected"
     fi
 
-    teardown_test_env
 }
 
 test_validate_singbox_version_without_v() {
-    setup_test_env
 
     if validate_singbox_version "1.10.0"; then
         assert_success 0 "Should accept version without v prefix"
@@ -284,11 +249,9 @@ test_validate_singbox_version_without_v() {
         assert_failure 1 "Version without v rejected"
     fi
 
-    teardown_test_env
 }
 
 test_validate_singbox_version_invalid() {
-    setup_test_env
 
     if validate_singbox_version "invalid" 2>/dev/null; then
         assert_failure 1 "Should reject invalid version"
@@ -296,11 +259,9 @@ test_validate_singbox_version_invalid() {
         assert_success 0 "Correctly rejected invalid version"
     fi
 
-    teardown_test_env
 }
 
 test_validate_singbox_version_empty() {
-    setup_test_env
 
     if validate_singbox_version "" 2>/dev/null; then
         assert_failure 1 "Should reject empty version"
@@ -308,7 +269,6 @@ test_validate_singbox_version_empty() {
         assert_success 0 "Correctly rejected empty version"
     fi
 
-    teardown_test_env
 }
 
 #==============================================================================
@@ -316,13 +276,11 @@ test_validate_singbox_version_empty() {
 #==============================================================================
 
 test_show_version_info_structure() {
-    setup_test_env
 
     # Should display version info without crashing
     result=$(show_version_info 2>/dev/null || echo "version-info")
     assert_success 0 "Should display version info"
 
-    teardown_test_env
 }
 
 #==============================================================================
@@ -330,7 +288,6 @@ test_show_version_info_structure() {
 #==============================================================================
 
 test_choose_listen_address_ipv6_support() {
-    setup_test_env
 
     # Should return :: or 0.0.0.0 depending on system
     result=$(choose_listen_address)
@@ -345,7 +302,6 @@ test_choose_listen_address_ipv6_support() {
             ;;
     esac
 
-    teardown_test_env
 }
 
 #==============================================================================
@@ -353,7 +309,6 @@ test_choose_listen_address_ipv6_support() {
 #==============================================================================
 
 test_safe_http_get_invalid_url() {
-    setup_test_env
 
     url="not-a-valid-url"
 
@@ -363,11 +318,9 @@ test_safe_http_get_invalid_url() {
         assert_success 0 "Correctly rejected invalid URL"
     fi
 
-    teardown_test_env
 }
 
 test_safe_http_get_empty_url() {
-    setup_test_env
 
     url=""
 
@@ -377,7 +330,6 @@ test_safe_http_get_empty_url() {
         assert_success 0 "Correctly rejected empty URL"
     fi
 
-    teardown_test_env
 }
 
 #==============================================================================

@@ -30,52 +30,41 @@ source "$PROJECT_ROOT/lib/schema_validator.sh" 2>/dev/null || true
 #==============================================================================
 
 test_caddy_bin() {
-    setup_test_env
 
     result=$(caddy_bin)
     assert_equals "$result" "/usr/local/bin/caddy" "Should return correct binary path"
 
-    teardown_test_env
 }
 
 test_caddy_config_dir() {
-    setup_test_env
 
     result=$(caddy_config_dir)
     assert_equals "$result" "/etc/caddy" "Should return correct config directory"
 
-    teardown_test_env
 }
 
 test_caddy_config_file() {
-    setup_test_env
 
     result=$(caddy_config_file)
     assert_equals "$result" "/etc/caddy/Caddyfile" "Should return correct config file path"
 
-    teardown_test_env
 }
 
 test_caddy_data_dir() {
-    setup_test_env
 
     result=$(caddy_data_dir)
     assert_equals "$result" "/var/lib/caddy" "Should return correct data directory"
 
-    teardown_test_env
 }
 
 test_caddy_systemd_file() {
-    setup_test_env
 
     result=$(caddy_systemd_file)
     assert_equals "$result" "/etc/systemd/system/caddy.service" "Should return correct systemd file"
 
-    teardown_test_env
 }
 
 test_caddy_cert_path() {
-    setup_test_env
 
     domain="example.com"
     result=$(caddy_cert_path "$domain")
@@ -83,7 +72,6 @@ test_caddy_cert_path() {
     assert_contains "$result" "$domain" "Should contain domain name"
     assert_contains "$result" ".crt" "Should be certificate file"
 
-    teardown_test_env
 }
 
 #==============================================================================
@@ -91,7 +79,6 @@ test_caddy_cert_path() {
 #==============================================================================
 
 test_caddy_detect_arch_format() {
-    setup_test_env
 
     result=$(caddy_detect_arch)
 
@@ -105,7 +92,6 @@ test_caddy_detect_arch_format() {
             ;;
     esac
 
-    teardown_test_env
 }
 
 #==============================================================================
@@ -113,7 +99,6 @@ test_caddy_detect_arch_format() {
 #==============================================================================
 
 test_caddy_get_latest_version_format() {
-    setup_test_env
 
     # This requires network access, so make it optional
     if command -v curl &>/dev/null || command -v wget &>/dev/null; then
@@ -125,7 +110,6 @@ test_caddy_get_latest_version_format() {
         fi
     fi
 
-    teardown_test_env
 }
 
 #==============================================================================
@@ -133,7 +117,6 @@ test_caddy_get_latest_version_format() {
 #==============================================================================
 
 test_caddy_create_service_structure() {
-    setup_test_env
 
     result=$(caddy_create_service)
 
@@ -144,7 +127,6 @@ test_caddy_create_service_structure() {
     assert_contains "$result" "ExecStart=" "Should contain ExecStart"
     assert_contains "$result" "caddy run" "Should run caddy"
 
-    teardown_test_env
 }
 
 #==============================================================================
@@ -152,7 +134,6 @@ test_caddy_create_service_structure() {
 #==============================================================================
 
 test_caddy_create_renewal_hook_structure() {
-    setup_test_env
 
     domain="example.com"
     result=$(caddy_create_renewal_hook "$domain")
@@ -162,11 +143,9 @@ test_caddy_create_renewal_hook_structure() {
     assert_contains "$result" "$domain" "Should contain domain"
     assert_contains "$result" "cp" "Should copy certificates"
 
-    teardown_test_env
 }
 
 test_caddy_create_renewal_hook_empty_domain() {
-    setup_test_env
 
     domain=""
 
@@ -176,7 +155,6 @@ test_caddy_create_renewal_hook_empty_domain() {
         assert_success 0 "Correctly rejected empty domain"
     fi
 
-    teardown_test_env
 }
 
 #==============================================================================
@@ -184,7 +162,6 @@ test_caddy_create_renewal_hook_empty_domain() {
 #==============================================================================
 
 test_check_schema_tool_availability() {
-    setup_test_env
 
     # Should detect jq or python
     result=$(check_schema_tool)
@@ -198,7 +175,6 @@ test_check_schema_tool_availability() {
             ;;
     esac
 
-    teardown_test_env
 }
 
 #==============================================================================
@@ -206,7 +182,6 @@ test_check_schema_tool_availability() {
 #==============================================================================
 
 test_validate_config_schema_valid_json() {
-    setup_test_env
 
     config_file="/tmp/test-config-$$.json"
     cat > "$config_file" << 'EOF'
@@ -225,11 +200,9 @@ EOF
     fi
 
     rm -f "$config_file"
-    teardown_test_env
 }
 
 test_validate_config_schema_missing_file() {
-    setup_test_env
 
     config_file="/tmp/missing-config-$$.json"
 
@@ -239,11 +212,9 @@ test_validate_config_schema_missing_file() {
         assert_success 0 "Correctly rejected missing file"
     fi
 
-    teardown_test_env
 }
 
 test_validate_config_schema_invalid_json() {
-    setup_test_env
 
     config_file="/tmp/invalid-config-$$.json"
     echo "{ invalid json }" > "$config_file"
@@ -255,7 +226,6 @@ test_validate_config_schema_invalid_json() {
     fi
 
     rm -f "$config_file"
-    teardown_test_env
 }
 
 #==============================================================================
@@ -263,7 +233,6 @@ test_validate_config_schema_invalid_json() {
 #==============================================================================
 
 test_validate_reality_required_fields_complete() {
-    setup_test_env
 
     config='{
       "inbounds": [{
@@ -289,11 +258,9 @@ test_validate_reality_required_fields_complete() {
     fi
 
     rm -f "$config_file"
-    teardown_test_env
 }
 
 test_validate_reality_enabled_true() {
-    setup_test_env
 
     config='{
       "inbounds": [{
@@ -316,11 +283,9 @@ test_validate_reality_enabled_true() {
     fi
 
     rm -f "$config_file"
-    teardown_test_env
 }
 
 test_validate_reality_enabled_false() {
-    setup_test_env
 
     config='{
       "inbounds": [{
@@ -345,7 +310,6 @@ test_validate_reality_enabled_false() {
     fi
 
     rm -f "$config_file"
-    teardown_test_env
 }
 
 #==============================================================================

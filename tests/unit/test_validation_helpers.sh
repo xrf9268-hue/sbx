@@ -26,7 +26,6 @@ source "$PROJECT_ROOT/lib/tools.sh"
 #==============================================================================
 
 test_require_all_success() {
-    setup_test_env
 
     VAR1="value1"
     VAR2="value2"
@@ -38,11 +37,9 @@ test_require_all_success() {
         assert_failure 1 "require_all failed unexpectedly"
     fi
 
-    teardown_test_env
 }
 
 test_require_all_one_missing() {
-    setup_test_env
 
     VAR1="value1"
     VAR2=""
@@ -54,11 +51,9 @@ test_require_all_one_missing() {
         assert_success 0 "Correctly rejected empty variable"
     fi
 
-    teardown_test_env
 }
 
 test_require_all_all_missing() {
-    setup_test_env
 
     VAR1=""
     VAR2=""
@@ -70,11 +65,9 @@ test_require_all_all_missing() {
         assert_success 0 "Correctly rejected all empty variables"
     fi
 
-    teardown_test_env
 }
 
 test_require_all_no_parameters() {
-    setup_test_env
 
     if require_all 2>/dev/null; then
         assert_failure 1 "Should fail with no parameters"
@@ -82,7 +75,6 @@ test_require_all_no_parameters() {
         assert_success 0 "Correctly handled no parameters"
     fi
 
-    teardown_test_env
 }
 
 #==============================================================================
@@ -90,7 +82,6 @@ test_require_all_no_parameters() {
 #==============================================================================
 
 test_require_valid_success() {
-    setup_test_env
 
     PORT="443"
 
@@ -100,11 +91,9 @@ test_require_valid_success() {
         assert_failure 1 "require_valid failed unexpectedly"
     fi
 
-    teardown_test_env
 }
 
 test_require_valid_invalid_value() {
-    setup_test_env
 
     PORT="99999"
 
@@ -114,11 +103,9 @@ test_require_valid_invalid_value() {
         assert_success 0 "Correctly rejected invalid port"
     fi
 
-    teardown_test_env
 }
 
 test_require_valid_empty_value() {
-    setup_test_env
 
     PORT=""
 
@@ -128,7 +115,6 @@ test_require_valid_empty_value() {
         assert_success 0 "Correctly rejected empty value"
     fi
 
-    teardown_test_env
 }
 
 #==============================================================================
@@ -136,18 +122,15 @@ test_require_valid_empty_value() {
 #==============================================================================
 
 test_sanitize_input_clean() {
-    setup_test_env
 
     input="clean-input_123"
     result=$(sanitize_input "$input")
 
     assert_equals "$result" "$input" "Clean input should pass through unchanged"
 
-    teardown_test_env
 }
 
 test_sanitize_input_with_semicolon() {
-    setup_test_env
 
     input="test;command"
     result=$(sanitize_input "$input")
@@ -155,51 +138,42 @@ test_sanitize_input_with_semicolon() {
     assert_not_equals "$result" "$input" "Should sanitize semicolon"
     assert_not_contains "$result" ";" "Should remove semicolon"
 
-    teardown_test_env
 }
 
 test_sanitize_input_with_pipe() {
-    setup_test_env
 
     input="test|command"
     result=$(sanitize_input "$input")
 
     assert_not_contains "$result" "|" "Should remove pipe"
 
-    teardown_test_env
 }
 
 test_sanitize_input_with_backtick() {
-    setup_test_env
 
     input="test\`command\`"
     result=$(sanitize_input "$input")
 
     assert_not_contains "$result" "\`" "Should remove backticks"
 
-    teardown_test_env
 }
 
 test_sanitize_input_with_dollar_paren() {
-    setup_test_env
 
     input="test\$(command)"
     result=$(sanitize_input "$input")
 
     assert_not_contains "$result" "\$(" "Should remove command substitution"
 
-    teardown_test_env
 }
 
 test_sanitize_input_empty() {
-    setup_test_env
 
     input=""
     result=$(sanitize_input "$input")
 
     assert_equals "$result" "" "Empty input should return empty"
 
-    teardown_test_env
 }
 
 #==============================================================================
@@ -207,7 +181,6 @@ test_sanitize_input_empty() {
 #==============================================================================
 
 test_validate_file_integrity_both_missing() {
-    setup_test_env
 
     cert="/tmp/missing_cert_$$.pem"
     key="/tmp/missing_key_$$.pem"
@@ -218,11 +191,9 @@ test_validate_file_integrity_both_missing() {
         assert_success 0 "Correctly failed for missing files"
     fi
 
-    teardown_test_env
 }
 
 test_validate_file_integrity_cert_missing() {
-    setup_test_env
 
     cert="/tmp/missing_cert_$$.pem"
     key="/tmp/test_key_$$.pem"
@@ -235,11 +206,9 @@ test_validate_file_integrity_cert_missing() {
     fi
 
     rm -f "$key"
-    teardown_test_env
 }
 
 test_validate_file_integrity_key_missing() {
-    setup_test_env
 
     cert="/tmp/test_cert_$$.pem"
     key="/tmp/missing_key_$$.pem"
@@ -252,11 +221,9 @@ test_validate_file_integrity_key_missing() {
     fi
 
     rm -f "$cert"
-    teardown_test_env
 }
 
 test_validate_file_integrity_empty_cert() {
-    setup_test_env
 
     cert="/tmp/test_cert_$$.pem"
     key="/tmp/test_key_$$.pem"
@@ -270,7 +237,6 @@ test_validate_file_integrity_empty_cert() {
     fi
 
     rm -f "$cert" "$key"
-    teardown_test_env
 }
 
 #==============================================================================
@@ -278,7 +244,6 @@ test_validate_file_integrity_empty_cert() {
 #==============================================================================
 
 test_validate_files_integrity_missing_files() {
-    setup_test_env
 
     if validate_files_integrity "/tmp/missing1_$$" "/tmp/missing2_$$" 2>/dev/null; then
         assert_failure 1 "Should fail for missing files"
@@ -286,7 +251,6 @@ test_validate_files_integrity_missing_files() {
         assert_success 0 "Correctly failed for missing files"
     fi
 
-    teardown_test_env
 }
 
 #==============================================================================
@@ -294,7 +258,6 @@ test_validate_files_integrity_missing_files() {
 #==============================================================================
 
 test_validate_menu_choice_valid() {
-    setup_test_env
 
     if validate_menu_choice "1" "3"; then
         assert_success 0 "Should accept valid choice within range"
@@ -302,11 +265,9 @@ test_validate_menu_choice_valid() {
         assert_failure 1 "Valid choice rejected"
     fi
 
-    teardown_test_env
 }
 
 test_validate_menu_choice_too_low() {
-    setup_test_env
 
     if validate_menu_choice "0" "3" 2>/dev/null; then
         assert_failure 1 "Should reject choice below min"
@@ -314,11 +275,9 @@ test_validate_menu_choice_too_low() {
         assert_success 0 "Correctly rejected choice below min"
     fi
 
-    teardown_test_env
 }
 
 test_validate_menu_choice_too_high() {
-    setup_test_env
 
     if validate_menu_choice "4" "3" 2>/dev/null; then
         assert_failure 1 "Should reject choice above max"
@@ -326,11 +285,9 @@ test_validate_menu_choice_too_high() {
         assert_success 0 "Correctly rejected choice above max"
     fi
 
-    teardown_test_env
 }
 
 test_validate_menu_choice_non_numeric() {
-    setup_test_env
 
     if validate_menu_choice "abc" "3" 2>/dev/null; then
         assert_failure 1 "Should reject non-numeric choice"
@@ -338,11 +295,9 @@ test_validate_menu_choice_non_numeric() {
         assert_success 0 "Correctly rejected non-numeric choice"
     fi
 
-    teardown_test_env
 }
 
 test_validate_menu_choice_empty() {
-    setup_test_env
 
     if validate_menu_choice "" "3" 2>/dev/null; then
         assert_failure 1 "Should reject empty choice"
@@ -350,7 +305,6 @@ test_validate_menu_choice_empty() {
         assert_success 0 "Correctly rejected empty choice"
     fi
 
-    teardown_test_env
 }
 
 #==============================================================================
@@ -358,7 +312,6 @@ test_validate_menu_choice_empty() {
 #==============================================================================
 
 test_validate_transport_security_pairing_ws_with_tls() {
-    setup_test_env
 
     transport="ws"
     security="tls"
@@ -369,11 +322,9 @@ test_validate_transport_security_pairing_ws_with_tls() {
         assert_failure 1 "Valid WS+TLS pairing rejected"
     fi
 
-    teardown_test_env
 }
 
 test_validate_transport_security_pairing_tcp_with_reality() {
-    setup_test_env
 
     transport="tcp"
     security="reality"
@@ -384,11 +335,9 @@ test_validate_transport_security_pairing_tcp_with_reality() {
         assert_failure 1 "Valid TCP+Reality pairing rejected"
     fi
 
-    teardown_test_env
 }
 
 test_validate_transport_security_pairing_invalid() {
-    setup_test_env
 
     transport="ws"
     security="reality"
@@ -399,7 +348,6 @@ test_validate_transport_security_pairing_invalid() {
         assert_success 0 "Correctly rejected invalid pairing"
     fi
 
-    teardown_test_env
 }
 
 #==============================================================================
