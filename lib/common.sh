@@ -74,6 +74,10 @@ declare -r CADDY_CERT_WAIT_TIMEOUT_SEC=60
 # Check for log rotation every 100 writes (1% overhead - negligible performance impact)
 declare -r LOG_ROTATION_CHECK_INTERVAL=100
 
+# Log viewing limits
+declare -r LOG_VIEW_MAX_LINES=10000
+declare -r LOG_VIEW_DEFAULT_HISTORY="5 minutes ago"
+
 #==============================================================================
 # Reality Protocol Constants
 #==============================================================================
@@ -97,6 +101,48 @@ declare -r REALITY_FINGERPRINT_CHROME="chrome"
 declare -r REALITY_FINGERPRINT_FIREFOX="firefox"
 declare -r REALITY_FINGERPRINT_SAFARI="safari"
 declare -r REALITY_FINGERPRINT_DEFAULT="$REALITY_FINGERPRINT_CHROME"
+
+# X25519 key validation (base64url-encoded 32-byte keys)
+declare -r X25519_KEY_MIN_LENGTH=42
+declare -r X25519_KEY_MAX_LENGTH=44
+declare -r X25519_KEY_BYTES=32
+
+#==============================================================================
+# Certificate Management Constants
+#==============================================================================
+
+# Certificate expiration warning threshold
+declare -r CERT_EXPIRY_WARNING_DAYS=30
+declare -r CERT_EXPIRY_WARNING_SEC=$((CERT_EXPIRY_WARNING_DAYS * 86400))  # 2592000 seconds
+
+#==============================================================================
+# Backup Configuration Constants
+#==============================================================================
+
+# Backup encryption password generation
+declare -r BACKUP_PASSWORD_RANDOM_BYTES=48
+declare -r BACKUP_PASSWORD_LENGTH=64
+declare -r BACKUP_PASSWORD_MIN_LENGTH=32
+
+#==============================================================================
+# Caddy Configuration Constants
+#==============================================================================
+
+# Caddy default ports
+declare -r CADDY_HTTP_PORT_DEFAULT=80
+declare -r CADDY_HTTPS_PORT_DEFAULT=8445
+declare -r CADDY_FALLBACK_PORT_DEFAULT=8080
+
+# Caddy service wait times
+declare -r CADDY_STARTUP_WAIT_SEC=2
+declare -r CADDY_CERT_POLL_INTERVAL_SEC=3
+
+#==============================================================================
+# Network and Download Constants
+#==============================================================================
+
+# HTTP download timeout (for large file downloads)
+declare -r HTTP_DOWNLOAD_TIMEOUT_SEC=30
 
 #==============================================================================
 # Global Variables (from environment)
@@ -177,6 +223,36 @@ get_file_size() {
   # Linux: stat -c%s
   # BSD/macOS: stat -f%z
   stat -c%s "$file" 2>/dev/null || stat -f%z "$file" 2>/dev/null || echo "0"
+}
+
+#------------------------------------------------------------------------------
+# get_file_mtime - Get file modification time (cross-platform)
+#
+# Usage:
+#   mtime=$(get_file_mtime "/path/to/file")
+#
+# Returns:
+#   Modification time in YYYY-MM-DD HH:MM:SS format (or empty string on error)
+#
+# Examples:
+#   date=$(get_file_mtime "/etc/sing-box/config.json")
+#   # Output: 2025-11-18 10:30:45
+#------------------------------------------------------------------------------
+get_file_mtime() {
+  local file="$1"
+
+  # Validate file exists
+  [[ -f "$file" ]] || {
+    echo ""
+    return 1
+  }
+
+  # Cross-platform modification time retrieval
+  # Linux: stat -c %y (returns: YYYY-MM-DD HH:MM:SS.nanoseconds +timezone)
+  # BSD/macOS: stat -f %Sm (returns: format depends on -t option)
+  stat -c %y "$file" 2>/dev/null | cut -d' ' -f1,2 | cut -d'.' -f1 || \
+  stat -f %Sm "$file" 2>/dev/null || \
+  echo ""
 }
 
 #==============================================================================

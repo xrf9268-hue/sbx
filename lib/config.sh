@@ -460,10 +460,9 @@ write_config() {
   # Validate certificate configuration if provided
   _validate_certificate_config "${CERT_FULLCHAIN:-}" "${CERT_KEY:-}"
 
-  # Create temporary file for atomic write with secure permissions
+  # Create temporary file for atomic write with secure permissions (600 automatic)
   local temp_conf
-  temp_conf=$(mktemp) || die "Failed to create secure temporary file"
-  chmod 600 "$temp_conf" || die "Failed to set secure permissions on temporary file"
+  temp_conf=$(create_temp_file "config") || die "Failed to create secure temporary file"
 
   # Setup automatic cleanup on function exit/error
   cleanup_write_config() {

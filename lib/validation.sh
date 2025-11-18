@@ -146,8 +146,8 @@ validate_cert_files() {
   fi
 
   # Step 4: Certificate expiration check (warning only)
-  if ! openssl x509 -in "$fullchain" -checkend 2592000 -noout 2>/dev/null; then
-    warn "Certificate will expire within 30 days"
+  if ! openssl x509 -in "$fullchain" -checkend "$CERT_EXPIRY_WARNING_SEC" -noout 2>/dev/null; then
+    warn "Certificate will expire within ${CERT_EXPIRY_WARNING_DAYS} days"
   fi
 
   # Step 5: Certificate-Key matching validation
@@ -405,17 +405,17 @@ validate_reality_keypair() {
   local priv_len="${#priv}"
   local pub_len="${#pub}"
 
-  if [[ $priv_len -lt 42 || $priv_len -gt 44 ]]; then
+  if [[ $priv_len -lt "$X25519_KEY_MIN_LENGTH" || $priv_len -gt "$X25519_KEY_MAX_LENGTH" ]]; then
     err "Private key has invalid length: $priv_len"
-    err "Expected: 42-44 characters (X25519 key = 32 bytes base64url-encoded)"
+    err "Expected: ${X25519_KEY_MIN_LENGTH}-${X25519_KEY_MAX_LENGTH} characters (X25519 key = ${X25519_KEY_BYTES} bytes base64url-encoded)"
     err ""
     err "Generate valid keypair:"
     err "  sing-box generate reality-keypair"
     return 1
   fi
-  if [[ $pub_len -lt 42 || $pub_len -gt 44 ]]; then
+  if [[ $pub_len -lt "$X25519_KEY_MIN_LENGTH" || $pub_len -gt "$X25519_KEY_MAX_LENGTH" ]]; then
     err "Public key has invalid length: $pub_len"
-    err "Expected: 42-44 characters (X25519 key = 32 bytes base64url-encoded)"
+    err "Expected: ${X25519_KEY_MIN_LENGTH}-${X25519_KEY_MAX_LENGTH} characters (X25519 key = ${X25519_KEY_BYTES} bytes base64url-encoded)"
     err ""
     err "Generate valid keypair:"
     err "  sing-box generate reality-keypair"
@@ -425,61 +425,6 @@ validate_reality_keypair() {
   return 0
 }
 
-# Validate transport+security+flow pairing for VLESS
-# Vision flow requires TCP transport with Reality security
-validate_transport_security_pairing() {
-  local transport="${1:-tcp}"  # Default to TCP
-  local security="${2:-}"      # TLS, Reality, or none
-  local flow="${3:-}"          # xtls-rprx-vision or empty
-
-  # Validate Vision flow requirements
-  if [[ "$flow" == "xtls-rprx-vision" ]]; then
-    # Vision REQUIRES TCP transport
-    if [[ "$transport" != "tcp" ]]; then
-      err "Vision flow (xtls-rprx-vision) requires TCP transport, got: $transport"
-      err "Valid combinations:"
-      err "  - Transport: tcp, Security: reality, Flow: xtls-rprx-vision"
-      return 1
-    fi
-
-    # Vision REQUIRES Reality security
-    if [[ "$security" != "reality" ]]; then
-      err "Vision flow (xtls-rprx-vision) requires Reality security, got: $security"
-      err "For TLS security, use flow=\"\" (empty flow field)"
-      return 1
-    fi
-  fi
-
-  # Validate Reality security requirements
-  if [[ "$security" == "reality" ]]; then
-    # Reality works with TCP (and theoretically others, but Vision requires TCP)
-    if [[ -n "$flow" && "$flow" != "xtls-rprx-vision" ]]; then
-      warn "Reality security with non-Vision flow: $flow"
-      warn "Common configuration uses flow=\"xtls-rprx-vision\" with Reality"
-    fi
-  fi
-
-  # Validate incompatible combinations
-  case "$transport:$security" in
-    "ws:reality")
-      err "WebSocket transport is incompatible with Reality security"
-      err "Use: ws+tls or tcp+reality"
-      return 1
-      ;;
-    "grpc:reality")
-      err "gRPC transport is incompatible with Reality security"
-      err "Use: grpc+tls or tcp+reality"
-      return 1
-      ;;
-    "http:reality")
-      err "HTTP transport is incompatible with Reality security"
-      err "Use: tcp+reality for Vision protocol"
-      return 1
-      ;;
-  esac
-
-  return 0
-}
 
 #==============================================================================
 # User Input Validation

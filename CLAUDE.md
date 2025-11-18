@@ -217,6 +217,61 @@ trap 'rm -rf "$tmpfile" "$tmpdir"' EXIT
 jq -n --arg uuid "$UUID" '{users: [{uuid: $uuid}]}'
 ```
 
+### Error Handling Patterns
+
+**Standard patterns for consistent error handling:**
+
+```bash
+# Pattern A: Fatal errors (use die for immediate exit)
+# Best for: Unrecoverable errors, prerequisite failures
+command || die "Error message"
+validate_config || die "Configuration invalid"
+
+# Pattern B: Recoverable errors with detailed context
+# Best for: Multi-line error explanations, complex validation
+if ! function_call; then
+  err "Primary error message"
+  err "Additional context line 1"
+  err "Additional context line 2"
+  return 1
+fi
+
+# Pattern C: Recoverable errors with cleanup
+# Best for: Errors requiring resource cleanup, single-line messages
+function_call || {
+  err "Error message"
+  cleanup_resources
+  return 1
+}
+```
+
+**Pattern Selection Guidelines:**
+- **Use Pattern A** when errors are fatal and script should exit immediately
+- **Use Pattern B** when errors are recoverable and need detailed explanation
+- **Use Pattern C** when errors need resource cleanup before returning
+- **NEVER mix** patterns within the same function for consistency
+
+**Examples in Codebase:**
+```bash
+# Pattern A (lib/service.sh): Fatal service errors
+systemctl start sing-box || die "Failed to start sing-box service"
+
+# Pattern B (lib/validation.sh): Detailed validation errors
+if [[ $priv_len -lt "$X25519_KEY_MIN_LENGTH" ]]; then
+  err "Private key has invalid length: $priv_len"
+  err "Expected: ${X25519_KEY_MIN_LENGTH}-${X25519_KEY_MAX_LENGTH} characters"
+  err "Generate valid keypair: sing-box generate reality-keypair"
+  return 1
+fi
+
+# Pattern C (lib/config.sh): Errors with cleanup
+write_config || {
+  err "Failed to write configuration"
+  rm -f "$temp_conf"
+  return 1
+}
+```
+
 ### Common Bash Pitfalls (CI/CD)
 ```bash
 # WRONG - Fails in bash -e when count=0
