@@ -20,6 +20,7 @@ set -euo pipefail
 # Download configuration
 readonly DOWNLOAD_CONNECT_TIMEOUT_SEC=10
 readonly DOWNLOAD_MAX_TIMEOUT_SEC=30
+readonly HTTP_DOWNLOAD_TIMEOUT_SEC=30  # For safe_http_get() during bootstrap
 readonly MIN_MODULE_FILE_SIZE_BYTES=100
 readonly MIN_MANAGER_FILE_SIZE_BYTES=5000  # Manager script validation (~15KB expected)
 
