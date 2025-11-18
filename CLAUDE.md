@@ -133,6 +133,34 @@ When adding constants or functions that are:
 **Implemented Fixes:**
 - Fix 1: `get_file_size()` function - Available before module loading
 - Fix 2: `HTTP_DOWNLOAD_TIMEOUT_SEC` constant - Available for safe_http_get() (commit a078273)
+- Fix 3: `url` variable initialization - Prevent unbound variable in conditional flow (install_multi.sh:836)
+
+### Variable Initialization Pattern (Critical for set -u)
+
+**When declaring local variables used in conditionals:**
+```bash
+# ❌ WRONG: Unbound if condition false
+if [[ -n "$some_condition" ]]; then
+    local var=$(some_command)
+fi
+if [[ -z "$var" ]]; then  # ERROR: var unbound if condition was false
+    ...
+fi
+
+# ✅ CORRECT: Always initialize
+local var=""
+if [[ -n "$some_condition" ]]; then
+    var=$(some_command)
+fi
+if [[ -z "$var" ]]; then  # SAFE: var is always defined
+    ...
+fi
+
+# ✅ ALSO CORRECT: Initialize at declaration
+local var="" other="" more=""
+```
+
+**Rule**: All local variables MUST be initialized (even to empty string) when using `set -u`.
 
 **Error Signatures:**
 ```
@@ -142,6 +170,10 @@ get_file_size: command not found
 # HTTP_DOWNLOAD_TIMEOUT_SEC error
 HTTP_DOWNLOAD_TIMEOUT_SEC: unbound variable
 [ERR] Failed to fetch release information from GitHub API
+
+# url unbound variable error
+/dev/fd/63: line 870: url: unbound variable
+[ERR] Script execution failed with exit code 1
 ```
 
 ## Recent Improvements (2025-11-18)

@@ -833,7 +833,7 @@ download_singbox() {
         fi
     fi
 
-    local arch libc_suffix tmp api url tag raw
+    local arch libc_suffix tmp api url="" tag raw
     arch="$(detect_arch)"
     libc_suffix="$(detect_libc)"  # "-musl" or ""
     tmp=$(create_temp_dir "download") || die "Failed to create temporary directory"

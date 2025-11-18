@@ -457,7 +457,7 @@ fi
 # Last resort: search with safety limits
 if [[ ! -d "$CADDY_CERT_DIR" ]]; then
     if [[ -d "${CADDY_DATA_DIR}/certificates" ]]; then
-        local found_dir
+        local found_dir=""
         found_dir=$(find "${CADDY_DATA_DIR}/certificates" -maxdepth 3 -type d -name "${DOMAIN}" -print -quit 2>/dev/null)
         if [[ -n "$found_dir" && -d "$found_dir" ]]; then
             CADDY_CERT_DIR="$found_dir"
