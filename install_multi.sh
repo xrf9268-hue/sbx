@@ -322,8 +322,8 @@ _show_syntax_error() {
 # Smart module loader: downloads modules if not present (for one-liner install)
 _load_modules() {
     local github_repo="https://raw.githubusercontent.com/xrf9268-hue/sbx/main"
-    # Module loading order: common loads logging and generators, tools after common
-    local modules=(common logging generators tools retry download network validation checksum version certificate caddy config config_validator service ui backup export messages)
+    # Module loading order: colors first (required by common and logging), then common loads logging and generators, tools after common
+    local modules=(colors common logging generators tools retry download network validation checksum version certificate caddy config config_validator schema_validator service ui backup export messages)
     local temp_lib_dir=""
 
     # Check if lib directory exists
