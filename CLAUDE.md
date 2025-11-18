@@ -554,7 +554,9 @@ docker run --rm -it ubuntu:latest bash -c \
   "curl -fsSL ... | bash"
 ```
 
-### Bootstrapping Fix (get_file_size)
+### Bootstrapping Fixes
+
+#### Fix 1: get_file_size Function
 **Status:** ✅ Implemented
 **Impact:** CRITICAL - Fixes one-liner installation
 
@@ -570,6 +572,41 @@ docker run --rm -it ubuntu:latest bash -c \
 - Maintains cross-platform compatibility (Linux/BSD/macOS)
 
 **Reference:** See `docs/INSTALLATION_SCRIPT_IMPROVEMENTS.md` for detailed analysis
+
+#### Fix 2: HTTP_DOWNLOAD_TIMEOUT_SEC Constant
+**Status:** ✅ Implemented (2025-11-18)
+**Impact:** CRITICAL - Fixes one-liner installation
+
+- Added early `HTTP_DOWNLOAD_TIMEOUT_SEC=30` constant before module loading
+- Used by `safe_http_get()` during version resolution
+- Prevents "unbound variable" errors during bootstrap
+- Conditional declaration in lib/common.sh avoids readonly conflicts
+
+**Technical Details:**
+- Constant needed when `safe_http_get()` called during version resolution
+- Previously caused bootstrap failure with "HTTP_DOWNLOAD_TIMEOUT_SEC: unbound variable"
+- Now available in install_multi.sh early constants (line 23)
+- lib/common.sh checks if already defined before declaring
+
+**Error Signature:**
+```
+/tmp/sbx-install-21587/lib/network.sh: line 282: HTTP_DOWNLOAD_TIMEOUT_SEC: unbound variable
+[ERR] Failed to fetch release information from GitHub API
+```
+
+**Bootstrap Pattern (Lessons Learned):**
+When adding constants or functions that are:
+1. Defined in `lib/common.sh` or other modules
+2. Used during early bootstrap (before module loading)
+3. Called from sourced modules during initialization
+
+**Apply this pattern:**
+1. Add to `install_multi.sh` early constants section (lines 16-29)
+2. Make module declaration conditional: `if [[ -z "${VAR:-}" ]]; then declare -r VAR=value; fi`
+3. Document in commit message and CLAUDE.md
+4. Test bootstrap scenario: one-liner installation without git clone
+
+**Related Commit:** a078273
 
 ## Version Information
 
