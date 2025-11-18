@@ -24,6 +24,9 @@ readonly HTTP_DOWNLOAD_TIMEOUT_SEC=30  # For safe_http_get() during bootstrap
 readonly MIN_MODULE_FILE_SIZE_BYTES=100
 readonly MIN_MANAGER_FILE_SIZE_BYTES=5000  # Manager script validation (~15KB expected)
 
+# Network configuration
+readonly NETWORK_TIMEOUT_SEC=5  # Used by get_public_ip() during bootstrap
+
 # File permissions (octal)
 readonly SECURE_DIR_PERMISSIONS=700
 readonly SECURE_FILE_PERMISSIONS=600

@@ -44,7 +44,8 @@ declare -r CERT_DIR_BASE="${CERT_DIR_BASE:-/etc/ssl/sbx}"
 declare -r LOG_LEVEL="${LOG_LEVEL:-warn}"
 
 # Operation timeouts and retry limits
-declare -r NETWORK_TIMEOUT_SEC=5
+# NETWORK_TIMEOUT_SEC defined in install_multi.sh early constants for bootstrap
+[[ -z "${NETWORK_TIMEOUT_SEC:-}" ]] && declare -r NETWORK_TIMEOUT_SEC=5
 declare -r SERVICE_STARTUP_MAX_WAIT_SEC=10
 declare -r SERVICE_PORT_VALIDATION_MAX_RETRIES=5
 declare -r PORT_ALLOCATION_MAX_RETRIES=3
