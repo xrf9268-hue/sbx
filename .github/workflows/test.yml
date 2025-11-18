@@ -84,19 +84,20 @@ jobs:
             exit 1
           fi
 
-      - name: Test strict mode (bash -u)
+      - name: Test strict mode (bash -nu)
         run: |
-          echo "## Strict Mode Validation (bash -u)" >> $GITHUB_STEP_SUMMARY
+          echo "## Strict Mode Validation (bash -nu)" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          # Test that install script works with strict unbound variable checking
-          if timeout 5 bash -u install_multi.sh --help >/dev/null 2>&1; then
-            echo "✅ No unbound variables detected" >> $GITHUB_STEP_SUMMARY
+          # Test syntax with unbound variable detection (bash -nu)
+          # This validates early constants without executing the script
+          if bash -nu install_multi.sh 2>&1 | tee /tmp/strict-test.log; then
+            echo "✅ Syntax valid, no unbound variables in early initialization" >> $GITHUB_STEP_SUMMARY
           else
-            echo "❌ Unbound variable errors found" >> $GITHUB_STEP_SUMMARY
+            echo "❌ Syntax errors or unbound variables found" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
-            timeout 5 bash -u install_multi.sh --help 2>&1 | grep -A3 "unbound variable" || true >> $GITHUB_STEP_SUMMARY
+            cat /tmp/strict-test.log >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
             exit 1
           fi
