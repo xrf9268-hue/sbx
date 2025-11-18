@@ -28,6 +28,27 @@ readonly SECURE_DIR_PERMISSIONS=700
 readonly SECURE_FILE_PERMISSIONS=600
 
 #==============================================================================
+# Early Helper Functions (needed before module loading)
+#==============================================================================
+
+# Temporary get_file_size implementation for bootstrapping
+# This will be overridden by lib/common.sh after module loading
+get_file_size() {
+  local file="$1"
+
+  # Validate file exists
+  [[ -f "$file" ]] || {
+    echo "0"
+    return 1
+  }
+
+  # Cross-platform file size retrieval
+  # Linux: stat -c%s
+  # BSD/macOS: stat -f%z
+  stat -c%s "$file" 2>/dev/null || stat -f%z "$file" 2>/dev/null || echo "0"
+}
+
+#==============================================================================
 # Module Loading with Smart Download
 #==============================================================================
 
@@ -113,6 +134,7 @@ _download_modules_parallel() {
 
     # Export function and variables for subshells
     export -f _download_single_module
+    export -f get_file_size
     export temp_lib_dir github_repo
     export DOWNLOAD_CONNECT_TIMEOUT_SEC DOWNLOAD_MAX_TIMEOUT_SEC MIN_MODULE_FILE_SIZE_BYTES
 
