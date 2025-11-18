@@ -17,6 +17,8 @@ permissions:
 env:
   SINGBOX_MIN_VERSION: "1.8.0"
   SINGBOX_RECOMMENDED_VERSION: "1.12.0"
+  JQ_VERSION: "1.6"
+  OPENSSL_VERSION: "3.0"
 
 jobs:
   unit-tests:
@@ -26,23 +28,24 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           submodules: recursive
 
       - name: Cache dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
         with:
           path: |
             ~/.cache/apt
-          key: ${{ runner.os }}-test-deps-${{ hashFiles('.github/workflows/test.yml') }}
+          key: ${{ runner.os }}-test-deps-v1-${{ hashFiles('.github/workflows/test.yml') }}
           restore-keys: |
+            ${{ runner.os }}-test-deps-v1-
             ${{ runner.os }}-test-deps-
 
       - name: Install dependencies
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y jq openssl
+          sudo apt-get install -y jq=${JQ_VERSION}* openssl=${OPENSSL_VERSION}*
           jq --version
           openssl version
 
@@ -72,16 +75,16 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           submodules: recursive
 
       - name: Cache sing-box binary
         id: cache-singbox
-        uses: actions/cache@v4
+        uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
         with:
           path: /tmp/sing-box-download
-          key: ${{ runner.os }}-singbox-${{ matrix.version }}-${{ hashFiles('.github/workflows/test.yml') }}
+          key: ${{ runner.os }}-singbox-${{ matrix.version }}-v1-${{ hashFiles('.github/workflows/test.yml') }}
 
       - name: Install sing-box ${{ matrix.version }}
         if: steps.cache-singbox.outputs.cache-hit != 'true'
@@ -107,7 +110,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y jq openssl
+          sudo apt-get install -y jq=${JQ_VERSION}* openssl=${OPENSSL_VERSION}*
 
       - name: Test Reality configuration generation
         run: |
@@ -229,16 +232,16 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           submodules: recursive
 
       - name: Cache sing-box binary
         id: cache-singbox
-        uses: actions/cache@v4
+        uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
         with:
           path: /tmp/sing-box-download
-          key: ${{ runner.os }}-singbox-latest-${{ hashFiles('.github/workflows/test.yml') }}
+          key: ${{ runner.os }}-singbox-latest-v1-${{ hashFiles('.github/workflows/test.yml') }}
 
       - name: Install sing-box
         if: steps.cache-singbox.outputs.cache-hit != 'true'
@@ -257,7 +260,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y jq openssl
+          sudo apt-get install -y jq=${JQ_VERSION}* openssl=${OPENSSL_VERSION}*
 
       - name: Test Version Compatibility
         run: |
@@ -346,7 +349,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Generate coverage report
         run: |
