@@ -108,11 +108,11 @@ EOF
 
     if [[ -z "$password" ]]; then
       # Generate cryptographically secure password with full 256-bit entropy
-      # 48 bytes (384 bits) of random data, base64 encoded, then truncated to 64 chars
-      password=$(openssl rand -base64 48 | tr -d '\n' | head -c 64)
+      # Uses constants: BACKUP_PASSWORD_RANDOM_BYTES=48, BACKUP_PASSWORD_LENGTH=64
+      password=$(openssl rand -base64 "$BACKUP_PASSWORD_RANDOM_BYTES" | tr -d '\n' | head -c "$BACKUP_PASSWORD_LENGTH")
 
-      # Validate password strength
-      if [[ ${#password} -lt 32 ]]; then
+      # Validate password strength (minimum BACKUP_PASSWORD_MIN_LENGTH=32)
+      if [[ ${#password} -lt "$BACKUP_PASSWORD_MIN_LENGTH" ]]; then
         die "Failed to generate strong encryption password (insufficient entropy)"
       fi
 
@@ -341,7 +341,7 @@ backup_list() {
     local size
     size=$(du -h "$backup_file" | cut -f1)
     local date
-    date=$(stat -c %y "$backup_file" 2>/dev/null | cut -d' ' -f1,2 | cut -d'.' -f1 || stat -f %Sm "$backup_file" 2>/dev/null)
+    date=$(get_file_mtime "$backup_file")
     local encrypted=""
     [[ "$filename" =~ \.enc$ ]] && encrypted=" ${Y}[encrypted]${N}"
 

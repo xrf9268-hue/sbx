@@ -293,18 +293,18 @@ remove_service() {
 show_service_logs() {
   local lines="${1:-50}"
   local follow="${2:-false}"
-  local max_lines="${3:-10000}"  # Maximum lines to follow
+  local max_lines="${3:-$LOG_VIEW_MAX_LINES}"  # Maximum lines to follow
 
   # Validate line count
-  if ! [[ "$lines" =~ ^[0-9]+$ ]] || [[ "$lines" -gt 10000 ]]; then
-    err "Invalid line count (must be 1-10000): $lines"
+  if ! [[ "$lines" =~ ^[0-9]+$ ]] || [[ "$lines" -gt "$LOG_VIEW_MAX_LINES" ]]; then
+    err "Invalid line count (must be 1-${LOG_VIEW_MAX_LINES}): $lines"
     return 1
   fi
 
   if [[ "$follow" == "true" ]]; then
     # Limit output with head to prevent resource exhaustion
     warn "Following logs (Ctrl+C to exit, limited to $max_lines lines)..."
-    journalctl -u sing-box -f --since "5 minutes ago" | head -n "$max_lines"
+    journalctl -u sing-box -f --since "$LOG_VIEW_DEFAULT_HISTORY" | head -n "$max_lines"
   else
     journalctl -u sing-box -n "$lines" --no-pager
   fi

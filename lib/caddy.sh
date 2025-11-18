@@ -231,9 +231,9 @@ caddy_setup_auto_tls() {
   # Caddy ports (avoid conflicts with sing-box)
   # Caddy uses port 8445 for HTTPS certificate management
   # sing-box uses: 443 (Reality), 8444 (WS-TLS), 8443 (Hysteria2)
-  local caddy_http_port="${CADDY_HTTP_PORT:-80}"
-  local caddy_https_port="${CADDY_HTTPS_PORT:-8445}"
-  local caddy_fallback_port="${CADDY_FALLBACK_PORT:-8080}"
+  local caddy_http_port="${CADDY_HTTP_PORT:-$CADDY_HTTP_PORT_DEFAULT}"
+  local caddy_https_port="${CADDY_HTTPS_PORT:-$CADDY_HTTPS_PORT_DEFAULT}"
+  local caddy_fallback_port="${CADDY_FALLBACK_PORT:-$CADDY_FALLBACK_PORT_DEFAULT}"
 
   msg "  - Configuring Caddy for domain: $domain"
   info "  ℹ Caddy HTTPS port: $caddy_https_port (certificate management only)"
@@ -295,7 +295,7 @@ EOF
   }
 
   # Wait for Caddy to be ready
-  sleep 2
+  sleep "$CADDY_STARTUP_WAIT_SEC"
 
   if ! systemctl is-active caddy >/dev/null 2>&1; then
     err "Caddy service failed to start"
@@ -338,8 +338,8 @@ caddy_wait_for_cert() {
       return 0
     fi
 
-    sleep 3
-    elapsed=$((elapsed + 3))
+    sleep "$CADDY_CERT_POLL_INTERVAL_SEC"
+    elapsed=$((elapsed + CADDY_CERT_POLL_INTERVAL_SEC))
 
     if [[ $((elapsed % 15)) -eq 0 ]]; then
       msg "    Still waiting... (${elapsed}s/${max_wait}s)"

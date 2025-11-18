@@ -47,9 +47,9 @@ get_public_ip() {
   # Try multiple IP detection services for redundancy
   for service in "${services[@]}"; do
     if have curl; then
-      ip=$(timeout 5 curl -s --max-time 5 "$service" 2>/dev/null | grep -E '^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$' | head -1)
+      ip=$(timeout "$NETWORK_TIMEOUT_SEC" curl -s --max-time "$NETWORK_TIMEOUT_SEC" "$service" 2>/dev/null | grep -E '^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$' | head -1)
     elif have wget; then
-      ip=$(timeout 5 wget -qO- --timeout=5 "$service" 2>/dev/null | grep -E '^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$' | head -1)
+      ip=$(timeout "$NETWORK_TIMEOUT_SEC" wget -qO- --timeout="$NETWORK_TIMEOUT_SEC" "$service" 2>/dev/null | grep -E '^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$' | head -1)
     else
       break
     fi
@@ -279,7 +279,7 @@ safe_http_get() {
   local output_file="${2:-}"
   local max_retries=3
   local retry_count=0
-  local timeout_seconds=30
+  local timeout_seconds="${HTTP_DOWNLOAD_TIMEOUT_SEC}"
 
   # Security: Enforce HTTPS for security-critical domains
   if [[ "$url" =~ github\.com|githubusercontent\.com|cloudflare\.com ]]; then

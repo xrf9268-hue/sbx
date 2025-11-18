@@ -21,6 +21,7 @@ set -euo pipefail
 readonly DOWNLOAD_CONNECT_TIMEOUT_SEC=10
 readonly DOWNLOAD_MAX_TIMEOUT_SEC=30
 readonly MIN_MODULE_FILE_SIZE_BYTES=100
+readonly MIN_MANAGER_FILE_SIZE_BYTES=5000  # Manager script validation (~15KB expected)
 
 # File permissions (octal)
 readonly SECURE_DIR_PERMISSIONS=700
@@ -394,9 +395,9 @@ _load_modules() {
         mgr_size=$(get_file_size "${manager_file}")
         [[ "${DEBUG:-0}" == "1" ]] && echo "DEBUG: sbx-manager.sh file size: ${mgr_size} bytes" >&2
 
-        if [[ "${mgr_size}" -lt 5000 ]]; then
+        if [[ "${mgr_size}" -lt "$MIN_MANAGER_FILE_SIZE_BYTES" ]]; then
             echo "ERROR: Downloaded sbx-manager.sh is too small (${mgr_size} bytes)"
-            echo "       Expected: >5000 bytes (full version is ~15KB)"
+            echo "       Expected: >$MIN_MANAGER_FILE_SIZE_BYTES bytes (full version is ~15KB)"
             echo "       File may be corrupted or incomplete."
             exit 1
         fi
@@ -756,8 +757,7 @@ download_singbox() {
 
     local arch tmp api url tag raw
     arch="$(detect_arch)"
-    tmp="$(mktemp -d)" || die "Failed to create temporary directory"
-    chmod "${SECURE_DIR_PERMISSIONS}" "$tmp"
+    tmp=$(create_temp_dir "download") || die "Failed to create temporary directory"
 
     # Resolve version using modular version resolver
     # Supports: stable (default), latest, vX.Y.Z, X.Y.Z
@@ -980,8 +980,8 @@ install_manager_script() {
 
         # Install manager using temporary file + atomic move
         local temp_manager
-        temp_manager=$(mktemp) || die "Failed to create temporary file"
-        chmod 755 "$temp_manager"
+        temp_manager=$(create_temp_file "manager") || die "Failed to create temporary file"
+        chmod 755 "$temp_manager"  # Manager needs executable permission
         cp "$manager_template" "$temp_manager" || {
             rm -f "$temp_manager"
             die "Failed to copy manager template"
