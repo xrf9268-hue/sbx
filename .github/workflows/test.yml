@@ -59,6 +59,48 @@ jobs:
             exit 1
           fi
 
+      - name: Validate bootstrap constants
+        run: |
+          echo "## Bootstrap Constants Validation" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Prevents recurring 'unbound variable' errors during bootstrap." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if bash tests/unit/test_bootstrap_constants.sh; then
+            echo "✅ All 15 bootstrap constants properly configured" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Validated:**" >> $GITHUB_STEP_SUMMARY
+            echo "- Download constants (5)" >> $GITHUB_STEP_SUMMARY
+            echo "- Network constants (1)" >> $GITHUB_STEP_SUMMARY
+            echo "- Reality validation (2)" >> $GITHUB_STEP_SUMMARY
+            echo "- Reality config (5)" >> $GITHUB_STEP_SUMMARY
+            echo "- Permissions (2)" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Bootstrap constants validation FAILED" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**This prevents recurring unbound variable errors that have caused 6+ production bugs.**" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "See test output above for remediation steps." >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+
+      - name: Test strict mode (bash -u)
+        run: |
+          echo "## Strict Mode Validation (bash -u)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Test that install script works with strict unbound variable checking
+          if timeout 5 bash -u install_multi.sh --help >/dev/null 2>&1; then
+            echo "✅ No unbound variables detected" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Unbound variable errors found" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            timeout 5 bash -u install_multi.sh --help 2>&1 | grep -A3 "unbound variable" || true >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+
   integration-tests:
     name: Integration Tests (sing-box ${{ matrix.version }})
     runs-on: ubuntu-latest

@@ -231,16 +231,35 @@ git submodule update --remote docs/sing-box-official
 
 ## Contributing
 
-Contributions are welcome! Please:
+Contributions are welcome! **Before you start:**
 
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Run tests (`bash tests/test_reality.sh`)
-4. Commit changes (`git commit -m 'feat: add amazing feature'`)
-5. Push to branch (`git push origin feature/amazing-feature`)
-6. Open a Pull Request
+### 🚨 REQUIRED: Install Git Hooks
 
-See [CLAUDE.md](CLAUDE.md) for development guidelines and coding standards.
+```bash
+# One-time setup (MANDATORY)
+bash hooks/install-hooks.sh
+```
+
+This installs pre-commit hooks that **automatically enforce code quality** and prevent recurring bugs. The hooks have prevented **6+ production failures** in the past.
+
+### Development Workflow
+
+1. **Fork the repository**
+2. **Install git hooks** (see above - **REQUIRED**)
+3. **Create feature branch**: `git checkout -b feature/amazing-feature`
+4. **Make changes** following code standards
+5. **Run tests**: `bash tests/test-runner.sh unit`
+6. **Commit** (hooks run automatically): `git commit -m 'feat: add amazing feature'`
+7. **Push**: `git push origin feature/amazing-feature`
+8. **Open Pull Request**
+
+### Documentation
+
+- **Contributing Guide**: [CONTRIBUTING.md](CONTRIBUTING.md) - **Read this first!**
+- **Developer Guide**: [CLAUDE.md](CLAUDE.md) - Detailed coding standards
+- **Bootstrap Testing**: [tests/unit/README_BOOTSTRAP_TESTS.md](tests/unit/README_BOOTSTRAP_TESTS.md)
+
+**⚠️ Note:** Pull requests without git hooks installed will likely fail CI checks.
 
 ### Code Quality
 
