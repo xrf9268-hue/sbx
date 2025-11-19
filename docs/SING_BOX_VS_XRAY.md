@@ -365,7 +365,7 @@ Fix: Switch core to sing-box as described above
 4. **Install sbx-lite**
    ```bash
    # This will prompt for configuration
-   bash <(curl -fsSL https://raw.githubusercontent.com/xrf9268-hue/sbx/main/install_multi.sh)
+   bash <(curl -fsSL https://raw.githubusercontent.com/xrf9268-hue/sbx/main/install.sh)
    ```
 
 5. **Update Client-Info with Your Keys**
@@ -472,7 +472,7 @@ sudo jq -r '.inbounds[0].tls.reality.short_id[0]' /etc/sing-box/config.json | wc
 
 2. **Install sbx-lite**
    ```bash
-   bash <(curl -fsSL https://raw.githubusercontent.com/xrf9268-hue/sbx/main/install_multi.sh)
+   bash <(curl -fsSL https://raw.githubusercontent.com/xrf9268-hue/sbx/main/install.sh)
    ```
 
 3. **Get connection info**

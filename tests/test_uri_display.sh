@@ -56,7 +56,7 @@ test_print_summary_displays_reality_uri() {
     export REALITY_ONLY_MODE=1
 
     # Source the function
-    source "$SCRIPT_DIR/install_multi.sh" 2>/dev/null || true
+    source "$SCRIPT_DIR/install.sh" 2>/dev/null || true
 
     # Capture output
     local output
@@ -104,7 +104,7 @@ test_print_summary_displays_multi_protocol_uris() {
     export CERT_KEY="/etc/ssl/sbx/test.example.com/privkey.pem"
 
     # Source the function
-    source "$SCRIPT_DIR/install_multi.sh" 2>/dev/null || true
+    source "$SCRIPT_DIR/install.sh" 2>/dev/null || true
 
     # Capture output
     local output

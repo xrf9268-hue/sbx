@@ -20,7 +20,7 @@
 ### Basic Installation (Reality-only, no domain required)
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/xrf9268-hue/sbx/main/install_multi.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/xrf9268-hue/sbx/main/install.sh)
 ```
 
 After installation, connection URIs are displayed automatically. Copy and paste them into your client.
@@ -28,7 +28,7 @@ After installation, connection URIs are displayed automatically. Copy and paste 
 ### Advanced Installation (with domain for multi-protocol)
 
 ```bash
-DOMAIN=your.domain.com bash <(curl -fsSL https://raw.githubusercontent.com/xrf9268-hue/sbx/main/install_multi.sh)
+DOMAIN=your.domain.com bash <(curl -fsSL https://raw.githubusercontent.com/xrf9268-hue/sbx/main/install.sh)
 ```
 
 This enables VLESS-WS-TLS and Hysteria2 in addition to VLESS-REALITY.
@@ -111,10 +111,10 @@ Enable debug logging to diagnose problems:
 
 ```bash
 # Debug mode with timestamps
-DEBUG=1 LOG_TIMESTAMPS=1 bash <(curl -fsSL https://raw.githubusercontent.com/xrf9268-hue/sbx/main/install_multi.sh)
+DEBUG=1 LOG_TIMESTAMPS=1 bash <(curl -fsSL https://raw.githubusercontent.com/xrf9268-hue/sbx/main/install.sh)
 
 # Save debug log to file
-DEBUG=1 LOG_FILE=/tmp/install-debug.log bash <(curl -fsSL https://raw.githubusercontent.com/xrf9268-hue/sbx/main/install_multi.sh)
+DEBUG=1 LOG_FILE=/tmp/install-debug.log bash <(curl -fsSL https://raw.githubusercontent.com/xrf9268-hue/sbx/main/install.sh)
 ```
 
 ### Common Problems
@@ -164,13 +164,13 @@ LOG_LEVEL_FILTER=ERROR               # Filter by severity
 
 ```bash
 # Install latest stable version (default)
-bash <(curl -fsSL https://raw.githubusercontent.com/xrf9268-hue/sbx/main/install_multi.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/xrf9268-hue/sbx/main/install.sh)
 
 # Install specific version
-SINGBOX_VERSION=v1.10.7 bash <(curl -fsSL https://raw.githubusercontent.com/xrf9268-hue/sbx/main/install_multi.sh)
+SINGBOX_VERSION=v1.10.7 bash <(curl -fsSL https://raw.githubusercontent.com/xrf9268-hue/sbx/main/install.sh)
 
 # Install latest including pre-releases
-SINGBOX_VERSION=latest bash <(curl -fsSL https://raw.githubusercontent.com/xrf9268-hue/sbx/main/install_multi.sh)
+SINGBOX_VERSION=latest bash <(curl -fsSL https://raw.githubusercontent.com/xrf9268-hue/sbx/main/install.sh)
 ```
 
 ## System Requirements

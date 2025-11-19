@@ -28,10 +28,10 @@ test_fail() {
 }
 
 #==============================================================================
-# Helper: Extract module list from install_multi.sh
+# Helper: Extract module list from install.sh
 #==============================================================================
 get_module_list() {
-    grep "local modules=(.*)" "$SCRIPT_DIR/install_multi.sh" | \
+    grep "local modules=(.*)" "$SCRIPT_DIR/install.sh" | \
         grep "colors\|common" | \
         sed 's/.*local modules=(\(.*\))/\1/'
 }
@@ -56,7 +56,7 @@ get_module_dependencies() {
 #==============================================================================
 # Test 1: Module list extraction works
 #==============================================================================
-test_start "Can extract module list from install_multi.sh"
+test_start "Can extract module list from install.sh"
 
 module_list=$(get_module_list)
 
@@ -211,7 +211,7 @@ fi
 #==============================================================================
 # Test 6: Module count matches actual files in lib/
 #==============================================================================
-test_start "Module count in install_multi.sh matches lib/*.sh files"
+test_start "Module count in install.sh matches lib/*.sh files"
 
 actual_count=$(find "$SCRIPT_DIR/lib" -name "*.sh" -type f | wc -l)
 declared_count=${#MODULE_ARRAY[@]}
@@ -319,9 +319,9 @@ fi
 #==============================================================================
 # Test 9: sbx-manager script download is mentioned
 #==============================================================================
-test_start "install_multi.sh includes sbx-manager download logic"
+test_start "install.sh includes sbx-manager download logic"
 
-if grep -q "sbx-manager" "$SCRIPT_DIR/install_multi.sh"; then
+if grep -q "sbx-manager" "$SCRIPT_DIR/install.sh"; then
     test_pass
 else
     test_fail "sbx-manager download not found in installer"
@@ -332,7 +332,7 @@ fi
 #==============================================================================
 test_start "Parallel download function (_download_modules_parallel) exists"
 
-if grep -q "_download_modules_parallel" "$SCRIPT_DIR/install_multi.sh"; then
+if grep -q "_download_modules_parallel" "$SCRIPT_DIR/install.sh"; then
     test_pass
 else
     test_fail "Parallel download function not found"

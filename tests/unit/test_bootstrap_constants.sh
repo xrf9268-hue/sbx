@@ -6,14 +6,14 @@
 # CONTEXT: This codebase has repeatedly suffered from constants being defined in
 # lib/common.sh but used during bootstrap before modules are loaded. This has
 # caused 3+ production bugs:
-# - url variable (install_multi.sh:836)
+# - url variable (install.sh:836)
 # - HTTP_DOWNLOAD_TIMEOUT_SEC
 # - get_file_size()
 # - REALITY_SHORT_ID_MIN_LENGTH (this fix)
 # - REALITY_FLOW_VISION (this fix)
 #
 # SOLUTION: This test validates:
-# 1. All bootstrap constants are defined in install_multi.sh early section
+# 1. All bootstrap constants are defined in install.sh early section
 # 2. lib/common.sh has conditional declarations for bootstrap constants
 # 3. Script can execute with bash -u without unbound variable errors
 #
@@ -48,8 +48,8 @@ test_fail() {
 #==============================================================================
 # Bootstrap Constants Registry
 #==============================================================================
-# CRITICAL: Keep this list synchronized with install_multi.sh early constants
-# If you add a constant here, ensure it's in install_multi.sh lines 16-44
+# CRITICAL: Keep this list synchronized with install.sh early constants
+# If you add a constant here, ensure it's in install.sh lines 16-44
 
 # Download configuration constants
 DOWNLOAD_CONSTANTS=(
@@ -96,13 +96,13 @@ REQUIRED_BOOTSTRAP_CONSTANTS=(
 )
 
 #==============================================================================
-# Test 1: All bootstrap constants defined in install_multi.sh
+# Test 1: All bootstrap constants defined in install.sh
 #==============================================================================
-test_start "All bootstrap constants defined in install_multi.sh"
+test_start "All bootstrap constants defined in install.sh"
 
 missing_constants=()
 for const in "${REQUIRED_BOOTSTRAP_CONSTANTS[@]}"; do
-    if ! grep -q "^readonly ${const}=" "$SCRIPT_DIR/install_multi.sh"; then
+    if ! grep -q "^readonly ${const}=" "$SCRIPT_DIR/install.sh"; then
         missing_constants+=("$const")
     fi
 done
@@ -111,7 +111,7 @@ if [[ ${#missing_constants[@]} -eq 0 ]]; then
     test_pass
 else
     test_fail "Missing constants: ${missing_constants[*]}"
-    echo "       Add to install_multi.sh early constants section (lines 16-44)"
+    echo "       Add to install.sh early constants section (lines 16-44)"
 fi
 
 #==============================================================================
@@ -121,7 +121,7 @@ test_start "Bootstrap constants defined before module loading"
 
 late_constants=()
 for const in "${REQUIRED_BOOTSTRAP_CONSTANTS[@]}"; do
-    line_num=$(grep -n "^readonly ${const}=" "$SCRIPT_DIR/install_multi.sh" | cut -d: -f1 || echo "999999")
+    line_num=$(grep -n "^readonly ${const}=" "$SCRIPT_DIR/install.sh" | cut -d: -f1 || echo "999999")
     if [[ $line_num -gt 100 ]]; then
         late_constants+=("${const}:line${line_num}")
     fi
@@ -177,7 +177,7 @@ for const in "${REQUIRED_BOOTSTRAP_CONSTANTS[@]}"; do
     if [[ $unconditional_count -gt 0 ]]; then
         echo ""
         echo "       WARNING: ${const} has unconditional declaration in lib/common.sh"
-        echo "       This will conflict with bootstrap definition in install_multi.sh"
+        echo "       This will conflict with bootstrap definition in install.sh"
         duplicate_found=1
     fi
 done
@@ -191,12 +191,12 @@ fi
 #==============================================================================
 # Test 5: Validate script can source with strict mode
 #==============================================================================
-test_start "install_multi.sh sources successfully with strict mode"
+test_start "install.sh sources successfully with strict mode"
 
 # Test that we can source just the early constants section
 test_output=$(bash -euo pipefail -c "
     # Source just the early constants section (lines 1-100)
-    eval \"\$(sed -n '1,100p' '$SCRIPT_DIR/install_multi.sh' | grep '^readonly')\"
+    eval \"\$(sed -n '1,100p' '$SCRIPT_DIR/install.sh' | grep '^readonly')\"
 
     # Try to access each constant
     for const in ${REQUIRED_BOOTSTRAP_CONSTANTS[*]}; do
@@ -219,7 +219,7 @@ fi
 test_start "lib/common.sh sources successfully after bootstrap constants"
 
 test_output=$(bash -euo pipefail -c "
-    # Define bootstrap constants first (simulating install_multi.sh)
+    # Define bootstrap constants first (simulating install.sh)
     readonly REALITY_SHORT_ID_MIN_LENGTH=1
     readonly REALITY_SHORT_ID_MAX_LENGTH=8
     readonly REALITY_FLOW_VISION='xtls-rprx-vision'
@@ -251,7 +251,7 @@ test_start "Bootstrap functions don't use unbound variables"
 # Extract and test the early bootstrap functions
 unbound_errors=$(bash -uo pipefail -c "
     # Extract get_file_size function
-    $(sed -n '/^get_file_size() {/,/^}/p' '$SCRIPT_DIR/install_multi.sh')
+    $(sed -n '/^get_file_size() {/,/^}/p' '$SCRIPT_DIR/install.sh')
 
     # Test it with a sample file
     test_file='/tmp/test-bootstrap-\$\$.txt'
@@ -274,7 +274,7 @@ fi
 #==============================================================================
 test_start "Early constants section has documentation header"
 
-if grep -q "# Early Constants (used before module loading)" "$SCRIPT_DIR/install_multi.sh"; then
+if grep -q "# Early Constants (used before module loading)" "$SCRIPT_DIR/install.sh"; then
     test_pass
 else
     test_fail "Missing documentation header for early constants section"
@@ -306,11 +306,11 @@ fi
 #==============================================================================
 # Test 10: Comprehensive strict mode check (integration test)
 #==============================================================================
-test_start "install_multi.sh help works with bash -u (no unbound vars)"
+test_start "install.sh help works with bash -u (no unbound vars)"
 
 # Run install script with --help flag in strict mode
 # This should catch any unbound variable usage during early initialization
-help_output=$(timeout 5 bash -uo pipefail "$SCRIPT_DIR/install_multi.sh" --help 2>&1 || true)
+help_output=$(timeout 5 bash -uo pipefail "$SCRIPT_DIR/install.sh" --help 2>&1 || true)
 
 if echo "$help_output" | grep -q "unbound variable"; then
     unbound_var=$(echo "$help_output" | grep "unbound variable" | head -1)
@@ -340,7 +340,7 @@ if [[ $TESTS_FAILED -eq 0 ]]; then
     echo "✓ All bootstrap constant validation tests passed!"
     echo ""
     echo "This test suite prevents recurring 'unbound variable' errors by ensuring:"
-    echo "  1. All bootstrap constants defined in install_multi.sh early section"
+    echo "  1. All bootstrap constants defined in install.sh early section"
     echo "  2. lib/common.sh uses conditional declarations to avoid conflicts"
     echo "  3. Script executes with bash -u without errors"
     echo ""
@@ -350,7 +350,7 @@ else
     echo ""
     echo "REMEDIATION STEPS:"
     echo "  1. Review failed tests above"
-    echo "  2. Add missing constants to install_multi.sh (lines 16-44)"
+    echo "  2. Add missing constants to install.sh (lines 16-44)"
     echo "  3. Update lib/common.sh to use conditional declarations"
     echo "  4. Re-run this test: bash tests/unit/test_bootstrap_constants.sh"
     echo ""

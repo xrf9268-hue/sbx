@@ -79,7 +79,7 @@ sing-box check -c server-config.json
 sbx-lite automatically generates all materials and configurations:
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/xrf9268-hue/sbx/main/install_multi.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/xrf9268-hue/sbx/main/install.sh)
 ```
 
 **Option B: Manual Deployment**

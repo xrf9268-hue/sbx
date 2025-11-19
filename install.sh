@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# install_multi.sh v2.0 - Modular sing-box installer
+# install.sh v2.0 - Modular sing-box installer
 # One-click official sing-box with VLESS-REALITY, VLESS-WS-TLS, and Hysteria2
 #
 # Usage (install):
-#   bash install_multi.sh                                    # Interactive mode
-#   AUTO_INSTALL=1 bash install_multi.sh                     # Non-interactive (auto-detect IP)
-#   DOMAIN=example.com bash install_multi.sh                 # Full setup with domain
+#   bash install.sh                                    # Interactive mode
+#   AUTO_INSTALL=1 bash install.sh                     # Non-interactive (auto-detect IP)
+#   DOMAIN=example.com bash install.sh                 # Full setup with domain
 #   DOMAIN=example.com CERT_MODE=cf_dns CF_Token='xxx' ...  # With certificates
 #
 # Usage (uninstall):
-#   FORCE=1 bash install_multi.sh uninstall
+#   FORCE=1 bash install.sh uninstall
 
 set -euo pipefail
 
@@ -281,7 +281,7 @@ _show_download_error_help() {
     echo "  • Test connectivity: curl -I https://github.com"
     echo "  • Use git clone instead:"
     echo "    git clone https://github.com/xrf9268-hue/sbx.git"
-    echo "    cd sbx-lite && bash install_multi.sh"
+    echo "    cd sbx-lite && bash install.sh"
     echo ""
 }
 
@@ -533,13 +533,13 @@ _verify_module_apis() {
     if [[ "$all_ok" != true ]]; then
         echo ""
         echo "This may indicate:"
-        echo "  1. Module version mismatch between install_multi.sh and lib/*.sh"
+        echo "  1. Module version mismatch between install.sh and lib/*.sh"
         echo "  2. Incomplete module download"
         echo "  3. Corrupted module files"
         echo ""
         echo "Please try:"
         echo "  git clone https://github.com/xrf9268-hue/sbx.git"
-        echo "  cd sbx-lite && bash install_multi.sh"
+        echo "  cd sbx-lite && bash install.sh"
         echo ""
         exit 1
     fi

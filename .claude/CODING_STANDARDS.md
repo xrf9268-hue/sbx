@@ -77,7 +77,7 @@ fi
 ```
 
 **Real production bugs caused by this:**
-1. `url` variable (install_multi.sh:836) - Installation failed on 90% of systems
+1. `url` variable (install.sh:836) - Installation failed on 90% of systems
 2. `HTTP_DOWNLOAD_TIMEOUT_SEC` - GitHub API completely broken
 3. `get_file_size()` - Bootstrap failures preventing installation
 
@@ -117,11 +117,11 @@ fi
 **MANDATORY: Test before committing**
 ```bash
 # Test with strict mode to catch unbound variables
-bash -u install_multi.sh  # Must NOT show "unbound variable" errors
+bash -u install.sh  # Must NOT show "unbound variable" errors
 bash -u lib/your_module.sh  # Test individual modules
 
 # Syntax validation
-bash -n install_multi.sh
+bash -n install.sh
 bash -n lib/your_module.sh
 ```
 

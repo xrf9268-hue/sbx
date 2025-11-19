@@ -277,10 +277,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### ♻️ Refactored
 #### Integrated Tool Abstraction in Checksum Module
-- **Files**: `lib/checksum.sh`, `install_multi.sh`
+- **Files**: `lib/checksum.sh`, `install.sh`
 - **Changes**:
   - Updated `lib/checksum.sh` to use `crypto_sha256()` from `lib/tools.sh`
-  - Added `tools` module to loading sequence in `install_multi.sh`
+  - Added `tools` module to loading sequence in `install.sh`
   - Replaced direct sha256sum/shasum calls
   - Reduced checksum calculation from 10 lines to 5
 - **Benefits**:
@@ -314,7 +314,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Created `lib/generators.sh` (238 lines) - UUID, Reality keypair, hex string, QR code generation
   - Reduced `lib/common.sh` to core utilities only (253 lines)
   - Automatic module sourcing in `lib/common.sh` for backward compatibility
-  - Updated `install_multi.sh` to include new modules in loading sequence
+  - Updated `install.sh` to include new modules in loading sequence
 - **Benefits**:
   - 59% reduction in common.sh size (359 lines moved out)
   - Better separation of concerns (Single Responsibility Principle)
@@ -430,11 +430,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Ref**: Phase 1 Task 1.2 (HIGH priority)
 
 #### Extracted File Size Utility Function (MEDIUM)
-- **Files**: `lib/common.sh`, `install_multi.sh`
+- **Files**: `lib/common.sh`, `install.sh`
 - **Changes**:
   - Created `get_file_size()` function in lib/common.sh
   - Supports both Linux (`stat -c%s`) and BSD/macOS (`stat -f%z`)
-  - Replaced 3 duplicated implementations in install_multi.sh (lines 80, 205, 394)
+  - Replaced 3 duplicated implementations in install.sh (lines 80, 205, 394)
   - Added comprehensive documentation
   - Exported function for module use
 - **Benefits**:
@@ -499,7 +499,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Testing**: Created `tests/unit/test_strict_mode.sh` with 14 validation tests (all passing)
 
 #### Extracted Magic Numbers to Named Constants (MEDIUM PRIORITY)
-- **Scope**: `lib/common.sh`, `install_multi.sh`, `lib/validation.sh`, `lib/service.sh`
+- **Scope**: `lib/common.sh`, `install.sh`, `lib/validation.sh`, `lib/service.sh`
 - **New Constants Defined**:
   - **Download**: `DOWNLOAD_CONNECT_TIMEOUT_SEC=10`, `DOWNLOAD_MAX_TIMEOUT_SEC=30`
   - **File Sizes**: `MIN_MODULE_FILE_SIZE_BYTES=100`

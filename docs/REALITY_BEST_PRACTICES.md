@@ -360,7 +360,7 @@ sudo sysctl -p
 **Deployment:**
 ```bash
 # Using sbx-lite
-bash <(curl -fsSL https://raw.githubusercontent.com/xrf9268-hue/sbx/main/install_multi.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/xrf9268-hue/sbx/main/install.sh)
 ```
 
 ---

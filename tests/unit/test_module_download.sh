@@ -107,7 +107,7 @@ cat > "$temp_dir/module.sh" << "INNEREOF"
 SCRIPT_DIR="/tmp/module"
 INNEREOF
 
-# Source WITH protection (like install_multi.sh does now)
+# Source WITH protection (like install.sh does now)
 INSTALLER_SCRIPT_DIR="${SCRIPT_DIR}"
 source "$temp_dir/module.sh"
 SCRIPT_DIR="${INSTALLER_SCRIPT_DIR}"

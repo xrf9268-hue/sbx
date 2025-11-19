@@ -66,7 +66,7 @@ All constants defined in `lib/common.sh` and available globally after module loa
 
 **Where to define:**
 - `lib/common.sh` - Global constants used across modules
-- `install_multi.sh (early)` - Boot-time constants before module loading
+- `install.sh (early)` - Boot-time constants before module loading
 - Module-specific - Only if truly module-internal
 
 **Naming conventions:**

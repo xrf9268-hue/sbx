@@ -30,9 +30,9 @@ test_fail() {
 # Source the install script to get the bootstrap get_file_size function
 # We need to extract just the function definition, not run the whole script
 extract_bootstrap_function() {
-    # Extract get_file_size function from install_multi.sh
+    # Extract get_file_size function from install.sh
     # It's defined before module loading (lines 34-49)
-    sed -n '/^get_file_size() {/,/^}/p' "$SCRIPT_DIR/install_multi.sh"
+    sed -n '/^get_file_size() {/,/^}/p' "$SCRIPT_DIR/install.sh"
 }
 
 # Create a test environment with the bootstrap function
@@ -124,19 +124,19 @@ rm -f "$test_file"
 #==============================================================================
 # Test 6: Constants are defined correctly
 #==============================================================================
-test_start "Early constants are defined in install_multi.sh"
+test_start "Early constants are defined in install.sh"
 
 constants_found=0
-if grep -q "readonly DOWNLOAD_CONNECT_TIMEOUT_SEC=" "$SCRIPT_DIR/install_multi.sh"; then
+if grep -q "readonly DOWNLOAD_CONNECT_TIMEOUT_SEC=" "$SCRIPT_DIR/install.sh"; then
     constants_found=$((constants_found + 1))
 fi
-if grep -q "readonly DOWNLOAD_MAX_TIMEOUT_SEC=" "$SCRIPT_DIR/install_multi.sh"; then
+if grep -q "readonly DOWNLOAD_MAX_TIMEOUT_SEC=" "$SCRIPT_DIR/install.sh"; then
     constants_found=$((constants_found + 1))
 fi
-if grep -q "readonly MIN_MODULE_FILE_SIZE_BYTES=" "$SCRIPT_DIR/install_multi.sh"; then
+if grep -q "readonly MIN_MODULE_FILE_SIZE_BYTES=" "$SCRIPT_DIR/install.sh"; then
     constants_found=$((constants_found + 1))
 fi
-if grep -q "readonly SECURE_DIR_PERMISSIONS=" "$SCRIPT_DIR/install_multi.sh"; then
+if grep -q "readonly SECURE_DIR_PERMISSIONS=" "$SCRIPT_DIR/install.sh"; then
     constants_found=$((constants_found + 1))
 fi
 
@@ -178,8 +178,8 @@ fi
 #==============================================================================
 test_start "get_file_size can be exported for parallel downloads"
 
-# Check if install_multi.sh exports the function
-if grep -q "export -f get_file_size" "$SCRIPT_DIR/install_multi.sh"; then
+# Check if install.sh exports the function
+if grep -q "export -f get_file_size" "$SCRIPT_DIR/install.sh"; then
     test_pass
 else
     test_fail "get_file_size not exported (needed for parallel downloads)"

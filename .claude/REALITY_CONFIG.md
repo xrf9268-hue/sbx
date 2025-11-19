@@ -66,11 +66,11 @@ systemctl is-active sing-box || die "Service failed"
 
 ```bash
 # Enable full debug logging
-DEBUG=1 LOG_TIMESTAMPS=1 LOG_FILE=/tmp/debug.log bash install_multi.sh
+DEBUG=1 LOG_TIMESTAMPS=1 LOG_FILE=/tmp/debug.log bash install.sh
 
 # Check for errors
 grep -i error /tmp/debug.log
 
 # Test in strict mode (like CI)
-bash -e install_multi.sh
+bash -e install.sh
 ```
