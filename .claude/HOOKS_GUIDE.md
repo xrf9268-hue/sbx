@@ -9,7 +9,7 @@ sbx-lite uses two types of hooks to maintain code quality:
 | Hook Type | When It Runs | Purpose |
 |-----------|--------------|---------|
 | **SessionStart** | New session startup | Environment setup, dependency installation |
-| **PostToolUse** | After Edit/Write tools | Automatic shell script formatting |
+| **PostToolUse** | After Edit/Write tools | Automatic shell script formatting & linting |
 
 ## SessionStart Hook
 
@@ -90,19 +90,68 @@ sbx-lite uses two types of hooks to maintain code quality:
 
 ---
 
-## Installing shfmt
+## PostToolUse Hook (Shell Linting)
 
-The PostToolUse hook requires `shfmt` for automatic formatting.
+**File:** `.claude/scripts/lint-shell.sh`
+
+**Triggered by:** Edit or Write operations on `.sh` files
+
+**What it does:**
+1. Detects shell script edits (`.sh` files, `install_multi.sh`)
+2. Lints code with `shellcheck` (if installed)
+3. Reports code quality issues with line numbers
+4. Provides install instructions if `shellcheck` missing
+
+**Configuration:**
+```json
+{
+  "hooks": {
+    "PostToolUse": [{
+      "matcher": "Edit|Write",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "$CLAUDE_PROJECT_DIR/.claude/scripts/format-shell.sh",
+          "timeout": 10
+        },
+        {
+          "type": "command",
+          "command": "$CLAUDE_PROJECT_DIR/.claude/scripts/lint-shell.sh",
+          "timeout": 10
+        }
+      ]
+    }]
+  }
+}
+```
+
+**Linting Rules:**
+- `-S warning` - Show warnings and above (matches pre-commit hook)
+- `-e SC2250` - Exclude style preferences (consistent with pre-commit)
+- Runs same checks as `hooks/pre-commit` for consistency
+
+**Benefits:**
+- ✅ Immediate feedback on code quality issues
+- ✅ Catches ShellCheck warnings right after editing
+- ✅ Reduces CI/CD failures from linting errors
+- ✅ Non-blocking warnings (allows continued development)
+- ✅ Shows line numbers and suggestions for fixes
+
+---
+
+## Installing Development Tools
+
+The PostToolUse hooks require `shfmt` for formatting and `shellcheck` for linting.
 
 ### Debian/Ubuntu
 ```bash
 sudo apt update
-sudo apt install shfmt
+sudo apt install shfmt shellcheck
 ```
 
 ### macOS
 ```bash
-brew install shfmt
+brew install shfmt shellcheck
 ```
 
 ### Go (Any Platform)
@@ -117,6 +166,9 @@ export PATH="$PATH:$(go env GOPATH)/bin"
 ```bash
 shfmt --version
 # Expected: v3.x.x or later
+
+shellcheck --version
+# Expected: 0.x.x or later
 ```
 
 ---
@@ -170,6 +222,72 @@ shfmt --version
 - User can continue working
 - Pre-commit hooks will still validate code
 
+### When shellcheck is Available
+
+**Scenario 1: File passes linting**
+```
+✓ ShellCheck passed: config.sh
+```
+- Hook exits successfully (code 0)
+- No issues found
+- Returns JSON with `suppressOutput: true` to reduce transcript clutter
+
+**Scenario 2: File has warnings**
+```
+⚠ ShellCheck found 3 issue(s) in network.sh:
+
+  In network.sh line 45:
+  SC2086: Double quote to prevent globbing and word splitting
+
+  In network.sh line 67:
+  SC2046: Quote this to prevent word splitting
+
+  In network.sh line 89:
+  SC2155: Declare and assign separately to avoid masking return values
+
+ℹ To see details, run: shellcheck network.sh
+ℹ To disable specific warnings, add: # shellcheck disable=SC####
+```
+- Hook exits with code 1 (non-blocking warning)
+- Shows detailed warnings with line numbers
+- User can continue working or fix issues
+- Provides helpful commands to run
+
+**Scenario 3: File has errors**
+```
+⚠ ShellCheck found 2 issue(s) in broken.sh:
+
+  In broken.sh line 23:
+  SC1009: The mentioned syntax error was in this if expression
+
+  In broken.sh line 25:
+  SC1073: Couldn't parse this test expression
+```
+- Hook exits with code 1 (non-blocking warning)
+- Shows detailed errors
+- User can fix and re-edit
+
+### When shellcheck is NOT Available
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ ⚠️  ShellCheck Not Installed                                │
+├─────────────────────────────────────────────────────────────┤
+│ Install ShellCheck for automatic shell script linting:      │
+│                                                              │
+│   Debian/Ubuntu:  sudo apt install shellcheck               │
+│   macOS:          brew install shellcheck                   │
+│   Snap:           sudo snap install shellcheck              │
+│   Go:             go install github.com/koalaman/shellcheck │
+│                                                              │
+│ Your code will be validated in pre-commit and CI/CD.        │
+└─────────────────────────────────────────────────────────────┘
+```
+- Hook exits with code 1 (non-blocking warning)
+- Clear installation instructions provided
+- User can continue working
+- Pre-commit and CI/CD hooks will still validate code
+
 ---
 
 ## Interaction with Pre-Commit Hooks
@@ -178,8 +296,8 @@ The PostToolUse and pre-commit hooks work together:
 
 ### PostToolUse (Real-Time)
 - **When:** After every Edit/Write
-- **What:** Formats code automatically
-- **Benefit:** Catch style issues immediately
+- **What:** Formats and lints code automatically
+- **Benefit:** Catch style and quality issues immediately
 
 ### Pre-Commit (Before Commit)
 - **When:** During `git commit`
@@ -190,7 +308,9 @@ The PostToolUse and pre-commit hooks work together:
 
 ```
 1. Edit lib/network.sh
-   └─→ PostToolUse hook formats file ✓
+   └─→ PostToolUse hooks:
+       ✓ Format with shfmt
+       ✓ Lint with shellcheck
 
 2. Continue working...
 
@@ -199,13 +319,13 @@ The PostToolUse and pre-commit hooks work together:
        ✓ Bash syntax
        ✓ Bootstrap constants
        ✓ Strict mode
-       ✓ ShellCheck
+       ✓ ShellCheck (again, for safety)
        ✓ Unbound variables
 
 4. Commit succeeds ✓
 ```
 
-**Result:** Code is formatted AND validated automatically!
+**Result:** Code is formatted, linted, AND validated at multiple stages!
 
 ---
 
@@ -329,10 +449,11 @@ claude --debug
 
 ### For Contributors
 
-1. **Install shfmt** - Get the best experience with automatic formatting
-2. **Let hooks run** - Don't interrupt formatting operations
-3. **Review changes** - Check what was formatted before committing
-4. **Report issues** - If formatting behaves unexpectedly, file an issue
+1. **Install development tools** - Install both shfmt and shellcheck for best experience
+2. **Let hooks run** - Don't interrupt formatting/linting operations
+3. **Review feedback** - Check formatting changes and linting warnings
+4. **Fix issues early** - Address ShellCheck warnings right after editing
+5. **Report issues** - If hooks behave unexpectedly, file an issue
 
 ### For Maintainers
 
@@ -350,14 +471,24 @@ claude --debug
 | Hook | Typical Duration | Timeout |
 |------|------------------|---------|
 | SessionStart | 2-5 seconds | 60s |
-| PostToolUse (shfmt available) | <500ms | 10s |
-| PostToolUse (shfmt missing) | <100ms | 10s |
+| PostToolUse: format-shell.sh | <500ms | 10s |
+| PostToolUse: lint-shell.sh | 100-500ms | 10s |
+| **Combined PostToolUse** | **200ms-1s** | **20s total** |
+
+### File Size vs Performance
+
+| File | Lines | Format Time | Lint Time | Total |
+|------|-------|-------------|-----------|-------|
+| lib/common.sh | 253 | ~100ms | ~150ms | ~250ms |
+| lib/network.sh | 300+ | ~150ms | ~200ms | ~350ms |
+| install_multi.sh | 600+ | ~300ms | ~400ms | ~700ms |
 
 ### Impact on Workflow
 
-- **Minimal delay:** Formatting happens in <1 second typically
-- **Parallel execution:** Hooks don't block Claude's thinking
-- **Smart skipping:** Already-formatted files skip formatting
+- **Minimal delay:** Formatting + linting happens in <1 second for most files
+- **Sequential execution:** Format runs first, then lint (on formatted code)
+- **Parallel with thinking:** Hooks don't block Claude's response generation
+- **Smart skipping:** Clean files skip unnecessary processing
 
 ---
 

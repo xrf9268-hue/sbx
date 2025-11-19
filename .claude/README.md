@@ -16,13 +16,22 @@ When you start a new Claude Code session (web/iOS), automatically:
 - ✅ Validates bootstrap constants configuration
 - ✅ Displays project information and quick commands
 
-### PostToolUse Hook (Shell Formatting)
+### PostToolUse Hooks (Shell Formatting & Linting)
 
 **NEW:** After editing shell scripts (Edit/Write tools), automatically:
+
+**Formatting (shfmt):**
 - ✅ Formats bash files with `shfmt` (if installed)
 - ✅ Enforces consistent style across 18 library modules
 - ✅ Reduces pre-commit failures from formatting issues
 - ✅ Non-blocking if `shfmt` unavailable (provides install instructions)
+
+**Linting (ShellCheck):**
+- ✅ Lints bash files with `shellcheck` (if installed)
+- ✅ Catches code quality issues immediately after editing
+- ✅ Shows warnings with line numbers and suggestions
+- ✅ Non-blocking warnings (allows continued development)
+- ✅ Reduces CI/CD failures from ShellCheck errors
 
 ### Files
 
@@ -30,6 +39,7 @@ When you start a new Claude Code session (web/iOS), automatically:
 - **settings.local.json** - User-specific overrides (gitignored)
 - **scripts/session-start.sh** - SessionStart hook implementation
 - **scripts/format-shell.sh** - PostToolUse hook for shell formatting
+- **scripts/lint-shell.sh** - PostToolUse hook for shell linting
 
 ### How It Works
 
@@ -58,26 +68,28 @@ The hook is triggered only on **new session startup** (not resume/clear):
 | **openssl** | Cryptographic operations | ✅ Yes (if missing) |
 | **Bootstrap Tests** | Constant validation | ✅ Runs automatically |
 | **shfmt** | Shell script formatter | ⚠️ Manual (see below) |
+| **shellcheck** | Shell script linter | ⚠️ Manual (see below) |
 
-### Installing shfmt (Recommended)
+### Installing Development Tools (Recommended)
 
-To enable automatic shell formatting:
+To enable automatic shell formatting and linting:
 
 ```bash
 # Debian/Ubuntu
-sudo apt install shfmt
+sudo apt install shfmt shellcheck
 
 # macOS
-brew install shfmt
+brew install shfmt shellcheck
 
-# Go (any platform)
+# Go (shfmt only)
 go install mvdan.cc/sh/v3/cmd/shfmt@latest
 
 # Verify installation
 shfmt --version
+shellcheck --version
 ```
 
-**Without shfmt:** Hooks will show helpful install instructions but won't block your work.
+**Without shfmt/shellcheck:** Hooks will show helpful install instructions but won't block your work.
 
 ### Desktop vs Web Behavior
 

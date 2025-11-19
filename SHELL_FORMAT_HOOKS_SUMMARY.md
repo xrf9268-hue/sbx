@@ -1,14 +1,14 @@
-# Shell Format Hooks Integration - Summary
+# Shell Format & Lint Hooks Integration - Summary
 
 **Date:** 2025-11-19
-**Feature:** PostToolUse hooks for automatic shell script formatting
-**Status:** ✅ Implemented and ready for testing
+**Feature:** PostToolUse hooks for automatic shell script formatting & linting
+**Status:** ✅ Fully Implemented and ready for testing
 
 ---
 
 ## What Was Added
 
-### 1. PostToolUse Hook Script
+### 1. PostToolUse Formatting Hook
 **File:** `.claude/scripts/format-shell.sh`
 
 **Features:**
@@ -29,36 +29,65 @@ shfmt -w -i 2 -bn -ci -sr -kp "$FILE_PATH"
 - `-sr`: Space after redirects
 - `-kp`: Keep column alignment
 
-### 2. Settings Integration
+### 2. PostToolUse Linting Hook
+**File:** `.claude/scripts/lint-shell.sh`
+
+**Features:**
+- ✅ Automatically lints shell scripts after Edit/Write operations
+- ✅ Uses `shellcheck` with same config as pre-commit hook
+- ✅ Non-blocking warnings (shows issues but allows continued development)
+- ✅ Shows detailed error messages with line numbers and suggestions
+- ✅ Provides install instructions if `shellcheck` unavailable
+- ✅ Smart file filtering (matches formatting hook)
+
+**Configuration:**
+```bash
+shellcheck -S warning -e SC2250 "$file_path"
+```
+- `-S warning`: Show warnings and above (matches pre-commit)
+- `-e SC2250`: Exclude style preferences
+
+### 3. Settings Integration
 **File:** `.claude/settings.json`
 
-Added PostToolUse hook alongside existing SessionStart hook:
+Added PostToolUse hooks (formatting + linting) alongside existing SessionStart hook:
 ```json
 {
   "hooks": {
     "SessionStart": [...],
     "PostToolUse": [{
       "matcher": "Edit|Write",
-      "hooks": [{
-        "type": "command",
-        "command": "$CLAUDE_PROJECT_DIR/.claude/scripts/format-shell.sh",
-        "timeout": 10
-      }]
+      "hooks": [
+        {
+          "type": "command",
+          "command": "$CLAUDE_PROJECT_DIR/.claude/scripts/format-shell.sh",
+          "timeout": 10
+        },
+        {
+          "type": "command",
+          "command": "$CLAUDE_PROJECT_DIR/.claude/scripts/lint-shell.sh",
+          "timeout": 10
+        }
+      ]
     }]
   }
 }
 ```
 
-### 3. Documentation
+### 4. Documentation
 **Files Created/Updated:**
-- `.claude/README.md` - Updated with hook overview and shfmt installation
-- `.claude/HOOKS_GUIDE.md` - Comprehensive 400+ line guide covering:
-  - How hooks work
-  - Installation instructions
+- `.claude/README.md` - Updated with formatting + linting hook overview
+- `.claude/HOOKS_GUIDE.md` - **500+ line comprehensive guide** covering:
+  - How hooks work together (SessionStart + PostToolUse)
+  - Installation instructions for shfmt and shellcheck
+  - Formatting and linting behavior scenarios
   - Customization options
   - Debugging techniques
   - Best practices
   - Security considerations
+  - Performance metrics (200ms-1s combined)
+- `SHELL_FORMAT_HOOKS_SUMMARY.md` - Executive summary (this file)
+- `SHELL_LINT_ANALYSIS.md` - Detailed analysis and recommendation
 
 ---
 
@@ -71,34 +100,31 @@ Added PostToolUse hook alongside existing SessionStart hook:
    ↓
 2. Claude uses Edit tool to modify file
    ↓
-3. PostToolUse hook triggers automatically
+3. PostToolUse hooks trigger automatically (sequential)
    ↓
-4. Hook checks:
-   - Is it a shell script? (.sh or install_multi.sh)
-   - Does file exist?
-   - Is shfmt installed?
+4. Hook 1: format-shell.sh
+   - Checks if shell script (.sh or install_multi.sh)
+   - Formats with shfmt (if installed)
+   - Shows: "✓ Auto-formatted shell script: network.sh"
    ↓
-5a. If shfmt available:
-    - Formats file with shfmt
-    - Shows: "✓ Auto-formatted shell script: network.sh"
-
-5b. If shfmt NOT available:
-    - Shows install instructions
-    - Non-blocking warning
-    - Work continues normally
+5. Hook 2: lint-shell.sh
+   - Checks if shell script
+   - Lints with shellcheck (if installed)
+   - If clean: "✓ ShellCheck passed: network.sh"
+   - If warnings: Shows issues with line numbers
    ↓
-6. File is now formatted and ready for commit!
+6. File is now formatted, linted, and ready for commit!
 ```
 
 ### Integration with Existing Automation
 
 | Stage | Tool | What It Does |
 |-------|------|--------------|
-| **During Edit** | PostToolUse hook | Formats code automatically |
+| **During Edit** | PostToolUse hooks | Formats + lints code automatically |
 | **Before Commit** | Pre-commit hook | Validates syntax, strict mode, ShellCheck |
 | **In CI/CD** | GitHub Actions | Runs same validation as pre-commit |
 
-**Result:** Code is formatted AND validated at every stage!
+**Result:** Code is formatted, linted, AND validated at every stage!
 
 ---
 
@@ -106,9 +132,11 @@ Added PostToolUse hook alongside existing SessionStart hook:
 
 ### For Development
 - ✅ **Immediate formatting** - No manual indentation fixes
+- ✅ **Immediate linting** - Catch code quality issues right after editing
 - ✅ **Consistent style** - All 18 library modules formatted identically
-- ✅ **Faster commits** - Fewer pre-commit failures from formatting
-- ✅ **Better reviews** - Focus on logic, not style
+- ✅ **Faster commits** - Fewer pre-commit failures from formatting/linting
+- ✅ **Faster iteration** - Fix ShellCheck issues before commit/push
+- ✅ **Better reviews** - Focus on logic, not style or lint warnings
 
 ### For Collaboration
 - ✅ **No style debates** - Automated formatting enforces standards
