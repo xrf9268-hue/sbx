@@ -41,8 +41,6 @@ When you start a new Claude Code session (web/iOS), automatically:
 - **settings.local.json** - User-specific overrides (gitignored)
 - **scripts/session-start.sh** - SessionStart hook implementation
 - **scripts/format-and-lint-shell.sh** - PostToolUse combined hook (sequential format→lint)
-- **scripts/format-shell.sh** - ⚠️ DEPRECATED (use combined hook)
-- **scripts/lint-shell.sh** - ⚠️ DEPRECATED (use combined hook)
 - **docs/POSTTOOLUSE_HOOKS_FIX.md** - Documentation on concurrency fix
 
 ### How It Works
