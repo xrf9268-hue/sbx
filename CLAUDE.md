@@ -33,7 +33,13 @@ This project has **automated enforcement** at every stage to prevent recurring b
 - ✅ Validates bootstrap constants (prevents unbound variable errors)
 - ✅ Displays helpful project information
 
-**Configuration:** `.claude/settings.json` (see `.claude/README.md`)
+**PostToolUse hook runs after Edit/Write on shell scripts:**
+- ✅ Formats code with shfmt (sequential: format → lint)
+- ✅ Lints formatted result with shellcheck
+- ✅ Prevents race conditions via single combined script
+- ✅ Non-blocking if tools unavailable
+
+**Configuration:** `.claude/settings.json` (see `.claude/README.md` and `.claude/docs/POSTTOOLUSE_HOOKS_FIX.md`)
 
 ### For All Developers
 **Pre-commit hooks run automatically on every commit:**
@@ -111,6 +117,56 @@ sing-box check -c /etc/sing-box/config.json
 bash -u install_multi.sh  # Test for unbound variables
 bash -n install_multi.sh  # Syntax check
 ```
+
+**4. Claude Code Hooks - Parallel Execution Race Conditions** 🔴 **CRITICAL**
+
+Multiple hooks under the same matcher run **in parallel** (per Claude Code design). This causes race conditions if hooks share resources.
+
+```bash
+❌ WRONG - Parallel hooks cause race conditions:
+"PostToolUse": [{
+  "matcher": "Edit|Write",
+  "hooks": [
+    {"command": "format-file.sh"},  # Modifies file
+    {"command": "lint-file.sh"}     # Reads file (PARALLEL!)
+  ]
+}]
+
+# Race Condition 1: stdin consumption
+# Both hooks do INPUT=$(cat), competing for same stdin stream
+# Result: One gets all data, other gets nothing/partial
+
+# Race Condition 2: File modification
+# format-file.sh writes file while lint-file.sh reads it
+# Result: Lint may read unformatted/partially-written/corrupted data
+
+✅ CORRECT - Single hook with sequential operations:
+"PostToolUse": [{
+  "matcher": "Edit|Write",
+  "hooks": [
+    {"command": "format-and-lint.sh"}  # Does both sequentially
+  ]
+}]
+
+# Inside format-and-lint.sh:
+INPUT=$(cat)  # Read stdin ONCE
+# Step 1: Format file
+# Step 2: Lint formatted result
+```
+
+**Bugs caused by this mistake:**
+- PostToolUse hooks had stdin consumption races (commit 7e43091)
+- File modification races caused non-deterministic lint results
+- No execution order guarantee for dependent operations
+
+**How to prevent:**
+1. **Never** create multiple hooks that share resources (stdin, files, etc.)
+2. Combine dependent operations into single sequential script
+3. Read stdin only ONCE at start of script
+4. Test hook concurrency with rapid file edits
+5. See `.claude/docs/POSTTOOLUSE_HOOKS_FIX.md` for detailed analysis
+
+**Key principle:** Parallel hooks = independent operations only (e.g., notify Slack + log to file). Sequential operations = single hook script.
 
 ## Quick Commands
 
