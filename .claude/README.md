@@ -18,32 +18,36 @@ When you start a new Claude Code session (web/iOS), automatically:
 
 ### PostToolUse Hooks (Shell Formatting & Linting)
 
-**NEW:** After editing shell scripts (Edit/Write tools), automatically:
+**UPDATED 2025-11-19:** After editing shell scripts (Edit/Write tools), automatically runs **sequential** format-then-lint workflow:
 
-**Formatting (shfmt):**
+**Step 1 - Formatting (shfmt):**
 - ✅ Formats bash files with `shfmt` (if installed)
 - ✅ Enforces consistent style across 18 library modules
 - ✅ Reduces pre-commit failures from formatting issues
 - ✅ Non-blocking if `shfmt` unavailable (provides install instructions)
 
-**Linting (ShellCheck):**
-- ✅ Lints bash files with `shellcheck` (if installed)
+**Step 2 - Linting (ShellCheck):**
+- ✅ Lints the **formatted** result with `shellcheck` (if installed)
 - ✅ Catches code quality issues immediately after editing
 - ✅ Shows warnings with line numbers and suggestions
 - ✅ Non-blocking warnings (allows continued development)
 - ✅ Reduces CI/CD failures from ShellCheck errors
+
+**Why Sequential?** Prevents race conditions from parallel hook execution. See `.claude/docs/POSTTOOLUSE_HOOKS_FIX.md` for details.
 
 ### Files
 
 - **settings.json** - Hook configuration (committed)
 - **settings.local.json** - User-specific overrides (gitignored)
 - **scripts/session-start.sh** - SessionStart hook implementation
-- **scripts/format-shell.sh** - PostToolUse hook for shell formatting
-- **scripts/lint-shell.sh** - PostToolUse hook for shell linting
+- **scripts/format-and-lint-shell.sh** - PostToolUse combined hook (sequential format→lint)
+- **scripts/format-shell.sh** - ⚠️ DEPRECATED (use combined hook)
+- **scripts/lint-shell.sh** - ⚠️ DEPRECATED (use combined hook)
+- **docs/POSTTOOLUSE_HOOKS_FIX.md** - Documentation on concurrency fix
 
 ### How It Works
 
-The hook is triggered only on **new session startup** (not resume/clear):
+The SessionStart hook is triggered only on **new session startup** (not resume/clear):
 
 ```json
 {
@@ -58,6 +62,40 @@ The hook is triggered only on **new session startup** (not resume/clear):
   }
 }
 ```
+
+### Hook Concurrency Best Practices ⚠️ IMPORTANT
+
+**Critical Rule**: Multiple hooks under the same matcher run **in parallel** (per Claude Code design).
+
+**Avoid These Patterns** (will cause race conditions):
+```json
+// ❌ BAD: Parallel hooks competing for same resources
+"PostToolUse": [{
+  "matcher": "Edit|Write",
+  "hooks": [
+    {"command": "format-file.sh"},  // Modifies file
+    {"command": "lint-file.sh"}     // Reads file (parallel!)
+  ]
+}]
+```
+
+**Use These Patterns Instead**:
+```json
+// ✅ GOOD: Single hook with sequential operations
+"PostToolUse": [{
+  "matcher": "Edit|Write",
+  "hooks": [
+    {"command": "format-and-lint.sh"}  // Does both sequentially
+  ]
+}]
+```
+
+**Why?**
+1. **stdin Consumption**: Each hook tries to read ALL of stdin → race condition
+2. **File Modification**: One hook modifies while another reads → undefined behavior
+3. **Execution Order**: No guarantee which runs first → non-deterministic results
+
+**See Also**: `.claude/docs/POSTTOOLUSE_HOOKS_FIX.md` for detailed analysis and examples.
 
 ### What Gets Installed
 
