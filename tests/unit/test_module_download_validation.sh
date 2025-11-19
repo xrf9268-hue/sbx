@@ -32,7 +32,7 @@ test_fail() {
 #==============================================================================
 test_start "All lib/*.sh modules meet minimum size requirement"
 
-MIN_SIZE=100  # MIN_MODULE_FILE_SIZE_BYTES from install_multi.sh
+MIN_SIZE=100  # MIN_MODULE_FILE_SIZE_BYTES from install.sh
 failures=0
 
 for module in "$SCRIPT_DIR"/lib/*.sh; do

@@ -99,7 +99,7 @@ fi
 
 **How to prevent:**
 1. Initialize all local variables: `local var="" other="" more=""`
-2. Test with strict mode: `bash -u install_multi.sh`
+2. Test with strict mode: `bash -u install.sh`
 3. Check the pre-commit checklist in "Bootstrapping Fixes" section below
 
 **2. Reality Protocol Configuration Errors**
@@ -114,8 +114,8 @@ See @.claude/REALITY_CONFIG.md for full details:
 Always run after ANY configuration or code change:
 ```bash
 sing-box check -c /etc/sing-box/config.json
-bash -u install_multi.sh  # Test for unbound variables
-bash -n install_multi.sh  # Syntax check
+bash -u install.sh  # Test for unbound variables
+bash -n install.sh  # Syntax check
 ```
 
 **4. Claude Code Hooks - Parallel Execution Race Conditions** 🔴 **CRITICAL**
@@ -178,8 +178,8 @@ systemctl restart sing-box && sleep 3 && systemctl status sing-box
 journalctl -u sing-box -f  # Monitor for 10-15 seconds
 
 # Test installation
-bash install_multi.sh  # Reality-only (auto-detect IP)
-DOMAIN=test.domain.com bash install_multi.sh  # Full setup
+bash install.sh  # Reality-only (auto-detect IP)
+DOMAIN=test.domain.com bash install.sh  # Full setup
 
 # Unit tests
 bash tests/test_reality.sh
@@ -271,7 +271,7 @@ When adding constants or functions that are:
 3. Called from sourced modules during initialization
 
 **Apply this pattern:**
-1. Add to `install_multi.sh` early constants section (lines 16-29)
+1. Add to `install.sh` early constants section (lines 16-29)
 2. Make module declaration conditional: `if [[ -z "${VAR:-}" ]]; then declare -r VAR=value; fi`
 3. Document in commit message and CLAUDE.md
 4. Test bootstrap scenario: one-liner installation without git clone
@@ -279,7 +279,7 @@ When adding constants or functions that are:
 **Implemented Fixes:**
 - Fix 1: `get_file_size()` function - Available before module loading
 - Fix 2: `HTTP_DOWNLOAD_TIMEOUT_SEC` constant - Available for safe_http_get() (commit a078273)
-- Fix 3: `url` variable initialization - Prevent unbound variable in conditional flow (install_multi.sh:836)
+- Fix 3: `url` variable initialization - Prevent unbound variable in conditional flow (install.sh:836)
 
 ### Variable Initialization Pattern (CRITICAL - DO NOT SKIP)
 
@@ -301,7 +301,7 @@ fi
 ```
 
 **Real-world failures this pattern has caused:**
-- `url` variable (install_multi.sh:836) - Installation failed on glibc systems
+- `url` variable (install.sh:836) - Installation failed on glibc systems
 - `HTTP_DOWNLOAD_TIMEOUT_SEC` - GitHub API fetches failed
 - Multiple other instances caught during audits
 
@@ -356,8 +356,8 @@ Before committing code with local variables:
 **Manual testing (if needed):**
 ```bash
 # Test your changes with strict mode (hooks run this automatically)
-bash -u install_multi.sh  # Should NOT show "unbound variable" errors
-bash -n install_multi.sh  # Should pass syntax check
+bash -u install.sh  # Should NOT show "unbound variable" errors
+bash -n install.sh  # Should pass syntax check
 ```
 
 **Error Signatures:**

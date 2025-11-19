@@ -59,7 +59,7 @@ jobs:
           count=0
           failed_files=()
 
-          for script in install_multi.sh lib/*.sh bin/*.sh; do
+          for script in install.sh lib/*.sh bin/*.sh; do
             [[ -f "$script" ]] || continue
             count=$((count + 1))
             echo "[$count] Checking $script..."
@@ -107,7 +107,7 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
 
           error_count=0
-          for script in install_multi.sh lib/*.sh bin/*.sh; do
+          for script in install.sh lib/*.sh bin/*.sh; do
             [[ -f "$script" ]] || continue
             if bash -n "$script" 2>&1; then
               echo "✓ $script" >> $GITHUB_STEP_SUMMARY
@@ -163,7 +163,7 @@ jobs:
           echo "## Shebang Compliance" >> $GITHUB_STEP_SUMMARY
 
           error_count=0
-          for script in install_multi.sh lib/*.sh bin/*.sh; do
+          for script in install.sh lib/*.sh bin/*.sh; do
             [[ -f "$script" ]] || continue
             if ! head -1 "$script" | grep -q '^#!/'; then
               echo "❌ Missing shebang: $script" >> $GITHUB_STEP_SUMMARY

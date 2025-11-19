@@ -12,7 +12,7 @@ The sbx-lite codebase uses `set -u` (strict mode), which causes immediate script
 
 This exact issue has caused **3+ production bugs**:
 
-1. **url variable** (install_multi.sh:836) - Installation failed on glibc systems
+1. **url variable** (install.sh:836) - Installation failed on glibc systems
 2. **HTTP_DOWNLOAD_TIMEOUT_SEC** - GitHub API fetches completely broken
 3. **get_file_size()** - Bootstrap failures preventing installation
 4. **REALITY_SHORT_ID_MIN_LENGTH** (2025-11-18) - Installation failed during validation
@@ -26,7 +26,7 @@ Each time was manually fixed, but **no automated test existed to prevent recurre
 `test_bootstrap_constants.sh` validates:
 
 ### 1. **Constant Registration** (Test 1-2)
-- All bootstrap constants defined in `install_multi.sh` early section (lines 16-44)
+- All bootstrap constants defined in `install.sh` early section (lines 16-44)
 - Constants defined **before** module loading (line < 100)
 
 ### 2. **Conditional Declarations** (Test 3-4)
@@ -65,7 +65,7 @@ Currently tracking **15 bootstrap constants**:
 
 If you add a constant to `lib/common.sh` that will be used during bootstrap:
 
-1. **Add to `install_multi.sh` early constants section** (lines 16-44):
+1. **Add to `install.sh` early constants section** (lines 16-44):
    ```bash
    readonly MY_NEW_CONSTANT=value
    ```
@@ -96,7 +96,7 @@ If you add a constant to `lib/common.sh` that will be used during bootstrap:
 A constant needs bootstrap definition if:
 
 - ✅ It's defined in `lib/common.sh`
-- ✅ It's used by any module loaded before line 542 in `install_multi.sh`
+- ✅ It's used by any module loaded before line 542 in `install.sh`
 - ✅ It's used during: module download, network detection, config generation, validation
 
 Common culprits:
@@ -121,16 +121,16 @@ bash tests/test-runner.sh unit
 ```
 === Bootstrap Constants Validation Test ===
 
-  Test 1: All bootstrap constants defined in install_multi.sh ... ✓ PASS
+  Test 1: All bootstrap constants defined in install.sh ... ✓ PASS
   Test 2: Bootstrap constants defined before module loading ... ✓ PASS
   Test 3: Reality constants conditionally declared in lib/common.sh ... ✓ PASS
   Test 4: No duplicate constant declarations between files ... ✓ PASS
-  Test 5: install_multi.sh sources successfully with strict mode ... ✓ PASS
+  Test 5: install.sh sources successfully with strict mode ... ✓ PASS
   Test 6: lib/common.sh sources successfully after bootstrap constants ... ✓ PASS
   Test 7: Bootstrap functions don't use unbound variables ... ✓ PASS
   Test 8: Early constants section has documentation header ... ✓ PASS
   Test 9: CLAUDE.md documents bootstrap constant pattern ... ✓ PASS
-  Test 10: install_multi.sh help works with bash -u (no unbound vars) ... ✓ PASS
+  Test 10: install.sh help works with bash -u (no unbound vars) ... ✓ PASS
 
 === Test Summary ===
 Total constants tracked: 15
@@ -178,7 +178,7 @@ With this test:
 ## References
 
 - **Bootstrap Pattern Documentation**: `CLAUDE.md` (lines 106-195)
-- **Installation Script**: `install_multi.sh` (lines 16-44 for early constants)
+- **Installation Script**: `install.sh` (lines 16-44 for early constants)
 - **Common Constants**: `lib/common.sh` (lines 82-112 for Reality constants)
 - **Historical Fixes**: `CHANGELOG.md` (search for "unbound variable")
 

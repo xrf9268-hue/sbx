@@ -27,7 +27,7 @@ echo
 echo -e "${B}Test 1: Verify current print_summary() lacks URI display${N}"
 
 # Extract current print_summary function
-CURRENT_OUTPUT=$(sed -n '/^print_summary() {/,/^}/p' install_multi.sh)
+CURRENT_OUTPUT=$(sed -n '/^print_summary() {/,/^}/p' install.sh)
 
 if echo "$CURRENT_OUTPUT" | grep -qE 'vless://|URI.*=.*vless'; then
     fail "print_summary should NOT currently display URI" "Found URI in current implementation"

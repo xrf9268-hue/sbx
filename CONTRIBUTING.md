@@ -165,7 +165,7 @@ All bash scripts MUST:
 
 When adding constants used during bootstrap (before module loading):
 
-1. **Add to `install_multi.sh` early section (lines 16-44):**
+1. **Add to `install.sh` early section (lines 16-44):**
    ```bash
    readonly MY_NEW_CONSTANT=value
    ```
@@ -207,7 +207,7 @@ bash tests/test-runner.sh unit
 bash tests/unit/test_bootstrap_constants.sh
 
 # Test with strict mode
-bash -u install_multi.sh --help
+bash -u install.sh --help
 ```
 
 ### Test-Driven Development (TDD)
@@ -283,7 +283,7 @@ Fixes bootstrap failure when REALITY_SHORT_ID_MIN_LENGTH was
 accessed before module loading completed.
 
 Changes:
-- Added constant to install_multi.sh early section
+- Added constant to install.sh early section
 - Updated lib/common.sh to use conditional declaration
 - Added test coverage in test_bootstrap_constants.sh
 
@@ -308,7 +308,7 @@ Root cause: lib/config.sh referenced REALITY_FLOW_VISION during
 configuration generation, but the constant wasn't defined until
 lib/common.sh loaded (after bootstrap).
 
-Solution: Added REALITY_FLOW_VISION to install_multi.sh early
+Solution: Added REALITY_FLOW_VISION to install.sh early
 constants section following the established bootstrap pattern
 documented in CLAUDE.md.
 
@@ -316,7 +316,7 @@ This prevents installation failures on systems without pre-existing
 sing-box installations.
 
 Testing:
-- bash -u install_multi.sh (no unbound variable errors)
+- bash -u install.sh (no unbound variable errors)
 - tests/unit/test_bootstrap_constants.sh (10/10 pass)
 
 Related: Similar fix for REALITY_SHORT_ID_MIN_LENGTH in commit abc123
@@ -345,7 +345,7 @@ Related: Similar fix for REALITY_SHORT_ID_MIN_LENGTH in commit abc123
 Missing constants: MY_NEW_CONSTANT
 
 Remediation:
-  1. Add missing constant to install_multi.sh early section (lines 16-44)
+  1. Add missing constant to install.sh early section (lines 16-44)
   2. Update lib/common.sh with conditional declaration
 ```
 

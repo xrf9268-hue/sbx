@@ -8,7 +8,7 @@ echo "→ Running pre-commit checks..."
 # Run ShellCheck if available
 if command -v shellcheck >/dev/null 2>&1; then
   echo "  ✓ ShellCheck..."
-  shellcheck -x -S warning install_multi.sh lib/*.sh 2>/dev/null || {
+  shellcheck -x -S warning install.sh lib/*.sh 2>/dev/null || {
     echo "❌ ShellCheck failed. Please fix issues before committing."
     exit 1
   }
@@ -18,7 +18,7 @@ fi
 
 # Check syntax
 echo "  ✓ Syntax check..."
-for script in install_multi.sh lib/*.sh; do
+for script in install.sh lib/*.sh; do
   [[ -f "$script" ]] || continue
   bash -n "$script" || {
     echo "❌ Syntax error in $script"

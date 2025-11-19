@@ -379,7 +379,7 @@ if [[ ! -f "/usr/local/bin/sing-box" ]]; then
   echo "sing-box not installed. Integration tests require a working installation."
   echo ""
   echo "To install sing-box:"
-  echo "  bash install_multi.sh"
+  echo "  bash install.sh"
   echo ""
   exit 0
 fi

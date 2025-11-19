@@ -28,12 +28,12 @@ test_fail() {
 }
 
 #==============================================================================
-# Test 1: Extract module list from install_multi.sh
+# Test 1: Extract module list from install.sh
 #==============================================================================
-test_start "Extract module list from install_multi.sh"
+test_start "Extract module list from install.sh"
 
-# Extract the module list from install_multi.sh - use simpler approach
-module_line=$(grep "local modules=(.*)" "$SCRIPT_DIR/install_multi.sh" | grep "colors\|common")
+# Extract the module list from install.sh - use simpler approach
+module_line=$(grep "local modules=(.*)" "$SCRIPT_DIR/install.sh" | grep "colors\|common")
 
 if [[ -n "$module_line" ]]; then
     # Extract just the module names between parentheses
@@ -90,7 +90,7 @@ if [[ ${#missing_modules[@]} -eq 0 ]]; then
 else
     test_fail "Missing modules in download list: ${missing_modules[*]}"
     echo ""
-    echo "  Modules sourced in lib/ but NOT in install_multi.sh download list:"
+    echo "  Modules sourced in lib/ but NOT in install.sh download list:"
     for mod in "${missing_modules[@]}"; do
         echo "    • $mod"
         # Show which file sources this module
@@ -102,7 +102,7 @@ fi
 #==============================================================================
 # Test 4: Verify module count matches
 #==============================================================================
-test_start "Module count in install_multi.sh matches actual files"
+test_start "Module count in install.sh matches actual files"
 
 actual_module_count=$(find "$SCRIPT_DIR/lib/" -name "*.sh" -type f | wc -l)
 declared_module_count=${#DOWNLOAD_MODULES[@]}

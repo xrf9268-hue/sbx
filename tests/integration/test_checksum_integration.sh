@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Integration test for checksum verification in install_multi.sh
+# Integration test for checksum verification in install.sh
 
 set -euo pipefail
 
@@ -14,7 +14,7 @@ cd "$PROJECT_ROOT" || exit 1
 
 # Test 1: Verify checksum module is in module list
 echo "Test 1: Verify checksum in module list"
-if grep -q 'local modules=(.*checksum' install_multi.sh; then
+if grep -q 'local modules=(.*checksum' install.sh; then
     echo "✓ PASSED: checksum module found in module list"
 else
     echo "✗ FAILED: checksum module not in module list"
@@ -24,7 +24,7 @@ fi
 # Test 2: Verify checksum API contract
 echo ""
 echo "Test 2: Verify checksum API contract"
-if grep -q '\["checksum"\]="verify_file_checksum verify_singbox_binary"' install_multi.sh; then
+if grep -q '\["checksum"\]="verify_file_checksum verify_singbox_binary"' install.sh; then
     echo "✓ PASSED: checksum API contract defined"
 else
     echo "✗ FAILED: checksum API contract not found"
@@ -34,7 +34,7 @@ fi
 # Test 3: Verify verify_singbox_binary is called in download_singbox
 echo ""
 echo "Test 3: Verify verify_singbox_binary call in download_singbox"
-if grep -q 'verify_singbox_binary.*"\$pkg".*"\$tag"' install_multi.sh; then
+if grep -q 'verify_singbox_binary.*"\$pkg".*"\$tag"' install.sh; then
     echo "✓ PASSED: verify_singbox_binary called correctly"
 else
     echo "✗ FAILED: verify_singbox_binary call not found"
@@ -44,7 +44,7 @@ fi
 # Test 4: Verify SKIP_CHECKSUM environment variable support
 echo ""
 echo "Test 4: Verify SKIP_CHECKSUM support"
-if grep -q 'SKIP_CHECKSUM' install_multi.sh; then
+if grep -q 'SKIP_CHECKSUM' install.sh; then
     echo "✓ PASSED: SKIP_CHECKSUM environment variable supported"
 else
     echo "✗ FAILED: SKIP_CHECKSUM not found"
@@ -63,7 +63,7 @@ if bash -c '
     SCRIPT_DIR="$(pwd)"
 
     # Source just the module loading function
-    source <(sed -n "/^_load_modules/,/^}/p" install_multi.sh)
+    source <(sed -n "/^_load_modules/,/^}/p" install.sh)
 
     # Verify the modules array includes checksum
     _test_modules() {
@@ -110,7 +110,7 @@ echo "----------------------------------------"
 echo "All tests passed!"
 echo "========================================"
 echo ""
-echo "✓ Checksum module successfully integrated into install_multi.sh"
+echo "✓ Checksum module successfully integrated into install.sh"
 echo "✓ Ready for production use"
 
 exit 0

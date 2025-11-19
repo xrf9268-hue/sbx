@@ -205,7 +205,7 @@ make check
 bash tests/integration/test_reality_connection.sh
 
 # 4. Actual installation works
-bash install_multi.sh
+bash install.sh
 ```
 
 ### Independent Verification (Critical Features)

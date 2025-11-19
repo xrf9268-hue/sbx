@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # tests/test_module_loading.sh - Test parallel/sequential module downloading
-# Tests the smart module loading functionality in install_multi.sh
+# Tests the smart module loading functionality in install.sh
 
 set -uo pipefail
 
 # Determine script directory for absolute paths
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-INSTALL_SCRIPT="${SCRIPT_DIR}/install_multi.sh"
+INSTALL_SCRIPT="${SCRIPT_DIR}/install.sh"
 
 # Test counters
 TESTS_RUN=0
@@ -30,11 +30,11 @@ test_fail() {
 }
 
 # Start testing
-echo "=== Testing Module Loading (install_multi.sh) ==="
+echo "=== Testing Module Loading (install.sh) ==="
 echo ""
 
 # Test 1: Verify bash syntax
-test_start "install_multi.sh has valid bash syntax"
+test_start "install.sh has valid bash syntax"
 if bash -n "${INSTALL_SCRIPT}" 2>/dev/null; then
     test_pass
 else

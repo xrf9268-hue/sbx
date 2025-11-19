@@ -50,7 +50,7 @@ if [[ -z "$FILE_PATH" ]]; then
 fi
 
 # Only process shell script files
-if [[ ! "$FILE_PATH" =~ \.(sh)$ ]] && [[ ! "$FILE_PATH" != "install_multi.sh" ]]; then
+if [[ ! "$FILE_PATH" =~ \.(sh)$ ]] && [[ ! "$FILE_PATH" != "install.sh" ]]; then
     exit 0
 fi
 

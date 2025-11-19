@@ -53,7 +53,7 @@ sbx-lite uses two types of hooks to maintain code quality:
 **Triggered by:** Edit or Write operations on `.sh` files
 
 **What it does:**
-1. Detects shell script edits (`.sh` files, `install_multi.sh`)
+1. Detects shell script edits (`.sh` files, `install.sh`)
 2. **Step 1:** Formats code with `shfmt` (if installed)
 3. **Step 2:** Lints the **formatted** result with `shellcheck` (if installed)
 4. Provides install instructions if tools missing
@@ -324,8 +324,8 @@ shfmt -w -i 4 -bn -ci "$FILE_PATH"
 Edit the pattern matching in `format-and-lint-shell.sh`:
 
 ```bash
-# Current: Only .sh files and install_multi.sh
-if [[ ! "$FILE_PATH" =~ \.(sh)$ ]] && [[ ! "$FILE_PATH" != "install_multi.sh" ]]; then
+# Current: Only .sh files and install.sh
+if [[ ! "$FILE_PATH" =~ \.(sh)$ ]] && [[ ! "$FILE_PATH" != "install.sh" ]]; then
     exit 0
 fi
 
@@ -393,7 +393,7 @@ claude --debug
 
 **Issue 1: Hook not running**
 - Check `/hooks` to verify registration
-- Ensure file has `.sh` extension or is `install_multi.sh`
+- Ensure file has `.sh` extension or is `install.sh`
 - Verify `.claude/scripts/format-and-lint-shell.sh` is executable: `ls -la .claude/scripts/`
 
 **Issue 2: "shfmt: command not found"**
@@ -441,7 +441,7 @@ claude --debug
 |------|-------|-------------|-----------|-------|
 | lib/common.sh | 253 | ~100ms | ~150ms | ~250ms |
 | lib/network.sh | 300+ | ~150ms | ~200ms | ~350ms |
-| install_multi.sh | 600+ | ~300ms | ~400ms | ~700ms |
+| install.sh | 600+ | ~300ms | ~400ms | ~700ms |
 
 ### Impact on Workflow
 

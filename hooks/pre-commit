@@ -35,9 +35,9 @@ echo -e "${BLUE}[1/5]${NC} Checking bash syntax..."
 
 syntax_errors=0
 # Check main installer
-if ! bash -n install_multi.sh 2>/dev/null; then
-    echo -e "${RED}✗ FAIL${NC}: install_multi.sh has syntax errors"
-    bash -n install_multi.sh
+if ! bash -n install.sh 2>/dev/null; then
+    echo -e "${RED}✗ FAIL${NC}: install.sh has syntax errors"
+    bash -n install.sh
     syntax_errors=$((syntax_errors + 1))
 fi
 
@@ -82,7 +82,7 @@ else
     echo ""
     echo -e "${YELLOW}Remediation:${NC}"
     echo "  1. Check which constants are missing: cat /tmp/pre-commit-bootstrap.log"
-    echo "  2. Add missing constants to install_multi.sh early section (lines 16-44)"
+    echo "  2. Add missing constants to install.sh early section (lines 16-44)"
     echo "  3. Update lib/common.sh with conditional declarations"
     echo "  4. See tests/unit/README_BOOTSTRAP_TESTS.md for detailed guide"
     CHECKS_FAILED=$((CHECKS_FAILED + 1))
@@ -97,9 +97,9 @@ echo -e "${BLUE}[3/5]${NC} Checking strict mode (set -euo pipefail)..."
 
 missing_strict_mode=()
 
-# Check install_multi.sh
-if ! grep -q "^set -euo pipefail" install_multi.sh; then
-    missing_strict_mode+=("install_multi.sh")
+# Check install.sh
+if ! grep -q "^set -euo pipefail" install.sh; then
+    missing_strict_mode+=("install.sh")
 fi
 
 # Check all library modules
@@ -138,7 +138,7 @@ if command -v shellcheck >/dev/null 2>&1; then
     shellcheck_errors=0
 
     # Check main files with moderate severity
-    for file in install_multi.sh lib/*.sh bin/sbx-manager.sh; do
+    for file in install.sh lib/*.sh bin/sbx-manager.sh; do
         [[ ! -f "$file" ]] && continue
 
         # Exclude some style warnings
@@ -170,7 +170,7 @@ echo ""
 echo -e "${BLUE}[5/5]${NC} Testing for unbound variables (bash -u)..."
 
 # Test that help text works without unbound variables
-unbound_test=$(timeout 5 bash -u install_multi.sh --help 2>&1 || true)
+unbound_test=$(timeout 5 bash -u install.sh --help 2>&1 || true)
 
 if echo "$unbound_test" | grep -q "unbound variable"; then
     echo -e "${RED}✗ FAIL${NC}: Found unbound variable usage"

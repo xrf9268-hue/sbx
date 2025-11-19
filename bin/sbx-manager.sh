@@ -127,7 +127,7 @@ case "${1:-}" in
             done
             echo
             echo -e "${Y}[INFO]${N} Generated URIs may be invalid or incomplete."
-            echo -e "${Y}[INFO]${N} Please run: ${B}bash install_multi.sh${N} to reinstall."
+            echo -e "${Y}[INFO]${N} Please run: ${B}bash install.sh${N} to reinstall."
             echo
         fi
 

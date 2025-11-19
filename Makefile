@@ -37,14 +37,14 @@ lint:
 		echo "Error: shellcheck not installed. Install with: apt install shellcheck"; \
 		exit 1; \
 	}
-	@shellcheck -x -S warning install_multi.sh lib/*.sh 2>/dev/null || \
+	@shellcheck -x -S warning install.sh lib/*.sh 2>/dev/null || \
 		(echo "✗ ShellCheck found issues"; exit 1)
 	@echo "✓ ShellCheck passed"
 
 # Syntax validation
 syntax:
 	@echo "→ Checking syntax..."
-	@for script in install_multi.sh lib/*.sh; do \
+	@for script in install.sh lib/*.sh; do \
 		[ -f "$$script" ] || continue; \
 		echo "  Checking $$script..."; \
 		bash -n "$$script" || exit 1; \

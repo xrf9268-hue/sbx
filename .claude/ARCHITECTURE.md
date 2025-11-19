@@ -4,7 +4,7 @@ Technical architecture and module organization for sbx-lite.
 
 ## Modular Structure (v2.2.0)
 
-**Main:** `install_multi.sh` (~583 lines) - Orchestrates installation
+**Main:** `install.sh` (~583 lines) - Orchestrates installation
 **Library:** `lib/` directory (11 modules, 3,523 lines total)
 
 ## Key Modules

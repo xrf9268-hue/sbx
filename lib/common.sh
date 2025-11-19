@@ -44,7 +44,7 @@ declare -r CERT_DIR_BASE="${CERT_DIR_BASE:-/etc/ssl/sbx}"
 declare -r LOG_LEVEL="${LOG_LEVEL:-warn}"
 
 # Operation timeouts and retry limits
-# NETWORK_TIMEOUT_SEC defined in install_multi.sh early constants for bootstrap
+# NETWORK_TIMEOUT_SEC defined in install.sh early constants for bootstrap
 [[ -z "${NETWORK_TIMEOUT_SEC:-}" ]] && declare -r NETWORK_TIMEOUT_SEC=5
 declare -r SERVICE_STARTUP_MAX_WAIT_SEC=10
 declare -r SERVICE_PORT_VALIDATION_MAX_RETRIES=5
@@ -54,13 +54,13 @@ declare -r CLEANUP_OLD_FILES_MIN=60
 declare -r BACKUP_RETENTION_DAYS=30
 declare -r CADDY_CERT_WAIT_TIMEOUT_SEC=60
 
-# Download configuration (some constants defined in install_multi.sh early boot)
+# Download configuration (some constants defined in install.sh early boot)
 # DOWNLOAD_CONNECT_TIMEOUT_SEC, DOWNLOAD_MAX_TIMEOUT_SEC, MIN_MODULE_FILE_SIZE_BYTES
-# are defined in install_multi.sh before module loading
+# are defined in install.sh before module loading
 [[ -z "${HTTP_TIMEOUT_SEC:-}" ]] && declare -r HTTP_TIMEOUT_SEC=30
 [[ -z "${DEFAULT_PARALLEL_JOBS:-}" ]] && declare -r DEFAULT_PARALLEL_JOBS=5
 
-# File permissions (octal) - defined in install_multi.sh for early use
+# File permissions (octal) - defined in install.sh for early use
 # SECURE_DIR_PERMISSIONS and SECURE_FILE_PERMISSIONS are already readonly
 
 # Input validation limits
@@ -83,7 +83,7 @@ declare -r LOG_VIEW_DEFAULT_HISTORY="5 minutes ago"
 # Reality Protocol Constants
 #==============================================================================
 
-# Reality configuration defaults (conditionally set if not already defined in install_multi.sh)
+# Reality configuration defaults (conditionally set if not already defined in install.sh)
 declare -r REALITY_DEFAULT_SNI="www.microsoft.com"
 
 if [[ -z "${REALITY_MAX_TIME_DIFF:-}" ]]; then
@@ -96,7 +96,7 @@ if [[ -z "${REALITY_FLOW_VISION:-}" ]]; then
   declare -r REALITY_FLOW_VISION="xtls-rprx-vision"
 fi
 
-# Reality validation constraints (conditionally set if not already defined in install_multi.sh)
+# Reality validation constraints (conditionally set if not already defined in install.sh)
 if [[ -z "${REALITY_SHORT_ID_MIN_LENGTH:-}" ]]; then
   declare -r REALITY_SHORT_ID_MIN_LENGTH=1
 fi
@@ -104,7 +104,7 @@ if [[ -z "${REALITY_SHORT_ID_MAX_LENGTH:-}" ]]; then
   declare -r REALITY_SHORT_ID_MAX_LENGTH=8
 fi
 
-# ALPN protocols for Reality (conditionally set if not already defined in install_multi.sh)
+# ALPN protocols for Reality (conditionally set if not already defined in install.sh)
 if [[ -z "${REALITY_ALPN_H2:-}" ]]; then
   declare -r REALITY_ALPN_H2="h2"
 fi
@@ -158,7 +158,7 @@ declare -r CADDY_CERT_POLL_INTERVAL_SEC=3
 #==============================================================================
 
 # HTTP download timeout (for large file downloads)
-# May be defined early in install_multi.sh for bootstrap phase
+# May be defined early in install.sh for bootstrap phase
 if [[ -z "${HTTP_DOWNLOAD_TIMEOUT_SEC:-}" ]]; then
   declare -r HTTP_DOWNLOAD_TIMEOUT_SEC=30
 fi

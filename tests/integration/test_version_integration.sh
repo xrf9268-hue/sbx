@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Integration test for version resolution in install_multi.sh
+# Integration test for version resolution in install.sh
 
 set -euo pipefail
 
@@ -14,7 +14,7 @@ cd "$PROJECT_ROOT" || exit 1
 
 # Test 1: Verify version module in module list
 echo "Test 1: Verify version in module list"
-if grep -q 'local modules=(.*version' install_multi.sh; then
+if grep -q 'local modules=(.*version' install.sh; then
     echo "✓ PASSED: version module found in module list"
 else
     echo "✗ FAILED: version module not in module list"
@@ -24,7 +24,7 @@ fi
 # Test 2: Verify version API contract
 echo ""
 echo "Test 2: Verify version API contract"
-if grep -q '\["version"\]="resolve_singbox_version"' install_multi.sh; then
+if grep -q '\["version"\]="resolve_singbox_version"' install.sh; then
     echo "✓ PASSED: version API contract defined"
 else
     echo "✗ FAILED: version API contract not found"
@@ -34,7 +34,7 @@ fi
 # Test 3: Verify resolve_singbox_version is called in download_singbox
 echo ""
 echo "Test 3: Verify resolve_singbox_version call in download_singbox"
-if grep -q 'tag=$(resolve_singbox_version)' install_multi.sh; then
+if grep -q 'tag=$(resolve_singbox_version)' install.sh; then
     echo "✓ PASSED: resolve_singbox_version called correctly"
 else
     echo "✗ FAILED: resolve_singbox_version call not found"
@@ -45,9 +45,9 @@ fi
 echo ""
 echo "Test 4: Verify old version detection removed"
 # Check that the old if/else version detection is gone
-if grep -q 'if \[\[ -n "${SINGBOX_VERSION:-}" \]\]; then' install_multi.sh; then
+if grep -q 'if \[\[ -n "${SINGBOX_VERSION:-}" \]\]; then' install.sh; then
     # Check if it's the NEW usage (after resolve_singbox_version)
-    if grep -A5 'tag=$(resolve_singbox_version)' install_multi.sh | grep -q 'SINGBOX_VERSION'; then
+    if grep -A5 'tag=$(resolve_singbox_version)' install.sh | grep -q 'SINGBOX_VERSION'; then
         echo "⚠ WARNING: Old version detection code may still exist"
     fi
 fi
@@ -65,7 +65,7 @@ if bash -c '
     SCRIPT_DIR="$(pwd)"
 
     # Source just the module loading function
-    source <(sed -n "/^_load_modules/,/^}/p" install_multi.sh)
+    source <(sed -n "/^_load_modules/,/^}/p" install.sh)
 
     # Test modules array
     _test_modules() {
@@ -107,7 +107,7 @@ fi
 # Test 7: Verify version resolution modes in code comments
 echo ""
 echo "Test 7: Verify version resolution documentation in code"
-if grep -q "Supports: stable.*latest.*vX.Y.Z" install_multi.sh; then
+if grep -q "Supports: stable.*latest.*vX.Y.Z" install.sh; then
     echo "✓ PASSED: Version resolution modes documented in code"
 else
     echo "⚠ WARNING: Version resolution modes not documented"
@@ -120,7 +120,7 @@ echo "----------------------------------------"
 echo "All tests passed!"
 echo "========================================"
 echo ""
-echo "✓ Version resolution successfully integrated into install_multi.sh"
+echo "✓ Version resolution successfully integrated into install.sh"
 echo "✓ Module count: 12 modules (includes version)"
 echo "✓ Ready for production use"
 echo ""

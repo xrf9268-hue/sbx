@@ -208,7 +208,7 @@ echo "  Quick Commands:"
 echo "    bash tests/test-runner.sh unit    # Run all unit tests"
 echo "    bash tests/unit/test_bootstrap_constants.sh    # Validate bootstrap"
 echo "    bash hooks/install-hooks.sh       # Reinstall git hooks"
-echo "    bash install_multi.sh --help      # Installation help"
+echo "    bash install.sh --help      # Installation help"
 echo ""
 
 # Documentation links

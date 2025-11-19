@@ -6,7 +6,7 @@ set -uo pipefail
 
 # Test framework
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-INSTALL_SCRIPT="${SCRIPT_DIR}/install_multi.sh"
+INSTALL_SCRIPT="${SCRIPT_DIR}/install.sh"
 TESTS_RUN=0
 TESTS_PASSED=0
 TESTS_FAILED=0
@@ -46,7 +46,7 @@ cp "${INSTALL_SCRIPT}" "$temp_test_dir/"
 cd "$temp_test_dir" || exit
 
 # Run install script to trigger download, then exit immediately
-output=$(timeout 30 bash install_multi.sh --version 2>&1 || true)
+output=$(timeout 30 bash install.sh --version 2>&1 || true)
 
 if echo "$output" | grep -q "modules downloaded and verified"; then
     test_pass
@@ -66,7 +66,7 @@ temp_test_dir=$(mktemp -d)
 cp "${INSTALL_SCRIPT}" "$temp_test_dir/"
 cd "$temp_test_dir" || exit
 
-output=$(DEBUG=1 timeout 30 bash install_multi.sh --version 2>&1 || true)
+output=$(DEBUG=1 timeout 30 bash install.sh --version 2>&1 || true)
 
 if echo "$output" | grep -q "DEBUG:"; then
     test_pass
@@ -85,7 +85,7 @@ temp_test_dir=$(mktemp -d)
 cp "${INSTALL_SCRIPT}" "$temp_test_dir/"
 cd "$temp_test_dir" || exit
 
-output=$(timeout 30 bash install_multi.sh --version 2>&1 || true)
+output=$(timeout 30 bash install.sh --version 2>&1 || true)
 
 if echo "$output" | grep -qE "21/21 modules downloaded"; then
     test_pass
@@ -105,7 +105,7 @@ temp_test_dir=$(mktemp -d)
 cp "${INSTALL_SCRIPT}" "$temp_test_dir/"
 cd "$temp_test_dir" || exit
 
-output=$(timeout 30 bash install_multi.sh --version 2>&1 || true)
+output=$(timeout 30 bash install.sh --version 2>&1 || true)
 
 if ! echo "$output" | grep -qE "(unbound variable|Required module not found)"; then
     test_pass
@@ -130,9 +130,9 @@ cat > test_logging.sh << 'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Source install_multi.sh functions (without running main)
+# Source install.sh functions (without running main)
 SCRIPT_DIR="$(pwd)"
-source ./install_multi.sh 2>/dev/null || true
+source ./install.sh 2>/dev/null || true
 
 # Check if functions are available
 if declare -F msg >/dev/null && declare -F warn >/dev/null && declare -F err >/dev/null; then
@@ -169,11 +169,11 @@ set -euo pipefail
 SCRIPT_DIR="$(pwd)"
 ORIGINAL_SCRIPT_DIR="$SCRIPT_DIR"
 
-# Simulate module loading by sourcing install_multi
+# Simulate module loading by sourcing install script
 # (this will trigger _load_modules which downloads and loads modules)
 bash -c '
 cd "'"$SCRIPT_DIR"'"
-source ./install_multi.sh 2>/dev/null
+source ./install.sh 2>/dev/null
 
 # After loading, check if functions from common.sh are available
 # If they are, SCRIPT_DIR was loaded correctly
@@ -206,7 +206,7 @@ cd "$temp_test_dir" || exit
 
 # Measure parallel download time
 start_parallel=$(date +%s)
-timeout 60 bash install_multi.sh --version >/dev/null 2>&1 || true
+timeout 60 bash install.sh --version >/dev/null 2>&1 || true
 end_parallel=$(date +%s)
 parallel_time=$((end_parallel - start_parallel))
 
@@ -215,7 +215,7 @@ rm -rf sbx-install-* tmp.* 2>/dev/null || true
 
 # Measure sequential download time
 start_sequential=$(date +%s)
-ENABLE_PARALLEL_DOWNLOAD=0 timeout 60 bash install_multi.sh --version >/dev/null 2>&1 || true
+ENABLE_PARALLEL_DOWNLOAD=0 timeout 60 bash install.sh --version >/dev/null 2>&1 || true
 end_sequential=$(date +%s)
 sequential_time=$((end_sequential - start_sequential))
 
@@ -238,7 +238,7 @@ cp "${INSTALL_SCRIPT}" "$temp_test_dir/"
 cd "$temp_test_dir" || exit
 
 # Disable xargs to force fallback
-output=$(PATH="/usr/bin:/bin" timeout 30 bash install_multi.sh --version 2>&1 || true)
+output=$(PATH="/usr/bin:/bin" timeout 30 bash install.sh --version 2>&1 || true)
 
 # Should see either parallel success or sequential fallback
 if echo "$output" | grep -qE "(modules downloaded and verified|Downloading.*modules sequentially)"; then

@@ -91,7 +91,7 @@ jobs:
 
           # Test syntax with unbound variable detection (bash -nu)
           # This validates early constants without executing the script
-          if bash -nu install_multi.sh 2>&1 | tee /tmp/strict-test.log; then
+          if bash -nu install.sh 2>&1 | tee /tmp/strict-test.log; then
             echo "✅ Syntax valid, no unbound variables in early initialization" >> $GITHUB_STEP_SUMMARY
           else
             echo "❌ Syntax errors or unbound variables found" >> $GITHUB_STEP_SUMMARY
