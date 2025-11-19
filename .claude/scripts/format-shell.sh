@@ -93,7 +93,7 @@ EOF
 else
     # Formatting failed - likely syntax error
     echo -e "${RED}✗${NC} Failed to format $FILE_PATH - syntax error?" >&2
-    echo "  Run: shfmt -d $FILE_PATH" >&2
+    echo "  Run: shfmt -d \"$FILE_PATH\"" >&2
     # Non-blocking error
     exit 1
 fi

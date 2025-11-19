@@ -113,7 +113,7 @@ echo "$LINT_OUTPUT" | while IFS= read -r line; do
 done
 
 echo "" >&2
-echo -e "${BLUE}ℹ${NC} To see details, run: ${BLUE}shellcheck $(basename "$FILE_PATH")${NC}" >&2
+echo -e "${BLUE}ℹ${NC} To see details, run: ${BLUE}shellcheck \"$FILE_PATH\"${NC}" >&2
 echo -e "${BLUE}ℹ${NC} To disable specific warnings, add: ${BLUE}# shellcheck disable=SC####${NC}" >&2
 echo "" >&2
 
