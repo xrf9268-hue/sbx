@@ -46,17 +46,19 @@ sbx-lite uses two types of hooks to maintain code quality:
 
 ---
 
-## PostToolUse Hook (Shell Formatting)
+## PostToolUse Hook (Combined Format & Lint)
 
-**File:** `.claude/scripts/format-shell.sh`
+**File:** `.claude/scripts/format-and-lint-shell.sh`
 
 **Triggered by:** Edit or Write operations on `.sh` files
 
 **What it does:**
 1. Detects shell script edits (`.sh` files, `install_multi.sh`)
-2. Formats code with `shfmt` (if installed)
-3. Applies consistent style across all modules
-4. Provides install instructions if `shfmt` missing
+2. **Step 1:** Formats code with `shfmt` (if installed)
+3. **Step 2:** Lints the **formatted** result with `shellcheck` (if installed)
+4. Provides install instructions if tools missing
+
+**Why Sequential?** Combines formatting and linting into a single script to avoid race conditions from parallel hook execution. See `.claude/docs/POSTTOOLUSE_HOOKS_FIX.md` for details.
 
 **Configuration:**
 ```json
@@ -66,76 +68,34 @@ sbx-lite uses two types of hooks to maintain code quality:
       "matcher": "Edit|Write",
       "hooks": [{
         "type": "command",
-        "command": "$CLAUDE_PROJECT_DIR/.claude/scripts/format-shell.sh",
-        "timeout": 10
+        "command": "$CLAUDE_PROJECT_DIR/.claude/scripts/format-and-lint-shell.sh",
+        "timeout": 15
       }]
     }]
   }
 }
 ```
 
-**Formatting Rules:**
+**Formatting Rules (shfmt):**
 - `-i 2` - 2-space indentation (matches project style)
 - `-bn` - Binary ops like `&&` and `|` may start a line
 - `-ci` - Switch cases indented
 - `-sr` - Space after redirect operators
 - `-kp` - Keep column alignment padding
 
-**Benefits:**
-- ✅ Automatic formatting after every edit
-- ✅ Consistent style across 18 library modules
-- ✅ Reduces pre-commit failures from formatting
-- ✅ Non-blocking if `shfmt` unavailable
-- ✅ Clear feedback on what was formatted
-
----
-
-## PostToolUse Hook (Shell Linting)
-
-**File:** `.claude/scripts/lint-shell.sh`
-
-**Triggered by:** Edit or Write operations on `.sh` files
-
-**What it does:**
-1. Detects shell script edits (`.sh` files, `install_multi.sh`)
-2. Lints code with `shellcheck` (if installed)
-3. Reports code quality issues with line numbers
-4. Provides install instructions if `shellcheck` missing
-
-**Configuration:**
-```json
-{
-  "hooks": {
-    "PostToolUse": [{
-      "matcher": "Edit|Write",
-      "hooks": [
-        {
-          "type": "command",
-          "command": "$CLAUDE_PROJECT_DIR/.claude/scripts/format-shell.sh",
-          "timeout": 10
-        },
-        {
-          "type": "command",
-          "command": "$CLAUDE_PROJECT_DIR/.claude/scripts/lint-shell.sh",
-          "timeout": 10
-        }
-      ]
-    }]
-  }
-}
-```
-
-**Linting Rules:**
+**Linting Rules (shellcheck):**
 - `-S warning` - Show warnings and above (matches pre-commit hook)
 - `-e SC2250` - Exclude style preferences (consistent with pre-commit)
 - Runs same checks as `hooks/pre-commit` for consistency
 
 **Benefits:**
-- ✅ Immediate feedback on code quality issues
-- ✅ Catches ShellCheck warnings right after editing
-- ✅ Reduces CI/CD failures from linting errors
-- ✅ Non-blocking warnings (allows continued development)
-- ✅ Shows line numbers and suggestions for fixes
+- ✅ Automatic formatting + linting after every edit
+- ✅ Consistent style across 18 library modules
+- ✅ Lints the formatted result (not the original)
+- ✅ No race conditions from parallel execution
+- ✅ Reduces pre-commit failures from formatting/linting
+- ✅ Non-blocking if tools unavailable
+- ✅ Clear feedback on formatting and linting status
 
 ---
 
@@ -347,7 +307,7 @@ Create `.claude/settings.local.json` (gitignored):
 
 ### Adjust Formatting Style
 
-Edit `.claude/scripts/format-shell.sh` and modify `shfmt` flags:
+Edit `.claude/scripts/format-and-lint-shell.sh` and modify `shfmt` flags:
 
 ```bash
 # Current style (2-space, binary ops on new line, etc.)
@@ -361,11 +321,11 @@ shfmt -w -i 4 -bn -ci "$FILE_PATH"
 
 ### Add More File Patterns
 
-Edit the pattern matching in `format-shell.sh`:
+Edit the pattern matching in `format-and-lint-shell.sh`:
 
 ```bash
 # Current: Only .sh files and install_multi.sh
-if [[ ! "$FILE_PATH" =~ \.(sh)$ ]] && [[ ! "$FILE_PATH" == "install_multi.sh" ]]; then
+if [[ ! "$FILE_PATH" =~ \.(sh)$ ]] && [[ ! "$FILE_PATH" != "install_multi.sh" ]]; then
     exit 0
 fi
 
@@ -406,12 +366,14 @@ cat > /tmp/test-hook-input.json <<'EOF'
 EOF
 
 # Run hook manually
-cat /tmp/test-hook-input.json | .claude/scripts/format-shell.sh
+cat /tmp/test-hook-input.json | .claude/scripts/format-and-lint-shell.sh
 
 # Should see:
 # ✓ Shell script already formatted: common.sh
+# ✓ ShellCheck passed: common.sh
 # (or)
 # ✓ Auto-formatted shell script: common.sh
+# ✓ ShellCheck passed: common.sh
 ```
 
 ### Enable Debug Mode
@@ -432,7 +394,7 @@ claude --debug
 **Issue 1: Hook not running**
 - Check `/hooks` to verify registration
 - Ensure file has `.sh` extension or is `install_multi.sh`
-- Verify `.claude/scripts/format-shell.sh` is executable: `ls -la .claude/scripts/`
+- Verify `.claude/scripts/format-and-lint-shell.sh` is executable: `ls -la .claude/scripts/`
 
 **Issue 2: "shfmt: command not found"**
 - Install shfmt (see installation section above)
@@ -471,9 +433,7 @@ claude --debug
 | Hook | Typical Duration | Timeout |
 |------|------------------|---------|
 | SessionStart | 2-5 seconds | 60s |
-| PostToolUse: format-shell.sh | <500ms | 10s |
-| PostToolUse: lint-shell.sh | 100-500ms | 10s |
-| **Combined PostToolUse** | **200ms-1s** | **20s total** |
+| PostToolUse: format-and-lint-shell.sh | 200ms-1s | 15s |
 
 ### File Size vs Performance
 
@@ -516,8 +476,8 @@ claude --debug
 ### Review Before Use
 
 Before enabling hooks:
-1. Read `.claude/scripts/format-shell.sh` source code
-2. Understand what commands it executes (`shfmt`)
+1. Read `.claude/scripts/format-and-lint-shell.sh` source code
+2. Understand what commands it executes (`shfmt`, `shellcheck`)
 3. Verify configuration in `.claude/settings.json`
 4. Test in a safe branch first
 
@@ -534,9 +494,19 @@ Before enabling hooks:
 
 ## Changelog
 
+### 2025-11-19 - Combined Hook (Race Condition Fix)
+- **BREAKING:** Combined separate format/lint hooks into single sequential script
+- Created `.claude/scripts/format-and-lint-shell.sh` (combined format→lint workflow)
+- Removed `.claude/scripts/format-shell.sh` (deprecated - had race conditions)
+- Removed `.claude/scripts/lint-shell.sh` (deprecated - had race conditions)
+- Updated `.claude/settings.json` to use combined hook
+- Created `.claude/docs/POSTTOOLUSE_HOOKS_FIX.md` documenting concurrency issues
+- **Why:** Prevents race conditions from parallel stdin consumption and file modification
+- **Impact:** Same functionality, better reliability, deterministic behavior
+
 ### 2025-11-19 - Initial Implementation
-- Added PostToolUse hook for shell formatting
-- Created `.claude/scripts/format-shell.sh`
+- Added PostToolUse hooks for shell formatting and linting
+- Created separate format and lint scripts (later combined due to race conditions)
 - Updated `.claude/settings.json` configuration
 - Documented in `.claude/README.md`
 
