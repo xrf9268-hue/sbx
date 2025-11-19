@@ -13,17 +13,34 @@
 
 set -euo pipefail
 
-# Colors
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-CYAN='\033[0;36m'
-NC='\033[0m' # No Color
-
 # Project root
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 cd "$PROJECT_DIR" || exit 1
+
+# Detect color support
+USE_COLOR=false
+if [[ -t 1 ]] && command -v tput >/dev/null 2>&1 && [[ $(tput colors 2>/dev/null || echo 0) -ge 8 ]]; then
+    USE_COLOR=true
+fi
+
+# Colors (only if supported)
+if [[ "$USE_COLOR" == "true" ]]; then
+    RED='\033[0;31m'
+    GREEN='\033[0;32m'
+    YELLOW='\033[1;33m'
+    BLUE='\033[0;34m'
+    CYAN='\033[0;36m'
+    BOLD='\033[1m'
+    NC='\033[0m'
+else
+    RED=''
+    GREEN=''
+    YELLOW=''
+    BLUE=''
+    CYAN=''
+    BOLD=''
+    NC=''
+fi
 
 #==============================================================================
 # Environment Detection
@@ -31,7 +48,7 @@ cd "$PROJECT_DIR" || exit 1
 
 # Check if running in Claude Code remote environment
 if [[ "${CLAUDE_CODE_REMOTE:-false}" != "true" ]]; then
-    echo -e "${YELLOW}ℹ  Desktop environment detected${NC}"
+    echo "ℹ  Desktop environment detected"
     echo ""
     echo "For desktop development, manually install:"
     echo "  bash hooks/install-hooks.sh"
@@ -44,28 +61,28 @@ fi
 #==============================================================================
 
 echo ""
-echo -e "${CYAN}╔════════════════════════════════════════════════════════╗${NC}"
-echo -e "${CYAN}║${NC}  ${BLUE}sbx-lite${NC} - Sing-Box Reality Protocol Deployment    ${CYAN}║${NC}"
-echo -e "${CYAN}║${NC}  SessionStart Hook - Automated Environment Setup     ${CYAN}║${NC}"
-echo -e "${CYAN}╚════════════════════════════════════════════════════════╝${NC}"
+echo "=========================================="
+echo "  sbx-lite - SessionStart Hook"
+echo "  Automated Environment Setup"
+echo "=========================================="
 echo ""
 
 #==============================================================================
 # Install Git Hooks
 #==============================================================================
 
-echo -e "${BLUE}[1/4]${NC} Installing git hooks..."
+echo "[1/4] Installing git hooks..."
 
 if [[ -x "hooks/install-hooks.sh" ]]; then
     # Run hook installer quietly
     if bash hooks/install-hooks.sh > /tmp/hook-install.log 2>&1; then
-        echo -e "${GREEN}  ✓${NC}  Git hooks installed successfully"
-        echo "      Pre-commit validation: ENABLED"
+        echo "  ✓ Git hooks installed successfully"
+        echo "    Pre-commit validation: ENABLED"
     else
-        echo -e "${YELLOW}  ⚠${NC}  Git hooks installation had warnings (see /tmp/hook-install.log)"
+        echo "  ⚠ Git hooks installation had warnings (see /tmp/hook-install.log)"
     fi
 else
-    echo -e "${YELLOW}  ⚠${NC}  Hook installer not found (hooks/install-hooks.sh)"
+    echo "  ⚠ Hook installer not found (hooks/install-hooks.sh)"
 fi
 
 echo ""
@@ -74,7 +91,7 @@ echo ""
 # Verify Dependencies
 #==============================================================================
 
-echo -e "${BLUE}[2/4]${NC} Verifying dependencies..."
+echo "[2/4] Verifying dependencies..."
 
 deps_ok=0
 deps_missing=()
@@ -82,39 +99,39 @@ deps_missing=()
 # Check jq
 if command -v jq >/dev/null 2>&1; then
     jq_version=$(jq --version 2>&1 | head -1)
-    echo -e "${GREEN}  ✓${NC}  jq: $jq_version"
+    echo "  ✓ jq: $jq_version"
     deps_ok=$((deps_ok + 1))
 else
-    echo -e "${RED}  ✗${NC}  jq: NOT INSTALLED"
+    echo "  ✗ jq: NOT INSTALLED"
     deps_missing+=("jq")
 fi
 
 # Check openssl
 if command -v openssl >/dev/null 2>&1; then
     openssl_version=$(openssl version | cut -d' ' -f1-2)
-    echo -e "${GREEN}  ✓${NC}  openssl: $openssl_version"
+    echo "  ✓ openssl: $openssl_version"
     deps_ok=$((deps_ok + 1))
 else
-    echo -e "${RED}  ✗${NC}  openssl: NOT INSTALLED"
+    echo "  ✗ openssl: NOT INSTALLED"
     deps_missing+=("openssl")
 fi
 
 # Check bash version
 bash_version=$(bash --version | head -1 | grep -oE '[0-9]+\.[0-9]+' | head -1)
-echo -e "${GREEN}  ✓${NC}  bash: $bash_version"
+echo "  ✓ bash: $bash_version"
 deps_ok=$((deps_ok + 1))
 
 # Check git
 if command -v git >/dev/null 2>&1; then
     git_version=$(git --version | cut -d' ' -f3)
-    echo -e "${GREEN}  ✓${NC}  git: $git_version"
+    echo "  ✓ git: $git_version"
     deps_ok=$((deps_ok + 1))
 fi
 
 # Install missing dependencies
 if [[ ${#deps_missing[@]} -gt 0 ]]; then
     echo ""
-    echo -e "${YELLOW}  Installing missing dependencies: ${deps_missing[*]}${NC}"
+    echo "  Installing missing dependencies: ${deps_missing[*]}"
 
     # Detect package manager and install
     if command -v apt-get >/dev/null 2>&1; then
@@ -125,16 +142,16 @@ if [[ ${#deps_missing[@]} -gt 0 ]]; then
     elif command -v apk >/dev/null 2>&1; then
         sudo apk add --quiet "${deps_missing[@]}"
     else
-        echo -e "${RED}  ✗${NC}  Could not auto-install dependencies (no package manager found)"
-        echo "      Please install manually: ${deps_missing[*]}"
+        echo "  ✗ Could not auto-install dependencies (no package manager found)"
+        echo "    Please install manually: ${deps_missing[*]}"
     fi
 
     # Verify installation
     for dep in "${deps_missing[@]}"; do
         if command -v "$dep" >/dev/null 2>&1; then
-            echo -e "${GREEN}  ✓${NC}  $dep installed successfully"
+            echo "  ✓ $dep installed successfully"
         else
-            echo -e "${RED}  ✗${NC}  $dep installation failed"
+            echo "  ✗ $dep installation failed"
         fi
     done
 fi
@@ -145,26 +162,26 @@ echo ""
 # Run Bootstrap Validation
 #==============================================================================
 
-echo -e "${BLUE}[3/4]${NC} Validating bootstrap configuration..."
+echo "[3/4] Validating bootstrap configuration..."
 
 if [[ -x "tests/unit/test_bootstrap_constants.sh" ]]; then
     if bash tests/unit/test_bootstrap_constants.sh > /tmp/bootstrap-validation.log 2>&1; then
-        echo -e "${GREEN}  ✓${NC}  All 15 bootstrap constants properly configured"
-        echo "      - Download constants (5)"
-        echo "      - Network constants (1)"
-        echo "      - Reality validation (2)"
-        echo "      - Reality config (5)"
-        echo "      - Permissions (2)"
+        echo "  ✓ All 15 bootstrap constants properly configured"
+        echo "    - Download constants (5)"
+        echo "    - Network constants (1)"
+        echo "    - Reality validation (2)"
+        echo "    - Reality config (5)"
+        echo "    - Permissions (2)"
     else
-        echo -e "${RED}  ✗${NC}  Bootstrap validation FAILED"
+        echo "  ✗ Bootstrap validation FAILED"
         echo ""
         echo "Error summary:"
         grep "✗ FAIL" /tmp/bootstrap-validation.log | head -5 || true
         echo ""
-        echo -e "${YELLOW}  See full log: /tmp/bootstrap-validation.log${NC}"
+        echo "  See full log: /tmp/bootstrap-validation.log"
     fi
 else
-    echo -e "${YELLOW}  ⚠${NC}  Bootstrap test not found (tests/unit/test_bootstrap_constants.sh)"
+    echo "  ⚠ Bootstrap test not found (tests/unit/test_bootstrap_constants.sh)"
 fi
 
 echo ""
@@ -173,21 +190,21 @@ echo ""
 # Project Information
 #==============================================================================
 
-echo -e "${BLUE}[4/4]${NC} Project Information"
+echo "[4/4] Project Information"
 echo ""
 
 # Git branch
 if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     current_branch=$(git branch --show-current 2>/dev/null || echo "detached HEAD")
-    echo -e "${CYAN}  Branch:${NC} $current_branch"
+    echo "  Branch: $current_branch"
 
     # Recent commits
-    echo -e "${CYAN}  Recent commits:${NC}"
+    echo "  Recent commits:"
     git log --oneline --decorate --max-count=3 | sed 's/^/    /'
 fi
 
 echo ""
-echo -e "${CYAN}  Quick Commands:${NC}"
+echo "  Quick Commands:"
 echo "    bash tests/test-runner.sh unit    # Run all unit tests"
 echo "    bash tests/unit/test_bootstrap_constants.sh    # Validate bootstrap"
 echo "    bash hooks/install-hooks.sh       # Reinstall git hooks"
@@ -195,7 +212,7 @@ echo "    bash install_multi.sh --help      # Installation help"
 echo ""
 
 # Documentation links
-echo -e "${CYAN}  Documentation:${NC}"
+echo "  Documentation:"
 echo "    CONTRIBUTING.md                   # Developer guide (START HERE)"
 echo "    CLAUDE.md                         # Detailed coding standards"
 echo "    tests/unit/README_BOOTSTRAP_TESTS.md    # Bootstrap pattern guide"
@@ -206,21 +223,21 @@ echo ""
 # Summary
 #==============================================================================
 
-echo -e "${GREEN}╔════════════════════════════════════════════════════════╗${NC}"
-echo -e "${GREEN}║${NC}  ${BLUE}✓${NC} Environment setup complete!                         ${GREEN}║${NC}"
-echo -e "${GREEN}╚════════════════════════════════════════════════════════╝${NC}"
+echo "=========================================="
+echo "  ✓ Environment setup complete!"
+echo "=========================================="
 echo ""
-echo -e "${YELLOW}What's configured:${NC}"
+echo "What's configured:"
 echo "  ✓ Git hooks installed (pre-commit validation enabled)"
 echo "  ✓ Dependencies verified/installed"
 echo "  ✓ Bootstrap constants validated"
 echo "  ✓ Ready for development"
 echo ""
-echo -e "${CYAN}Next steps:${NC}"
+echo "Next steps:"
 echo "  1. Read CONTRIBUTING.md for development guidelines"
 echo "  2. Make your changes following code standards"
 echo "  3. Run 'bash tests/test-runner.sh unit' before committing"
 echo "  4. Commit normally - hooks will validate automatically"
 echo ""
-echo -e "${YELLOW}Need help?${NC} Check CONTRIBUTING.md or CLAUDE.md"
+echo "Need help? Check CONTRIBUTING.md or CLAUDE.md"
 echo ""

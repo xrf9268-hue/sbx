@@ -425,12 +425,15 @@ case "${1:-}" in
         echo -e "${G}✓${N} sing-box uninstalled successfully"
         ;;
 
-    help|--help|-h)
+    help|--help|-h|"")
+        # Show help for: sbx help, sbx --help, sbx -h, or just sbx (no args)
         show_usage
+        exit 0
         ;;
 
     *)
-        echo -e "${R}[ERR]${N} Unknown command: ${1:-}"
+        # Unknown command provided
+        echo -e "${R}[ERR]${N} Unknown command: ${1}"
         echo
         show_usage
         exit 1
