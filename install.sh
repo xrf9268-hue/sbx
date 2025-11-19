@@ -627,8 +627,15 @@ detect_libc() {
 # Get installed sing-box version
 get_installed_version() {
     if [[ -x "$SB_BIN" ]]; then
-        local version
-        version=$("$SB_BIN" version 2>/dev/null | head -1 | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' || echo "unknown")
+        local version=""
+        # Match version with or without 'v' prefix (e.g., "v1.12.12" or "1.12.12")
+        version=$("$SB_BIN" version 2>/dev/null | head -1 | grep -oE 'v?[0-9]+\.[0-9]+\.[0-9]+' || echo "unknown")
+
+        # Ensure version has 'v' prefix for consistency with the rest of the codebase
+        if [[ "$version" != "unknown" && "$version" != v* ]]; then
+            version="v${version}"
+        fi
+
         echo "$version"
     else
         echo "not_installed"
