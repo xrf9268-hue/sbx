@@ -16,6 +16,23 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
+# Check if jq is available (required to parse hook input)
+if ! command -v jq >/dev/null 2>&1; then
+  cat >&2 <<'EOF'
+┌─────────────────────────────────────────────────────────────┐
+│ ⚠️  jq Not Installed (Required for Claude Hooks)            │
+├─────────────────────────────────────────────────────────────┤
+│ Install jq to enable automatic shell script hooks:          │
+│                                                              │
+│   Debian/Ubuntu:  sudo apt install jq                       │
+│   macOS:          brew install jq                           │
+│                                                              │
+│ The SessionStart hook normally installs this automatically. │
+└─────────────────────────────────────────────────────────────┘
+EOF
+  exit 1
+fi
+
 # Read hook input from stdin
 INPUT=$(cat)
 
@@ -92,7 +109,7 @@ EOF
     exit 0
 else
     # Formatting failed - likely syntax error
-    echo -e "${RED}✗${NC} Failed to format $FILE_PATH - syntax error?" >&2
+    echo -e "${RED}✗${NC} Failed to format \"$FILE_PATH\" - syntax error?" >&2
     echo "  Run: shfmt -d \"$FILE_PATH\"" >&2
     # Non-blocking error
     exit 1
