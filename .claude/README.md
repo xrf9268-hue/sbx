@@ -4,19 +4,42 @@ This directory contains:
 1. **Reference documentation** imported into CLAUDE.md for efficient context management
 2. **SessionStart hook** for automatic environment setup in Claude Code web/iOS
 
-## SessionStart Hook (Automated Setup)
+## Automated Hooks
 
-When you start a new Claude Code session (web/iOS), the SessionStart hook automatically:
+sbx-lite uses Claude Code hooks to automate development workflows:
+
+### SessionStart Hook (Environment Setup)
+
+When you start a new Claude Code session (web/iOS), automatically:
 - ✅ Installs git hooks for code quality enforcement
 - ✅ Verifies/installs dependencies (jq, openssl)
 - ✅ Validates bootstrap constants configuration
 - ✅ Displays project information and quick commands
 
+### PostToolUse Hooks (Shell Formatting & Linting)
+
+**NEW:** After editing shell scripts (Edit/Write tools), automatically:
+
+**Formatting (shfmt):**
+- ✅ Formats bash files with `shfmt` (if installed)
+- ✅ Enforces consistent style across 18 library modules
+- ✅ Reduces pre-commit failures from formatting issues
+- ✅ Non-blocking if `shfmt` unavailable (provides install instructions)
+
+**Linting (ShellCheck):**
+- ✅ Lints bash files with `shellcheck` (if installed)
+- ✅ Catches code quality issues immediately after editing
+- ✅ Shows warnings with line numbers and suggestions
+- ✅ Non-blocking warnings (allows continued development)
+- ✅ Reduces CI/CD failures from ShellCheck errors
+
 ### Files
 
 - **settings.json** - Hook configuration (committed)
 - **settings.local.json** - User-specific overrides (gitignored)
-- **scripts/session-start.sh** - SessionStart hook implementation (committed)
+- **scripts/session-start.sh** - SessionStart hook implementation
+- **scripts/format-shell.sh** - PostToolUse hook for shell formatting
+- **scripts/lint-shell.sh** - PostToolUse hook for shell linting
 
 ### How It Works
 
@@ -44,6 +67,29 @@ The hook is triggered only on **new session startup** (not resume/clear):
 | **jq** | JSON processing | ✅ Yes (if missing) |
 | **openssl** | Cryptographic operations | ✅ Yes (if missing) |
 | **Bootstrap Tests** | Constant validation | ✅ Runs automatically |
+| **shfmt** | Shell script formatter | ⚠️ Manual (see below) |
+| **shellcheck** | Shell script linter | ⚠️ Manual (see below) |
+
+### Installing Development Tools (Recommended)
+
+To enable automatic shell formatting and linting:
+
+```bash
+# Debian/Ubuntu
+sudo apt install shfmt shellcheck
+
+# macOS
+brew install shfmt shellcheck
+
+# Go (shfmt only)
+go install mvdan.cc/sh/v3/cmd/shfmt@latest
+
+# Verify installation
+shfmt --version
+shellcheck --version
+```
+
+**Without shfmt/shellcheck:** Hooks will show helpful install instructions but won't block your work.
 
 ### Desktop vs Web Behavior
 
