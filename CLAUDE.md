@@ -10,6 +10,7 @@ Project guidance for Claude Code when working with sbx-lite, a sing-box proxy de
 - Development Workflows: @.claude/WORKFLOWS.md
 - Coding Standards: @.claude/CODING_STANDARDS.md
 - Constants Reference: @.claude/CONSTANTS_REFERENCE.md
+- Hook Optimization: @.claude/docs/SESSION_START_OPTIMIZATION.md, @.claude/docs/POSTTOOLUSE_HOOK_OPTIMIZATION.md
 
 **Project Documentation:**
 - Quick Start: @README.md
@@ -31,15 +32,16 @@ This project has **automated enforcement** at every stage to prevent recurring b
 - ✅ Installs git hooks (pre-commit validation)
 - ✅ Verifies/installs dependencies (jq, openssl)
 - ✅ Validates bootstrap constants (prevents unbound variable errors)
-- ✅ Displays helpful project information
+- ✅ Concise output (7 lines) - optimized for context window efficiency
 
 **PostToolUse hook runs after Edit/Write on shell scripts:**
 - ✅ Formats code with shfmt (sequential: format → lint)
 - ✅ Lints formatted result with shellcheck
 - ✅ Prevents race conditions via single combined script
-- ✅ Non-blocking if tools unavailable
+- ✅ Minimal output (session-based warnings, suppressOutput for clean files)
 
-**Configuration:** `.claude/settings.json` (see `.claude/README.md` and `.claude/docs/POSTTOOLUSE_HOOKS_FIX.md`)
+**Configuration:** `.claude/settings.json` (optimized hooks save ~1,720 tokens/session)
+**Documentation:** See section "5. Claude Code Hooks - Output Optimization" below
 
 ### For All Developers
 **Pre-commit hooks run automatically on every commit:**
@@ -167,6 +169,68 @@ INPUT=$(cat)  # Read stdin ONCE
 5. See `.claude/docs/POSTTOOLUSE_HOOKS_FIX.md` for detailed analysis
 
 **Key principle:** Parallel hooks = independent operations only (e.g., notify Slack + log to file). Sequential operations = single hook script.
+
+**5. Claude Code Hooks - Output Optimization** 🔴 **CRITICAL**
+
+Hook output directly impacts context window usage and user experience. Follow these principles:
+
+**SessionStart/UserPromptSubmit hooks:** stdout is **added to Claude's context** - minimize verbosity!
+
+```bash
+❌ WRONG - Verbose output consumes context:
+echo "=========================================="
+echo "  Environment Setup Complete"
+echo "=========================================="
+echo ""
+echo "[1/4] Installing dependencies..."
+echo "  ✓ jq version 1.7"
+echo "  ✓ openssl version 3.0.13"
+# ... 50+ lines of output
+
+✅ CORRECT - Concise, information-dense:
+echo "sbx-lite environment initialized:"
+echo "• Status: git-hooks:✓ deps:✓ bootstrap:✓"
+echo "• Branch: main"
+echo "• Tests: bash tests/test-runner.sh unit"
+# 7 lines total
+```
+
+**PostToolUse hooks:** stdout shown in verbose mode (ctrl+o) - avoid spam!
+
+```bash
+❌ WRONG - Shows warnings on EVERY file edit:
+if ! command -v shfmt >/dev/null 2>&1; then
+    echo "┌─────────────────────────────┐"
+    echo "│ ⚠️  shfmt not installed     │"
+    echo "│ Install: apt install shfmt  │"
+    echo "└─────────────────────────────┘"
+fi
+# User edits 10 files = 50 lines of repeated warnings!
+
+✅ CORRECT - Show warnings once per session:
+WARNING_FILE="/tmp/sbx-shfmt-warning-shown"
+if ! command -v shfmt >/dev/null 2>&1; then
+    if [[ ! -f "$WARNING_FILE" ]]; then
+        echo "⚠ shfmt not installed. Install: apt install shfmt"
+        touch "$WARNING_FILE"
+    fi
+fi
+# User edits 10 files = 1 warning line total
+```
+
+**Best practices:**
+1. **Remove decorative elements:** No ASCII boxes, ANSI colors, or borders
+2. **Suppress clean operations:** Use `{"suppressOutput": true}` when nothing to report
+3. **Session-based warnings:** Show tool missing warnings once, not per invocation
+4. **Information density:** Pack maximum info per line (status symbols, concise labels)
+5. **Conditional errors:** Only show detailed output when issues found
+
+**Impact of optimization:**
+- SessionStart: ~1,720 tokens saved per session (86% reduction)
+- PostToolUse: ~90% output reduction for multi-file edits
+- Better context availability for actual development work
+
+**See:** `.claude/docs/SESSION_START_OPTIMIZATION.md` and `.claude/docs/POSTTOOLUSE_HOOK_OPTIMIZATION.md`
 
 ## Quick Commands
 
