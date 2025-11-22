@@ -295,3 +295,221 @@ Use thinking modes for planning complex features:
 ```bash
 "Add certificate validation"  # Too vague!
 ```
+
+## Session Continuity (Handoff/Pickup)
+
+### Overview
+
+For complex multi-session work, use the `/handoff` and `/pickup` commands to preserve context, architectural decisions, and technical details across sessions.
+
+**When to use:**
+- Complex features requiring multiple sessions (Reality protocol work, module refactoring)
+- Bug investigations that span multiple days
+- Architecture changes with detailed rationale
+- Work interrupted before completion
+- Handing off work to another developer
+
+### Creating a Handoff
+
+**Basic usage:**
+```bash
+/handoff "implement Reality protocol validation"
+```
+
+**What gets captured:**
+1. Primary request and intent
+2. Key technical concepts
+3. Files and code sections (with snippets)
+4. Problems solved
+5. Pending tasks
+6. Current work state
+7. Next steps
+
+**sbx-lite specific sections (added automatically when relevant):**
+- Testing context (unit/integration test status)
+- Code quality standards (ShellCheck, strict mode, constants)
+- Reality protocol considerations (short IDs, nesting, validation)
+- Backward compatibility status
+
+**Example handoff scenarios:**
+
+```bash
+# After completing research phase
+/handoff "research complete, ready to implement validation module"
+
+# After partial implementation
+/handoff "validation functions created, needs integration tests"
+
+# Before investigating a bug
+/handoff "found unbound variable error in install.sh:836, fix planned"
+
+# During complex refactoring
+/handoff "module split designed: common.sh → logging.sh + generators.sh"
+```
+
+**Output:**
+```
+Handoff saved to: .claude/handoffs/2025-11-22-implement-validation.md
+Use `/pickup 2025-11-22-implement-validation` to resume
+```
+
+### Resuming from Handoff
+
+**List available handoffs:**
+```bash
+/pickup
+```
+
+**Resume specific handoff:**
+```bash
+/pickup 2025-11-22-implement-validation
+# or partial match:
+/pickup validation
+```
+
+**What happens:**
+1. Handoff context loaded
+2. Claude summarizes understanding
+3. Confirms current status
+4. States next steps
+5. Asks for confirmation to proceed
+
+**Example pickup flow:**
+```bash
+User: /pickup reality-validation
+
+Claude: I've loaded the handoff: Fix Reality Protocol Validation
+
+Context summary:
+- Working on: Adding Short ID length validation (8-char limit)
+- Last completed: Created validate_short_id() function in lib/validation.sh
+- Next step: Add unit tests in tests/unit/test_validation.sh
+- Tests status: Pending (tests not yet created)
+- Key files: lib/validation.sh, lib/config.sh
+
+Ready to continue with creating unit tests, or would you like to adjust the plan?
+
+User: Yes, continue with tests
+
+Claude: [Creates unit tests as planned in handoff]
+```
+
+### Best Practices
+
+**DO:**
+- ✅ Create handoffs at natural stopping points (end of phase, feature complete)
+- ✅ Provide clear purpose: `/handoff "specific purpose here"`
+- ✅ Include detailed context for complex work
+- ✅ Use descriptive slugs (reality-validation, module-split, bug-836-fix)
+- ✅ Review handoff file before ending session
+- ✅ Clean up old handoffs after merging PR
+
+**DON'T:**
+- ❌ Create handoffs for trivial tasks (one-line changes)
+- ❌ Use vague purposes: `/handoff "continue work"` (too generic)
+- ❌ Forget to commit important handoffs (for collaboration)
+- ❌ Include sensitive data (UUIDs, keys) without sanitizing
+
+### Handoff File Management
+
+**Location:**
+```
+.claude/handoffs/
+├── 2025-11-22-reality-validation.md
+├── 2025-11-23-module-split-refactor.md
+└── 2025-11-24-bug-836-unbound-var.md
+```
+
+**Cleanup after completion:**
+```bash
+# After PR merged, archive or delete handoff
+rm .claude/handoffs/2025-11-22-reality-validation.md
+
+# Or keep for reference
+git add .claude/handoffs/2025-11-22-reality-validation.md
+git commit -m "docs: archive reality validation handoff"
+```
+
+**Sanitize sensitive data:**
+```bash
+# Before committing handoff with sensitive info
+# Edit file to replace:
+# - UUIDs with "UUID_PLACEHOLDER"
+# - Server IPs with "SERVER_IP"
+# - Private keys with "PRIVATE_KEY_HERE"
+```
+
+### Integration with Development Workflow
+
+**TDD with handoffs:**
+```bash
+# Session 1: Write tests
+/handoff "tests written and failing (RED phase), ready to implement"
+
+# Session 2: Implement
+/pickup implement-feature
+# [implement code]
+/handoff "tests passing (GREEN phase), ready to refactor"
+
+# Session 3: Refactor
+/pickup implement-feature
+# [refactor code]
+```
+
+**Multi-phase refactoring:**
+```bash
+# Phase 1: Planning
+/handoff "Phase 1 complete: analyzed common.sh, designed split into 3 modules"
+
+# Phase 2: Implementation
+/pickup module-split-design
+# [implement split]
+/handoff "Phase 2 complete: modules created, all tests passing"
+
+# Phase 3: Documentation
+/pickup module-split-implementation
+# [update docs]
+```
+
+**Bug investigation:**
+```bash
+# Session 1: Investigation
+/handoff "root cause found: unbound variable in conditional block at install.sh:836"
+
+# Session 2: Fix
+/pickup bug-836-investigation
+# [apply fix]
+/handoff "fix applied, needs regression test"
+
+# Session 3: Testing
+/pickup bug-836-fix
+# [add tests]
+```
+
+### Handoff Quality Checklist
+
+Before creating handoff, ensure:
+- [ ] Clear, specific purpose provided
+- [ ] All relevant files documented
+- [ ] Code snippets included for key changes
+- [ ] Test status clearly stated
+- [ ] Next steps are actionable
+- [ ] No sensitive data in handoff
+- [ ] Slug is descriptive and unique
+
+### Collaboration with Handoffs
+
+**Scenario: Handing off to another developer**
+
+```bash
+# Developer A (end of day):
+/handoff "implemented validation module, needs integration with config.sh"
+git add .claude/handoffs/2025-11-22-validation-module.md
+git commit -m "docs: handoff for validation module integration"
+git push
+
+# Developer B (next day):
+git pull
+/pickup validation-module
+# [continues work with full context]
+```
