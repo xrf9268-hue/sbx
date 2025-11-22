@@ -251,6 +251,80 @@ All new code should have:
 
 ---
 
+## Session Continuity (Handoff/Pickup)
+
+### Overview
+
+For complex multi-session work, use `/handoff` and `/pickup` commands to preserve context between development sessions.
+
+**When to use:**
+- Multi-session feature implementation
+- Bug investigations spanning multiple days
+- Complex refactoring work
+- Handing off work to other contributors
+
+### Quick Start
+
+**Create a handoff:**
+```bash
+/handoff "implement Reality validation module"
+```
+
+**Resume from handoff:**
+```bash
+/pickup                     # List available handoffs
+/pickup reality-validation  # Resume specific handoff
+```
+
+### Example Workflow
+
+**Scenario: Multi-session TDD workflow**
+
+```bash
+# Session 1: Write tests
+# [work on tests]
+/handoff "tests written and failing (RED phase), ready to implement"
+git add .claude/handoffs/2025-11-22-reality-validation.md
+git commit -m "docs: handoff for Reality validation implementation"
+git push
+
+# Session 2: Implement
+git pull
+/pickup reality-validation
+# [implement code]
+/handoff "tests passing (GREEN phase), ready to refactor"
+
+# Session 3: Refactor and document
+/pickup reality-validation
+# [refactor and document]
+```
+
+### Best Practices
+
+**DO:**
+- ✅ Create handoffs at natural stopping points
+- ✅ Use clear, specific purposes
+- ✅ Commit handoffs for collaborative work
+- ✅ Sanitize sensitive data (UUIDs, IPs, keys)
+
+**DON'T:**
+- ❌ Create handoffs for trivial one-line changes
+- ❌ Use vague purposes like "continue work"
+- ❌ Include actual credentials in handoffs
+
+### Handoff Quality Checklist
+
+Before creating handoff:
+- [ ] Clear, specific purpose provided
+- [ ] All relevant files documented with code snippets
+- [ ] Test status clearly stated
+- [ ] Next steps are actionable
+- [ ] No sensitive data in handoff
+
+**See:** `.claude/WORKFLOWS.md` § "Session Continuity" for comprehensive guide.
+
+---
+
 ## Commit Guidelines
 
 ### Conventional Commits
