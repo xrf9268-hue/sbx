@@ -69,18 +69,23 @@ else
     fail "Method 3 missing"
 fi
 
-# Test 3: Verify jq is optional
-test_start "Verify jq moved to optional tools"
-if grep -A 20 "^ensure_tools()" "$SCRIPT_DIR/install.sh" | grep -q 'local optional=(jq)'; then
-    pass "jq is in optional tools list"
+# Test 3: Verify jq is required (reverted from optional due to incomplete fallback implementation)
+test_start "Verify jq is in required tools"
+if grep -A 20 "^ensure_tools()" "$SCRIPT_DIR/install.sh" | grep -q 'local required=(curl tar gzip openssl systemctl jq)'; then
+    pass "jq is in required tools list"
 else
-    fail "jq not in optional tools list"
+    fail "jq not in required tools list"
 fi
 
-if grep -A 20 "^ensure_tools()" "$SCRIPT_DIR/install.sh" | grep -q 'local required=(curl tar gzip openssl systemctl)'; then
-    pass "jq not in required tools list"
+if grep -A 20 "^ensure_tools()" "$SCRIPT_DIR/install.sh" | grep -q 'local optional=()'; then
+    pass "jq not in optional tools list (empty array)"
 else
-    fail "jq still in required tools list"
+    # Check if optional array doesn't contain jq
+    if ! grep -A 20 "^ensure_tools()" "$SCRIPT_DIR/install.sh" | grep -q 'local optional=(jq)'; then
+        pass "jq not in optional tools list"
+    else
+        fail "jq still in optional tools list"
+    fi
 fi
 
 # Test 4: Verify libc suffix used in download

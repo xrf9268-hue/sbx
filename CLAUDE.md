@@ -440,11 +440,13 @@ HTTP_DOWNLOAD_TIMEOUT_SEC: unbound variable
 
 ## Recent Improvements (2025-11-18)
 
-### Optional jq Dependency
-✅ Implemented - Works on minimal systems (Alpine, BusyBox, containers)
-- Fallback chain: jq → python3 → python2 (via lib/tools.sh)
-- Faster installation (no package manager calls)
-- Full functionality maintained with python fallbacks
+### jq Dependency (Required)
+⚠️ **Note:** jq was temporarily marked as optional but has been reverted to required due to incomplete fallback implementation.
+
+- jq is automatically installed if missing on supported systems (Debian, Ubuntu, CentOS, Fedora, RHEL)
+- Fallback chain for JSON **parsing** exists: jq → python3 → python2 (via lib/tools.sh)
+- JSON **building** currently requires jq (python fallbacks not yet implemented)
+- Future: Complete python fallbacks for full jq-optional support
 
 ### Alpine Linux Support (musl libc Detection)
 ✅ Implemented - Proper support for Alpine/musl-based systems

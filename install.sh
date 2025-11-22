@@ -792,8 +792,8 @@ check_existing_installation() {
 
 # Ensure required tools are installed
 ensure_tools() {
-    local required=(curl tar gzip openssl systemctl)
-    local optional=(jq)
+    local required=(curl tar gzip openssl systemctl jq)
+    local optional=()
     local missing=()
     local missing_optional=()
 
