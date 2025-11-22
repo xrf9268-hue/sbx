@@ -2,3 +2,8 @@
 
 # Claude Code user-specific settings (keep personal overrides private)
 .claude/settings.local.json
+
+# Handoffs (ignore active handoffs to prevent accidental sensitive data commits)
+.claude/handoffs/*.md
+!.claude/handoffs/README.md
+!.claude/handoffs/archive/
