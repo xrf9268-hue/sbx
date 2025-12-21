@@ -930,7 +930,22 @@ download_singbox() {
     fi
 
     msg "Installing sing-box binary..."
-    cp "$extracted_bin" "$SB_BIN"
+
+    # Stop service before replacing binary (prevents "Text file busy" error)
+    # The service will be restarted by setup_service or restart_service in main flow
+    local service_was_running=0
+    if check_service_status 2>/dev/null; then
+        msg "Stopping sing-box service for binary replacement..."
+        stop_service
+        service_was_running=1
+    fi
+
+    cp "$extracted_bin" "$SB_BIN" || {
+        rm -rf "$tmp"
+        # Try to restart service if we stopped it
+        [[ "$service_was_running" -eq 1 ]] && start_service_with_retry 2>/dev/null
+        die "Failed to install sing-box binary"
+    }
     chmod +x "$SB_BIN"
 
     rm -rf "$tmp"
