@@ -43,9 +43,9 @@ else
     setup_errors+=("Git hooks installer not found")
 fi
 
-# 2. Verify Dependencies
+# 2. Verify Dependencies (essential + code quality tools)
 deps_missing=()
-for dep in jq openssl bash git; do
+for dep in jq openssl bash git shellcheck shfmt; do
     if ! command -v "$dep" >/dev/null 2>&1; then
         deps_missing+=("$dep")
     fi
