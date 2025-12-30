@@ -7,3 +7,6 @@
 .claude/handoffs/*.md
 !.claude/handoffs/README.md
 !.claude/handoffs/archive/
+
+# Ralph Wiggum plugin runtime state (auto-generated, session-specific)
+.claude/ralph-loop.local.md
