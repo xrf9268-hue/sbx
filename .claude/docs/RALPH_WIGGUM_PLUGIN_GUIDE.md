@@ -1,85 +1,69 @@
-# Ralph Wiggum Plugin Guide
+# Ralph Wiggum 迭代开发指南
 
-**Version:** 1.0.0
+**Version:** 1.1.0
 **Date:** 2025-12-30
 **Purpose:** Autonomous iterative development loops for Claude Code
 
 ## Overview
 
-Ralph Wiggum is an official Anthropic plugin that implements continuous self-referential AI loops. Instead of completing a task once, Claude repeatedly works on the same prompt, viewing its previous work and refining it until completion.
+Ralph Wiggum 实现了持续的自引用 AI 循环。Claude 不是一次性完成任务，而是反复处理相同的提示词，查看之前的工作并不断改进，直到完成。
 
-This is particularly powerful for:
-- Achieving high test coverage (90%+)
-- Iterative code refactoring
-- Documentation generation
-- Any task with measurable completion criteria
+适用场景：
+- 达到高测试覆盖率 (90%+)
+- 迭代式代码重构
+- 文档生成
+- 任何有可衡量完成标准的任务
 
-## Installation Methods
+## 安装方式
 
-### Method 1: Via Plugin Marketplace (Recommended for Claude Code on Web)
+### 本项目已配置（原生命令）
 
-```bash
-# Step 1: Add the official Anthropic marketplace
-/plugin marketplace add anthropics/claude-code
+由于 `/plugin` 命令在 Claude Code on Web 不可用，本项目使用**原生斜杠命令**实现 ralph-wiggum 功能：
 
-# Step 2: Install the plugin
-/plugin install ralph-wiggum
+```
+.claude/
+├── commands/
+│   ├── ralph-loop.md      # /ralph-loop 命令
+│   └── cancel-ralph.md    # /cancel-ralph 命令
+├── scripts/
+│   ├── setup-ralph-loop.sh
+│   ├── ralph-stop-hook.sh
+│   └── stop-hook-combined.sh
+└── settings.json          # Stop hook 配置
 ```
 
-### Method 2: Local Plugin (Already configured in this project)
+## 命令
 
-The plugin is pre-installed at `.claude/plugins/ralph-wiggum/`. To use it:
+### `/ralph-loop`
 
+启动迭代开发循环。
+
+**语法:**
 ```bash
-# Load the plugin during session
-claude --plugin-dir .claude/plugins/ralph-wiggum
+/ralph-loop "PROMPT" --max-iterations N --completion-promise "TEXT"
 ```
 
-Or reference commands directly:
+**参数:**
+| 参数 | 必需 | 说明 |
+|------|------|------|
+| `"PROMPT"` | 是 | 要完成的任务 |
+| `--max-iterations N` | 推荐 | 最大迭代次数限制 |
+| `--completion-promise "TEXT"` | 推荐 | 完成时输出的短语 |
+
+### `/cancel-ralph`
+
+取消活动循环。
+
 ```bash
-/ralph-wiggum:ralph-loop "Your task"
+/cancel-ralph
 ```
 
-## Commands
+## 实用示例
 
-### `/ralph-wiggum:ralph-loop`
-
-Start an iterative development loop.
-
-**Syntax:**
-```bash
-/ralph-wiggum:ralph-loop "PROMPT" --max-iterations N --completion-promise "TEXT"
-```
-
-**Parameters:**
-| Parameter | Required | Description |
-|-----------|----------|-------------|
-| `"PROMPT"` | Yes | The task to complete |
-| `--max-iterations N` | Recommended | Safety limit for iterations |
-| `--completion-promise "TEXT"` | Recommended | Phrase to output when done |
-
-### `/ralph-wiggum:cancel-ralph`
-
-Cancel an active loop.
+### 示例 1: 达到 90%+ 测试覆盖率
 
 ```bash
-/ralph-wiggum:cancel-ralph
-```
-
-### `/ralph-wiggum:help`
-
-Show plugin help.
-
-```bash
-/ralph-wiggum:help
-```
-
-## Practical Examples
-
-### Example 1: Achieve 90%+ Test Coverage
-
-```bash
-/ralph-wiggum:ralph-loop "Improve test coverage to 90%+ for this project.
+/ralph-loop "Improve test coverage to 90%+ for this project.
 
 WORKFLOW:
 1. Run coverage analysis: bash tests/coverage.sh generate
@@ -98,10 +82,10 @@ When coverage exceeds 90%, output: <promise>COVERAGE_90_ACHIEVED</promise>" \
   --max-iterations 50 --completion-promise "COVERAGE_90_ACHIEVED"
 ```
 
-### Example 2: Fix All ShellCheck Warnings
+### 示例 2: 修复所有 ShellCheck 警告
 
 ```bash
-/ralph-wiggum:ralph-loop "Fix all ShellCheck warnings in lib/ directory.
+/ralph-loop "Fix all ShellCheck warnings in lib/ directory.
 
 WORKFLOW:
 1. Run: shellcheck lib/*.sh 2>&1 | head -100
@@ -118,10 +102,10 @@ When all warnings fixed: <promise>SHELLCHECK_CLEAN</promise>" \
   --max-iterations 30 --completion-promise "SHELLCHECK_CLEAN"
 ```
 
-### Example 3: Complete Documentation
+### 示例 3: 完善文档
 
 ```bash
-/ralph-wiggum:ralph-loop "Add comprehensive documentation to all public functions in lib/.
+/ralph-loop "Add comprehensive documentation to all public functions in lib/.
 
 WORKFLOW:
 1. List all functions: grep -rn '^[a-z_]*()' lib/*.sh
@@ -138,10 +122,10 @@ When complete: <promise>DOCS_COMPLETE</promise>" \
   --max-iterations 40 --completion-promise "DOCS_COMPLETE"
 ```
 
-### Example 4: TDD Development Loop
+### 示例 4: TDD 开发循环
 
 ```bash
-/ralph-wiggum:ralph-loop "Implement feature X using TDD.
+/ralph-loop "Implement feature X using TDD.
 
 PHASE 1 - Write failing tests:
 1. Create tests/unit/test_feature_x.sh
