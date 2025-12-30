@@ -144,6 +144,74 @@ test_choose_listen_address() {
     fi
 }
 
+test_safe_http_get_missing_timeout() {
+    echo ""
+    echo "Testing safe_http_get with missing timeout..."
+
+    if declare -f safe_http_get >/dev/null 2>&1; then
+        local output status
+        local original_path="$PATH"
+        local temp_dir
+        temp_dir=$(mktemp -d)
+
+        cat > "${temp_dir}/curl" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+        cat > "${temp_dir}/wget" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+        chmod +x "${temp_dir}/curl" "${temp_dir}/wget"
+
+        PATH="${temp_dir}"
+        output=$(safe_http_get "https://example.com" 2>&1)
+        status=$?
+        PATH="$original_path"
+        rm -rf "$temp_dir"
+
+        if [[ $status -ne 0 && "$output" == *"timeout"* ]]; then
+            test_result "safe_http_get reports missing timeout" "pass"
+        else
+            test_result "safe_http_get reports missing timeout" "fail"
+        fi
+    else
+        test_result "skipped (function not defined)" "pass"
+    fi
+}
+
+test_safe_http_get_missing_downloaders() {
+    echo ""
+    echo "Testing safe_http_get with missing downloaders..."
+
+    if declare -f safe_http_get >/dev/null 2>&1; then
+        local output status
+        local original_path="$PATH"
+        local temp_dir
+        temp_dir=$(mktemp -d)
+
+        cat > "${temp_dir}/timeout" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+        chmod +x "${temp_dir}/timeout"
+
+        PATH="${temp_dir}"
+        output=$(safe_http_get "https://example.com" 2>&1)
+        status=$?
+        PATH="$original_path"
+        rm -rf "$temp_dir"
+
+        if [[ $status -ne 0 && "$output" == *"curl or wget"* ]]; then
+            test_result "safe_http_get reports missing downloaders" "pass"
+        else
+            test_result "safe_http_get reports missing downloaders" "fail"
+        fi
+    else
+        test_result "skipped (function not defined)" "pass"
+    fi
+}
+
 #==============================================================================
 # Run All Tests
 #==============================================================================
@@ -160,6 +228,8 @@ test_check_port_in_use
 test_wait_for_port
 test_detect_ipv6_support
 test_choose_listen_address
+test_safe_http_get_missing_timeout
+test_safe_http_get_missing_downloaders
 
 # Print summary
 echo ""
