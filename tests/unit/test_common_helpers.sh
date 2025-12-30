@@ -121,6 +121,28 @@ test_create_temp_dir() {
     fi
 }
 
+test_safe_rm_temp() {
+    echo ""
+    echo "Testing safe_rm_temp..."
+
+    if declare -f safe_rm_temp >/dev/null 2>&1; then
+        local temp
+        temp=$(mktemp -d)
+        [[ -d "$temp" ]] || test_result "safe_rm_temp removes temp directory (setup)" "fail"
+
+        safe_rm_temp "$temp" 2>/dev/null
+
+        if [[ ! -d "$temp" ]]; then
+            test_result "safe_rm_temp removes temp directory" "pass"
+        else
+            test_result "safe_rm_temp removes temp directory" "fail"
+            rm -rf "$temp"
+        fi
+    else
+        test_result "skipped (function not defined)" "pass"
+    fi
+}
+
 #==============================================================================
 # Test: Die Function
 #==============================================================================
@@ -151,6 +173,7 @@ test_get_file_size
 test_get_file_mtime
 test_create_temp_file
 test_create_temp_dir
+test_safe_rm_temp
 test_die_function
 
 # Print summary

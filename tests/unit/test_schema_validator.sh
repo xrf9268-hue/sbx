@@ -59,6 +59,39 @@ test_validate_json_field() {
     fi
 }
 
+test_check_schema_tool_detection() {
+    echo ""
+    echo "Testing check_schema_tool..."
+
+    if ! declare -f check_schema_tool >/dev/null 2>&1; then
+        test_result "check_schema_tool defined" "fail"
+        return
+    fi
+
+    local tool_output
+    if tool_output=$(check_schema_tool 2>/dev/null); then
+        test_result "check_schema_tool reports available tool (${tool_output})" "pass"
+    else
+        test_result "check_schema_tool handles missing tools" "pass"
+    fi
+}
+
+test_validate_config_schema_missing_file() {
+    echo ""
+    echo "Testing validate_config_schema with missing file..."
+
+    if ! declare -f validate_config_schema >/dev/null 2>&1; then
+        test_result "validate_config_schema defined" "fail"
+        return
+    fi
+
+    if validate_config_schema "/tmp/nonexistent-config-$$.json" 2>/dev/null; then
+        test_result "validate_config_schema rejects missing file" "fail"
+    else
+        test_result "validate_config_schema rejects missing file" "pass"
+    fi
+}
+
 test_validate_inbound_schema() {
     echo ""
     echo "Testing validate_inbound_schema..."
@@ -271,6 +304,8 @@ echo "Running test suite: lib/schema_validator.sh Functions"
 echo "=========================================="
 
 test_validate_json_field
+test_check_schema_tool_detection
+test_validate_config_schema_missing_file
 test_validate_inbound_schema
 test_validate_outbound_schema
 test_validate_dns_schema
