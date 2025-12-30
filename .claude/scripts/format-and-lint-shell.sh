@@ -24,8 +24,8 @@ if [[ -z "$FILE_PATH" ]]; then
     exit 0
 fi
 
-# Only process shell script files
-if [[ ! "$FILE_PATH" =~ \.(sh)$ ]] && [[ ! "$FILE_PATH" != "install.sh" ]]; then
+# Only process shell script files (.sh extension or specific known scripts)
+if [[ ! "$FILE_PATH" =~ \.sh$ ]] && [[ "$(basename "$FILE_PATH")" != "install.sh" ]]; then
     exit 0
 fi
 

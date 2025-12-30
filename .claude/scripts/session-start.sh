@@ -43,40 +43,85 @@ else
     setup_errors+=("Git hooks installer not found")
 fi
 
-# 2. Verify Dependencies (essential + code quality tools)
-deps_missing=()
-for dep in jq openssl bash git shellcheck shfmt; do
+# 2. Verify Dependencies
+# Essential deps (required for core functionality)
+essential_deps=(jq openssl bash git)
+# Optional deps (code quality tools - nice to have)
+optional_deps=(shellcheck shfmt)
+
+essential_missing=()
+optional_missing=()
+
+for dep in "${essential_deps[@]}"; do
     if ! command -v "$dep" >/dev/null 2>&1; then
-        deps_missing+=("$dep")
+        essential_missing+=("$dep")
     fi
 done
 
-if [[ ${#deps_missing[@]} -eq 0 ]]; then
-    setup_status+=("deps:✓")
-else
-    # Try to install missing dependencies
+for dep in "${optional_deps[@]}"; do
+    if ! command -v "$dep" >/dev/null 2>&1; then
+        optional_missing+=("$dep")
+    fi
+done
+
+# Try to install missing essential dependencies
+if [[ ${#essential_missing[@]} -gt 0 ]]; then
     if command -v apt-get >/dev/null 2>&1; then
-        sudo apt-get update -qq && sudo apt-get install -y -qq "${deps_missing[@]}" >/dev/null 2>&1 || true
+        sudo apt-get update -qq && sudo apt-get install -y -qq "${essential_missing[@]}" >/dev/null 2>&1 || true
     elif command -v yum >/dev/null 2>&1; then
-        sudo yum install -y -q "${deps_missing[@]}" >/dev/null 2>&1 || true
+        sudo yum install -y -q "${essential_missing[@]}" >/dev/null 2>&1 || true
     elif command -v apk >/dev/null 2>&1; then
-        sudo apk add --quiet "${deps_missing[@]}" >/dev/null 2>&1 || true
+        sudo apk add --quiet "${essential_missing[@]}" >/dev/null 2>&1 || true
     fi
+fi
 
-    # Re-check after installation attempt
-    still_missing=()
-    for dep in "${deps_missing[@]}"; do
-        if ! command -v "$dep" >/dev/null 2>&1; then
-            still_missing+=("$dep")
-        fi
-    done
+# Try to install shellcheck (available via apt/yum/apk)
+if [[ " ${optional_missing[*]} " =~ " shellcheck " ]]; then
+    if command -v apt-get >/dev/null 2>&1; then
+        sudo apt-get install -y -qq shellcheck >/dev/null 2>&1 || true
+    elif command -v yum >/dev/null 2>&1; then
+        sudo yum install -y -q ShellCheck >/dev/null 2>&1 || true
+    elif command -v apk >/dev/null 2>&1; then
+        sudo apk add --quiet shellcheck >/dev/null 2>&1 || true
+    fi
+fi
 
-    if [[ ${#still_missing[@]} -eq 0 ]]; then
-        setup_status+=("deps:✓(installed)")
+# Try to install shfmt (NOT in apt - use snap or binary)
+if [[ " ${optional_missing[*]} " =~ " shfmt " ]]; then
+    if command -v snap >/dev/null 2>&1; then
+        sudo snap install shfmt >/dev/null 2>&1 || true
+    elif command -v go >/dev/null 2>&1; then
+        go install mvdan.cc/sh/v3/cmd/shfmt@latest >/dev/null 2>&1 || true
+    fi
+fi
+
+# Re-check after installation attempts
+still_missing_essential=()
+still_missing_optional=()
+
+for dep in "${essential_deps[@]}"; do
+    if ! command -v "$dep" >/dev/null 2>&1; then
+        still_missing_essential+=("$dep")
+    fi
+done
+
+for dep in "${optional_deps[@]}"; do
+    if ! command -v "$dep" >/dev/null 2>&1; then
+        still_missing_optional+=("$dep")
+    fi
+done
+
+# Determine status
+if [[ ${#still_missing_essential[@]} -eq 0 ]]; then
+    if [[ ${#still_missing_optional[@]} -eq 0 ]]; then
+        setup_status+=("deps:✓")
     else
-        setup_status+=("deps:✗")
-        setup_errors+=("Missing: ${still_missing[*]}")
+        setup_status+=("deps:✓")
+        setup_errors+=("Missing: ${still_missing_optional[*]}")
     fi
+else
+    setup_status+=("deps:✗")
+    setup_errors+=("Missing essential: ${still_missing_essential[*]}")
 fi
 
 # 3. Validate Bootstrap Constants
