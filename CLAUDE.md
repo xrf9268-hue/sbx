@@ -202,7 +202,7 @@ echo "• Tests: bash tests/test-runner.sh unit"
 if ! command -v shfmt >/dev/null 2>&1; then
     echo "┌─────────────────────────────┐"
     echo "│ ⚠️  shfmt not installed     │"
-    echo "│ Install: apt install shfmt  │"
+    echo "│ Install: snap install shfmt │"
     echo "└─────────────────────────────┘"
 fi
 # User edits 10 files = 50 lines of repeated warnings!
@@ -211,7 +211,8 @@ fi
 WARNING_FILE="/tmp/sbx-shfmt-warning-shown"
 if ! command -v shfmt >/dev/null 2>&1; then
     if [[ ! -f "$WARNING_FILE" ]]; then
-        echo "⚠ shfmt not installed. Install: apt install shfmt"
+        # Note: shfmt is NOT in apt repos, use snap/go/binary
+        echo "⚠ shfmt not installed. Install: snap install shfmt (or go install mvdan.cc/sh/v3/cmd/shfmt@latest)"
         touch "$WARNING_FILE"
     fi
 fi
