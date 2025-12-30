@@ -37,7 +37,6 @@ fi
 # Check for completion promise in transcript
 TRANSCRIPT_FILE="${CLAUDE_TRANSCRIPT_FILE:-}"
 if [[ -n "$completion_promise" ]] && [[ -n "$TRANSCRIPT_FILE" ]] && [[ -f "$TRANSCRIPT_FILE" ]]; then
-    # Look for promise tags in assistant messages
     if grep -q "<promise>$completion_promise</promise>" "$TRANSCRIPT_FILE" 2>/dev/null; then
         echo "Completion promise found! Ralph loop complete." >&2
         rm -f "$LOOP_FILE"
