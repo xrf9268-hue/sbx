@@ -85,6 +85,89 @@ ${B}Examples:${N}
 EOF
 }
 
+CLIENT_INFO_PATH="${CLIENT_INFO:-/etc/sing-box/client-info.txt}"
+CLIENT_INFO_ALLOWED_KEYS_REGEX="^(DOMAIN|UUID|PUBLIC_KEY|SHORT_ID|SNI|REALITY_PORT|WS_PORT|HY2_PORT|HY2_PASS|CERT_FULLCHAIN|CERT_KEY)$"
+
+error_exit() {
+    echo -e "${R}[ERR]${N} $1" >&2
+    exit "${2:-1}"
+}
+
+validate_client_info_file() {
+    local client_info_file="$1"
+    [[ -n "$client_info_file" ]] || error_exit "Client info path is empty."
+    [[ -f "$client_info_file" ]] || error_exit "Client info not found: $client_info_file"
+    [[ ! -L "$client_info_file" ]] || error_exit "Refusing to load client info from symlink: $client_info_file"
+
+    local resolved owner perm
+    resolved=$(readlink -f "$client_info_file") || error_exit "Failed to resolve client info path: $client_info_file"
+    owner=$(stat -c '%u' "$resolved") || error_exit "Unable to read client info ownership."
+    perm=$(stat -c '%a' "$resolved") || error_exit "Unable to read client info permissions."
+
+    [[ "$owner" -eq 0 ]] || error_exit "Client info must be owned by root (uid 0)."
+    [[ "$perm" == "600" ]] || error_exit "Client info permissions must be 600 (found $perm)."
+    [[ -s "$resolved" ]] || error_exit "Client info is empty."
+
+    echo "$resolved"
+}
+
+parse_client_info_file() {
+    local file="$1"
+    local invalid_line checksum line key value
+    declare -A client_info_map=()
+
+    invalid_line=$(grep -nEv '^[[:space:]]*(#.*)?$|^[A-Z0-9_]+=\"[^\"]*\"[[:space:]]*$' "$file" | head -n1 || true)
+    [[ -z "$invalid_line" ]] || error_exit "Invalid client info format at ${invalid_line%%:*}: ${invalid_line#*:}"
+
+    checksum=$(sha256sum "$file" | awk '{print $1}')
+    CLIENT_INFO_CHECKSUM="$checksum"
+
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]] && continue
+        if [[ "$line" =~ ^([A-Z0-9_]+)=\"([^\"]*)\"[[:space:]]*$ ]]; then
+            key="${BASH_REMATCH[1]}"
+            value="${BASH_REMATCH[2]}"
+
+            [[ "$key" =~ $CLIENT_INFO_ALLOWED_KEYS_REGEX ]] || error_exit "Unexpected key '${key}' in client info."
+            { [[ "$value" == *'$('* ]] || [[ "$value" == *\`* ]]; } && error_exit "Suspicious characters in value for ${key}."
+
+            client_info_map["$key"]="$value"
+        else
+            error_exit "Invalid client info entry: $line"
+        fi
+    done < "$file"
+
+    for key in "${!client_info_map[@]}"; do
+        printf -v "$key" '%s' "${client_info_map[$key]}"
+    done
+
+    # Set defaults for missing variables
+    local default_reality="${REALITY_PORT_DEFAULT:-443}"
+    local default_sni="${SNI_DEFAULT:-www.microsoft.com}"
+    local default_ws="${WS_PORT_DEFAULT:-8444}"
+    local default_hy2="${HY2_PORT_DEFAULT:-8443}"
+
+    REALITY_PORT="${REALITY_PORT:-$default_reality}"
+    SNI="${SNI:-$default_sni}"
+    WS_PORT="${WS_PORT:-$default_ws}"
+    HY2_PORT="${HY2_PORT:-$default_hy2}"
+}
+
+fallback_load_client_info() {
+    local target_file="${TEST_CLIENT_INFO:-$CLIENT_INFO_PATH}"
+    local resolved
+    resolved=$(validate_client_info_file "$target_file")
+    parse_client_info_file "$resolved"
+}
+
+ensure_client_info_loaded() {
+    if command -v load_client_info >/dev/null 2>&1; then
+        load_client_info
+    else
+        fallback_load_client_info
+    fi
+}
+
 case "${1:-}" in
     status)
         echo -e "${B}=== Service Status ===${N}"
@@ -96,16 +179,8 @@ case "${1:-}" in
         ;;
 
     info|show)
-        if [[ ! -f "/etc/sing-box/client-info.txt" ]]; then
-            echo -e "${R}[ERR]${N} Client info not found."
-            exit 1
-        fi
-
+        ensure_client_info_loaded
         show_sbx_logo
-
-        # Load saved info
-        # shellcheck source=/dev/null
-        source /etc/sing-box/client-info.txt
 
         # Validate required fields
         missing_fields=()
@@ -182,28 +257,11 @@ case "${1:-}" in
 
     qr)
         if ! command -v qrencode >/dev/null 2>&1; then
-            echo -e "${R}[ERR]${N} qrencode not installed. Install with: apt install qrencode"
-            exit 1
-        fi
+        echo -e "${R}[ERR]${N} qrencode not installed. Install with: apt install qrencode"
+        exit 1
+    fi
 
-        # Use modular load_client_info() if available, otherwise fallback to inline
-        if command -v load_client_info >/dev/null 2>&1; then
-            # Use lib/export.sh function (DRY principle - single source of truth)
-            load_client_info
-        else
-            # Fallback: inline loading with defaults (graceful degradation)
-            if [[ ! -f "/etc/sing-box/client-info.txt" ]]; then
-                echo -e "${R}[ERR]${N} Client info not found."
-                exit 1
-            fi
-            # shellcheck source=/dev/null
-            source /etc/sing-box/client-info.txt
-            # Set defaults (same as lib/export.sh::load_client_info)
-            REALITY_PORT="${REALITY_PORT:-443}"
-            SNI="${SNI:-www.microsoft.com}"
-            WS_PORT="${WS_PORT:-8444}"
-            HY2_PORT="${HY2_PORT:-8443}"
-        fi
+    ensure_client_info_loaded
 
         echo -e "${B}=== Configuration QR Codes ===${N}"
 

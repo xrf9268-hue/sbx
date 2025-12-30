@@ -18,19 +18,59 @@ source "${_LIB_DIR}/common.sh"
 # Configuration Loading
 #==============================================================================
 
-# Load client info from saved configuration
+# Load client info from saved configuration with strict validation
 load_client_info() {
+  local client_info_file resolved owner perm invalid_line
+  local allowed_keys_regex="^(DOMAIN|UUID|PUBLIC_KEY|SHORT_ID|SNI|REALITY_PORT|WS_PORT|HY2_PORT|HY2_PASS|CERT_FULLCHAIN|CERT_KEY)$"
+
   # Support test mode with alternative client info path
-  local client_info_file="${TEST_CLIENT_INFO:-$CLIENT_INFO}"
+  client_info_file="${TEST_CLIENT_INFO:-$CLIENT_INFO}"
+
+  [[ -n "$client_info_file" ]] || die "Client info path is empty"
   [[ -f "$client_info_file" ]] || die "Client info not found. Run: sbx info"
-  # shellcheck source=/dev/null
-  source "$client_info_file"
+  [[ ! -L "$client_info_file" ]] || die "Refusing to load client info from symlink: $client_info_file"
+
+  resolved=$(readlink -f "$client_info_file") || die "Failed to resolve client info path: $client_info_file"
+  owner=$(stat -c '%u' "$resolved") || die "Unable to read client info ownership"
+  perm=$(stat -c '%a' "$resolved") || die "Unable to read client info permissions"
+  [[ "$owner" -eq 0 ]] || die "Client info must be owned by root (uid 0)"
+  [[ "$perm" == "600" ]] || die "Client info permissions must be 600 (found $perm)"
+  [[ -s "$resolved" ]] || die "Client info is empty"
+
+  # Quick format validation before parsing
+  invalid_line=$(grep -nEv '^[[:space:]]*(#.*)?$|^[A-Z0-9_]+=\"[^\"]*\"[[:space:]]*$' "$resolved" | head -n1 || true)
+  if [[ -n "$invalid_line" ]]; then
+    die "Invalid client info format at ${invalid_line%%:*}: ${invalid_line#*:}"
+  fi
+
+  # Parse key-value pairs safely
+  local line key value
+  declare -A client_info_map=()
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]] && continue
+    if [[ "$line" =~ ^([A-Z0-9_]+)=\"([^\"]*)\"[[:space:]]*$ ]]; then
+      key="${BASH_REMATCH[1]}"
+      value="${BASH_REMATCH[2]}"
+
+      [[ "$key" =~ $allowed_keys_regex ]] || die "Unexpected key '${key}' in client info"
+      { [[ "$value" == *'$('* ]] || [[ "$value" == *\`* ]]; } && die "Suspicious characters in value for ${key}"
+
+      client_info_map["$key"]="$value"
+    else
+      die "Invalid client info entry: $line"
+    fi
+  done < "$resolved"
+
+  # Export parsed values into the environment
+  for key in "${!client_info_map[@]}"; do
+    printf -v "$key" '%s' "${client_info_map[$key]}"
+  done
 
   # Set defaults for missing variables to ensure valid URIs
-  REALITY_PORT="${REALITY_PORT:-443}"
-  SNI="${SNI:-www.microsoft.com}"
-  WS_PORT="${WS_PORT:-8444}"
-  HY2_PORT="${HY2_PORT:-8443}"
+  REALITY_PORT="${REALITY_PORT:-${REALITY_PORT_DEFAULT:-443}}"
+  SNI="${SNI:-${SNI_DEFAULT:-www.microsoft.com}}"
+  WS_PORT="${WS_PORT:-${WS_PORT_DEFAULT:-8444}}"
+  HY2_PORT="${HY2_PORT:-${HY2_PORT_DEFAULT:-8443}}"
 }
 
 #==============================================================================
