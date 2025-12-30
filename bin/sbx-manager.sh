@@ -37,6 +37,71 @@ show_sbx_logo() {
   echo
 }
 
+client_info_file() {
+  if [[ -n "${TEST_CLIENT_INFO:-}" ]]; then
+    echo "$TEST_CLIENT_INFO"
+  elif [[ -n "${CLIENT_INFO:-}" ]]; then
+    echo "$CLIENT_INFO"
+  else
+    echo "/etc/sing-box/client-info.txt"
+  fi
+}
+
+load_client_state() {
+  local client_info
+  client_info="$(client_info_file)"
+
+  if command -v load_client_info >/dev/null 2>&1; then
+    TEST_CLIENT_INFO="$client_info" load_client_info
+    return
+  fi
+
+  if [[ ! -f "$client_info" ]]; then
+    echo -e "${R}[ERR]${N} Client info not found."
+    exit 1
+  fi
+
+  # shellcheck source=/dev/null
+  source "$client_info"
+
+  REALITY_PORT="${REALITY_PORT:-443}"
+  SNI="${SNI:-www.microsoft.com}"
+  WS_PORT="${WS_PORT:-8444}"
+  HY2_PORT="${HY2_PORT:-8443}"
+}
+
+generate_export_uri() {
+  local protocol="${1:-}"
+  local client_info
+  client_info="$(client_info_file)"
+
+  if command -v export_uri >/dev/null 2>&1; then
+    TEST_CLIENT_INFO="$client_info" export_uri "$protocol"
+    return
+  fi
+
+  local reality_flow
+  reality_flow="${REALITY_FLOW_VISION:-xtls-rprx-vision}"
+  local fingerprint
+  fingerprint="${REALITY_FINGERPRINT_DEFAULT:-chrome}"
+  local sni
+  sni="${SNI:-www.microsoft.com}"
+
+  case "$protocol" in
+    reality)
+      echo "vless://${UUID:-}@${DOMAIN:-}:${REALITY_PORT:-443}?encryption=none&security=reality&flow=${reality_flow}&sni=${sni}&pbk=${PUBLIC_KEY:-}&sid=${SHORT_ID:-}&type=tcp&fp=${fingerprint}#Reality-${DOMAIN:-}"
+      ;;
+    ws)
+      [[ -n "${WS_PORT:-}" ]] || return 0
+      echo "vless://${UUID:-}@${DOMAIN:-}:${WS_PORT:-8444}?encryption=none&security=tls&type=ws&host=${DOMAIN:-}&path=/ws&sni=${DOMAIN:-}&fp=${fingerprint}#WS-TLS-${DOMAIN:-}"
+      ;;
+    hysteria2|hy2)
+      [[ -n "${HY2_PORT:-}" ]] || return 0
+      echo "hysteria2://${HY2_PASS:-}@${DOMAIN:-}:${HY2_PORT:-8443}/?sni=${DOMAIN:-}&alpn=h3&insecure=0#Hysteria2-${DOMAIN:-}"
+      ;;
+  esac
+}
+
 # Show usage information
 show_usage() {
     cat <<EOF
@@ -96,16 +161,9 @@ case "${1:-}" in
         ;;
 
     info|show)
-        if [[ ! -f "/etc/sing-box/client-info.txt" ]]; then
-            echo -e "${R}[ERR]${N} Client info not found."
-            exit 1
-        fi
-
         show_sbx_logo
 
-        # Load saved info
-        # shellcheck source=/dev/null
-        source /etc/sing-box/client-info.txt
+        load_client_state
 
         # Validate required fields
         missing_fields=()
@@ -137,14 +195,11 @@ case "${1:-}" in
         echo "Service   : systemctl status sing-box"
         echo
 
-        # Reality (use defaults if not set)
-        REALITY_PORT="${REALITY_PORT:-443}"
-        SNI="${SNI:-www.microsoft.com}"
         echo "INBOUND   : VLESS-REALITY  ${REALITY_PORT}/tcp"
         echo "  PublicKey = ${PUBLIC_KEY:-[MISSING]}"
         echo "  Short ID  = ${SHORT_ID:-[MISSING]}"
         echo "  UUID      = ${UUID:-[MISSING]}"
-        URI_REAL="vless://${UUID:-}@${DOMAIN:-}:${REALITY_PORT}?encryption=none&security=reality&flow=xtls-rprx-vision&sni=${SNI}&pbk=${PUBLIC_KEY:-}&sid=${SHORT_ID:-}&type=tcp&fp=chrome#Reality-${DOMAIN:-}"
+        URI_REAL="$(generate_export_uri reality)"
         echo "  URI       = ${URI_REAL}"
 
         # Warn if URI has empty parameters
@@ -160,12 +215,12 @@ case "${1:-}" in
             echo
             echo "INBOUND   : VLESS-WS-TLS   ${WS_PORT}/tcp"
             echo "  CERT     = ${CERT_FULLCHAIN}"
-            URI_WS="vless://${UUID:-}@${DOMAIN:-}:${WS_PORT}?encryption=none&security=tls&type=ws&host=${DOMAIN:-}&path=/ws&sni=${DOMAIN:-}&fp=chrome#WS-TLS-${DOMAIN:-}"
+            URI_WS="$(generate_export_uri ws)"
             echo "  URI      = ${URI_WS}"
             echo
             echo "INBOUND   : Hysteria2      ${HY2_PORT}/udp"
             echo "  CERT     = ${CERT_FULLCHAIN}"
-            URI_HY2="hysteria2://${HY2_PASS}@${DOMAIN:-}:${HY2_PORT}/?sni=${DOMAIN:-}&alpn=h3&insecure=0#Hysteria2-${DOMAIN:-}"
+            URI_HY2="$(generate_export_uri hy2)"
             echo "  URI      = ${URI_HY2}"
         fi
         echo
@@ -186,24 +241,7 @@ case "${1:-}" in
             exit 1
         fi
 
-        # Use modular load_client_info() if available, otherwise fallback to inline
-        if command -v load_client_info >/dev/null 2>&1; then
-            # Use lib/export.sh function (DRY principle - single source of truth)
-            load_client_info
-        else
-            # Fallback: inline loading with defaults (graceful degradation)
-            if [[ ! -f "/etc/sing-box/client-info.txt" ]]; then
-                echo -e "${R}[ERR]${N} Client info not found."
-                exit 1
-            fi
-            # shellcheck source=/dev/null
-            source /etc/sing-box/client-info.txt
-            # Set defaults (same as lib/export.sh::load_client_info)
-            REALITY_PORT="${REALITY_PORT:-443}"
-            SNI="${SNI:-www.microsoft.com}"
-            WS_PORT="${WS_PORT:-8444}"
-            HY2_PORT="${HY2_PORT:-8443}"
-        fi
+        load_client_state
 
         echo -e "${B}=== Configuration QR Codes ===${N}"
 
@@ -212,13 +250,7 @@ case "${1:-}" in
             echo
             echo -e "${G}VLESS-REALITY:${N}"
             echo "┌─────────────────────────────────────┐"
-            # Use export_uri() if available (DRY), otherwise generate inline
-            if command -v export_uri >/dev/null 2>&1; then
-                URI_REAL=$(export_uri reality)
-            else
-                # Fallback: inline URI generation
-                URI_REAL="vless://${UUID}@${DOMAIN}:${REALITY_PORT}?encryption=none&security=reality&flow=xtls-rprx-vision&sni=${SNI}&pbk=${PUBLIC_KEY}&sid=${SHORT_ID}&type=tcp&fp=chrome#Reality-${DOMAIN}"
-            fi
+            URI_REAL="$(generate_export_uri reality)"
             qrencode -t UTF8 -m 0 "$URI_REAL" 2>/dev/null || echo "QR code generation failed"
             echo "└─────────────────────────────────────┘"
         fi
@@ -228,22 +260,14 @@ case "${1:-}" in
             echo
             echo -e "${G}VLESS-WS-TLS:${N}"
             echo "┌─────────────────────────────────────┐"
-            if command -v export_uri >/dev/null 2>&1; then
-                URI_WS=$(export_uri ws)
-            else
-                URI_WS="vless://${UUID}@${DOMAIN}:${WS_PORT}?encryption=none&security=tls&type=ws&host=${DOMAIN}&path=/ws&sni=${DOMAIN}&fp=chrome#WS-TLS-${DOMAIN}"
-            fi
+            URI_WS="$(generate_export_uri ws)"
             qrencode -t UTF8 -m 0 "$URI_WS" 2>/dev/null || echo "QR code generation failed"
             echo "└─────────────────────────────────────┘"
 
             echo
             echo -e "${G}Hysteria2:${N}"
             echo "┌─────────────────────────────────────┐"
-            if command -v export_uri >/dev/null 2>&1; then
-                URI_HY2=$(export_uri hy2)
-            else
-                URI_HY2="hysteria2://${HY2_PASS}@${DOMAIN}:${HY2_PORT}/?sni=${DOMAIN}&alpn=h3&insecure=0#Hysteria2-${DOMAIN}"
-            fi
+            URI_HY2="$(generate_export_uri hy2)"
             qrencode -t UTF8 -m 0 "$URI_HY2" 2>/dev/null || echo "QR code generation failed"
             echo "└─────────────────────────────────────┘"
         fi
