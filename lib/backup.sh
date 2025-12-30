@@ -184,6 +184,73 @@ backup_restore() {
 
   local temp_dir
   temp_dir=$(create_temp_dir "restore") || return 1
+  local rollback_dir
+  rollback_dir=$(create_temp_dir "restore-rollback") || {
+    rm -rf "$temp_dir"
+    return 1
+  }
+  local stage_dir="$temp_dir/stage"
+  mkdir -p "$stage_dir"
+
+  local systemctl_available=0
+  local service_was_running=0
+  local rollback_prepared=false
+  # Track restore success explicitly to avoid rollback on unrelated exit codes
+  # The EXIT trap receives the shell's final status, which may not reflect
+  # restore outcome if other commands run after backup_restore() returns
+  local restore_succeeded=false
+
+  restore_cleanup() {
+    # Disable errexit for cleanup operations
+    set +e
+
+    if [[ -d "$temp_dir" ]]; then
+      rm -rf "$temp_dir"
+    fi
+
+    # Only rollback if restore was prepared but did NOT succeed
+    # This prevents rolling back a successful restore when later commands fail
+    if [[ "$rollback_prepared" == "true" && "$restore_succeeded" != "true" ]]; then
+      warn "Restore failed, rolling back changes..."
+
+      [[ -f "$rollback_dir/config/config.json" ]] && cp -a "$rollback_dir/config/config.json" "$SB_CONF"
+      [[ -f "$rollback_dir/config/client-info.txt" ]] && cp -a "$rollback_dir/config/client-info.txt" "$CLIENT_INFO"
+
+      if [[ -d "$rollback_dir/certificates" ]]; then
+        mkdir -p "$CERT_DIR_BASE"
+        for domain_dir in "$rollback_dir/certificates"/*; do
+          [[ -d "$domain_dir" ]] || continue
+          local domain_name
+          domain_name=$(basename "$domain_dir")
+          rm -rf "$CERT_DIR_BASE/$domain_name"
+          cp -a "$domain_dir" "$CERT_DIR_BASE/" 2>/dev/null || warn "Failed to restore certificates for $domain_name"
+        done
+      fi
+
+      if [[ -f "$rollback_dir/service/sing-box.service" ]]; then
+        cp -a "$rollback_dir/service/sing-box.service" "$SB_SVC" 2>/dev/null || warn "Failed to restore systemd service file"
+        if (( systemctl_available )); then
+          systemctl daemon-reload >/dev/null 2>&1 || warn "Failed to reload systemd during rollback"
+        fi
+      fi
+
+      warn "Restore failed"
+
+      # Restart service after rollback if it was running before
+      if (( systemctl_available )) && [[ $service_was_running -eq 1 ]]; then
+        msg "Restarting sing-box service after rollback..."
+        systemctl start sing-box >/dev/null 2>&1 && success "  ✓ Service restarted" || warn "  ✗ Failed to restart service"
+      fi
+    fi
+
+    if [[ -d "$rollback_dir" ]]; then
+      rm -rf "$rollback_dir"
+    fi
+
+    # Re-enable errexit
+    set -e
+  }
+  trap 'restore_cleanup' EXIT
 
   # Decrypt if encrypted
   local archive_to_extract="$backup_file"
@@ -261,66 +328,140 @@ backup_restore() {
     die "Backup directory not found: $backup_root"
   fi
 
-  # Stop service before restore
-  if systemctl is-active sing-box >/dev/null 2>&1; then
-    msg "Stopping sing-box service..."
-    systemctl stop sing-box
-  fi
+  local required_config="$backup_root/config/config.json"
+  [[ -f "$required_config" ]] || die "Backup is missing required configuration file"
 
-  # Restore configuration
-  if [[ -f "$backup_root/config/config.json" ]]; then
-    mkdir -p "$SB_CONF_DIR"
-    cp "$backup_root/config/config.json" "$SB_CONF"
-    chmod 600 "$SB_CONF"
-    success "  ✓ Restored configuration"
-  fi
+  local client_info_source="$backup_root/config/client-info.txt"
+  local service_source="$backup_root/service/sing-box.service"
 
-  if [[ -f "$backup_root/config/client-info.txt" ]]; then
-    cp "$backup_root/config/client-info.txt" "$CLIENT_INFO"
-    chmod 600 "$CLIENT_INFO"
-    success "  ✓ Restored client info"
-  fi
-
-  # Restore certificates
+  local -a cert_domains=()
   if [[ -d "$backup_root/certificates" ]]; then
-    for domain_dir in "$backup_root/certificates"/*; do
+    while IFS= read -r domain_dir; do
       [[ -d "$domain_dir" ]] || continue
       local domain_name
       domain_name=$(basename "$domain_dir")
 
-      mkdir -p "$CERT_DIR_BASE/$domain_name"
-      cp "$domain_dir"/*.pem "$CERT_DIR_BASE/$domain_name/"
-      chmod 600 "$CERT_DIR_BASE/$domain_name"/*.pem
-      success "  ✓ Restored certificates for $domain_name"
+      if [[ ! -f "$domain_dir/fullchain.pem" || ! -f "$domain_dir/privkey.pem" ]]; then
+        die "Certificate set incomplete for domain: $domain_name"
+      fi
+
+      cert_domains+=("$domain_name")
+    done < <(find "$backup_root/certificates" -mindepth 1 -maxdepth 1 -type d | sort)
+  fi
+
+  if [[ -n "$service_source" && -f "$service_source" && ! -s "$service_source" ]]; then
+    die "Service file in backup is empty"
+  fi
+
+  mkdir -p "$stage_dir/config" "$stage_dir/certificates" "$stage_dir/service"
+  cp "$required_config" "$stage_dir/config/config.json"
+  [[ -f "$client_info_source" ]] && cp "$client_info_source" "$stage_dir/config/client-info.txt"
+  [[ -f "$service_source" ]] && cp "$service_source" "$stage_dir/service/sing-box.service"
+
+  for domain in "${cert_domains[@]}"; do
+    mkdir -p "$stage_dir/certificates/$domain"
+    cp "$backup_root/certificates/$domain"/*.pem "$stage_dir/certificates/$domain/"
+  done
+
+  if [[ -x "$SB_BIN" ]]; then
+    msg "Validating configuration..."
+    $SB_BIN check -c "$stage_dir/config/config.json" || die "Configuration validation failed"
+  else
+    warn "Cannot validate configuration: $SB_BIN not executable"
+  fi
+
+  if command -v systemctl >/dev/null 2>&1; then
+    systemctl_available=1
+    if systemctl is-active sing-box >/dev/null 2>&1; then
+      service_was_running=1
+    fi
+  fi
+
+  rollback_prepared=true
+  mkdir -p "$rollback_dir/config" "$rollback_dir/certificates" "$rollback_dir/service"
+  [[ -f "$SB_CONF" ]] && cp -a "$SB_CONF" "$rollback_dir/config/config.json"
+  [[ -f "$CLIENT_INFO" ]] && cp -a "$CLIENT_INFO" "$rollback_dir/config/client-info.txt"
+  [[ -f "$SB_SVC" ]] && cp -a "$SB_SVC" "$rollback_dir/service/sing-box.service"
+
+  for domain in "${cert_domains[@]}"; do
+    local existing_cert_dir="$CERT_DIR_BASE/$domain"
+    if [[ -d "$existing_cert_dir" ]]; then
+      mkdir -p "$rollback_dir/certificates"
+      cp -a "$existing_cert_dir" "$rollback_dir/certificates/"
+    fi
+  done
+
+  if (( systemctl_available )) && [[ $service_was_running -eq 1 ]]; then
+    msg "Stopping sing-box service..."
+    systemctl stop sing-box >/dev/null 2>&1 || warn "  ✗ Failed to stop service"
+  fi
+
+  mkdir -p "$SB_CONF_DIR"
+
+  local config_tmp
+  config_tmp=$(mktemp "$SB_CONF_DIR/config.json.XXXX")
+  cp "$stage_dir/config/config.json" "$config_tmp"
+  chmod 600 "$config_tmp"
+  mv -f "$config_tmp" "$SB_CONF"
+  success "  ✓ Restored configuration"
+
+  if [[ -f "$stage_dir/config/client-info.txt" ]]; then
+    local client_tmp
+    client_tmp=$(mktemp "$SB_CONF_DIR/client-info.txt.XXXX")
+    cp "$stage_dir/config/client-info.txt" "$client_tmp"
+    chmod 600 "$client_tmp"
+    mv -f "$client_tmp" "$CLIENT_INFO"
+    success "  ✓ Restored client info"
+  fi
+
+  if [[ ${#cert_domains[@]} -gt 0 ]]; then
+    mkdir -p "$CERT_DIR_BASE"
+    for domain in "${cert_domains[@]}"; do
+      local domain_target="$CERT_DIR_BASE/$domain"
+      local domain_tmp
+      domain_tmp=$(mktemp -d "$CERT_DIR_BASE/${domain}.XXXX")
+      cp "$stage_dir/certificates/$domain"/*.pem "$domain_tmp/"
+      chmod 600 "$domain_tmp"/*.pem
+      rm -rf "$domain_target"
+      mv -f "$domain_tmp" "$domain_target"
+      success "  ✓ Restored certificates for $domain"
     done
   fi
 
-  # Restore service file
-  if [[ -f "$backup_root/service/sing-box.service" ]]; then
-    cp "$backup_root/service/sing-box.service" "$SB_SVC"
-    systemctl daemon-reload
+  if [[ -f "$stage_dir/service/sing-box.service" ]]; then
+    local service_tmp
+    service_tmp=$(mktemp "$(dirname "$SB_SVC")/sing-box.service.XXXX")
+    cp "$stage_dir/service/sing-box.service" "$service_tmp"
+    chmod 644 "$service_tmp"
+    mv -f "$service_tmp" "$SB_SVC"
+    if (( systemctl_available )); then
+      systemctl daemon-reload >/dev/null 2>&1 || warn "  ✗ Failed to reload systemd"
+    fi
     success "  ✓ Restored systemd service"
   fi
 
-  # Validate restored configuration
-  if [[ -f "$SB_BIN" && -f "$SB_CONF" ]]; then
-    msg "Validating configuration..."
-    $SB_BIN check -c "$SB_CONF" || warn "Configuration validation failed"
-  fi
-
-  # Cleanup
-  rm -rf "$temp_dir"
+  # Mark restore as successful BEFORE clearing the trap
+  # This ensures the cleanup handler knows the restore completed successfully
+  restore_succeeded=true
 
   success "Restore completed successfully!"
 
-  # Prompt to start service
-  if [[ "${AUTO_START:-1}" == "1" ]]; then
-    msg "Starting sing-box service..."
-    systemctl start sing-box
-    sleep 2
-    systemctl is-active sing-box && success "  ✓ Service started" || err "  ✗ Service failed to start"
-  else
-    info "Start service manually with: systemctl start sing-box"
+  # Clear the EXIT trap now that we've succeeded - prevents rollback on
+  # unrelated failures in commands that run after backup_restore() returns
+  trap - EXIT
+
+  # Perform cleanup manually for success case
+  rm -rf "$temp_dir" "$rollback_dir"
+
+  # Handle service start/restart for successful restore
+  if (( systemctl_available )); then
+    if [[ $service_was_running -eq 1 ]]; then
+      msg "Restarting sing-box service..."
+      systemctl start sing-box >/dev/null 2>&1 && success "  ✓ Service restarted" || warn "  ✗ Failed to restart service"
+    elif [[ "${AUTO_START:-1}" == "1" ]]; then
+      msg "Starting sing-box service..."
+      systemctl start sing-box >/dev/null 2>&1 && success "  ✓ Service started" || err "  ✗ Service failed to start"
+    fi
   fi
 }
 
