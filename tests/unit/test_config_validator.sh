@@ -284,7 +284,7 @@ test_validation_pipeline() {
     echo ""
     echo "Test 6: Complete validation pipeline"
 
-    # Test 6.1: Valid complete config
+    # Test 6.1: Valid complete config (with all required Reality fields)
     local valid_complete=$(cat <<'EOF'
 {
   "log": {"level": "warn", "timestamp": true},
@@ -300,8 +300,11 @@ test_validation_pipeline() {
     "users": [{"uuid": "00000000-0000-0000-0000-000000000000", "flow": "xtls-rprx-vision"}],
     "tls": {
       "enabled": true,
+      "server_name": "www.microsoft.com",
       "reality": {
         "enabled": true,
+        "private_key": "6O0avHWo2pTzeZpg7tFxQtBexa344rKz80VJseM-4U4",
+        "short_id": ["abcd1234"],
         "handshake": {"server": "www.microsoft.com", "server_port": 443}
       }
     }
