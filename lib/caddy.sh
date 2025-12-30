@@ -17,6 +17,10 @@ source "${_LIB_DIR}/common.sh"
 # shellcheck source=/dev/null
 source "${_LIB_DIR}/network.sh"
 
+# Declare external variables from common.sh
+# shellcheck disable=SC2154
+: "${CADDY_STARTUP_WAIT_SEC:?}" "${CADDY_CERT_POLL_INTERVAL_SEC:?}" "${CERT_DIR_BASE:?}"
+
 #==============================================================================
 # Caddy File Paths
 #==============================================================================

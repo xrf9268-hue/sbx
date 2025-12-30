@@ -16,6 +16,10 @@ source "${_LIB_DIR}/common.sh"
 # shellcheck source=/dev/null
 source "${_LIB_DIR}/network.sh"
 
+# Declare external variables from common.sh
+# shellcheck disable=SC2154
+: "${SB_SVC:?}" "${SB_BIN:?}" "${SB_CONF:?}" "${LOG_VIEW_DEFAULT_HISTORY:?}"
+
 #==============================================================================
 # Service File Creation
 #==============================================================================

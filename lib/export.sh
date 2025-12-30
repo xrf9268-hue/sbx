@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # lib/export.sh - Client configuration export functionality
 # Part of sbx-lite modular architecture
+#
+# shellcheck disable=SC2154
+# Reason: Variables (DOMAIN, UUID, PUBLIC_KEY, SHORT_ID, SNI, HY2_PASS, etc.)
+# are loaded dynamically by load_client_info() at runtime
 
 # Strict mode for error handling and safety
 set -euo pipefail

@@ -14,6 +14,14 @@ _LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=/dev/null
 source "${_LIB_DIR}/common.sh"
 
+# Declare external variables from common.sh
+# shellcheck disable=SC2154
+: "${SB_BIN:?}" "${SB_CONF:?}" "${SB_SVC:?}" "${SB_CONF_DIR:?}" "${CLIENT_INFO:?}" "${CERT_DIR_BASE:?}"
+# shellcheck disable=SC2154
+: "${BACKUP_PASSWORD_RANDOM_BYTES:?}" "${BACKUP_PASSWORD_LENGTH:?}" "${BACKUP_PASSWORD_MIN_LENGTH:?}"
+# shellcheck disable=SC2154
+: "${B:-}" "${G:-}" "${N:-}" "${Y:-}"
+
 #==============================================================================
 # Configuration
 #==============================================================================
@@ -222,7 +230,7 @@ backup_restore() {
           [[ -d "$domain_dir" ]] || continue
           local domain_name
           domain_name=$(basename "$domain_dir")
-          rm -rf "$CERT_DIR_BASE/$domain_name"
+          rm -rf "${CERT_DIR_BASE:?}/${domain_name:?}"
           cp -a "$domain_dir" "$CERT_DIR_BASE/" 2>/dev/null || warn "Failed to restore certificates for $domain_name"
         done
       fi

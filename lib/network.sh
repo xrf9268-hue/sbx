@@ -15,6 +15,10 @@ _LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${_LIB_DIR}/common.sh"
 [[ -z "${_SBX_LOGGING_LOADED:-}" ]] && source "${_LIB_DIR}/logging.sh"
 
+# Declare external variables from common.sh
+# shellcheck disable=SC2154
+: "${NETWORK_TIMEOUT_SEC:?}" "${HTTP_DOWNLOAD_TIMEOUT_SEC:?}"
+
 #==============================================================================
 # IP Detection and Validation
 #==============================================================================
