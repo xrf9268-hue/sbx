@@ -136,7 +136,7 @@ Session 3: /pickup reality-validation-implementation
 **Scenario 2: Bug Investigation**
 ```
 Session 1: Debugging unbound variable error
-  /handoff "found root cause in install.sh:836, fix planned"
+  /handoff "found root cause in detect_libc(), fix planned"
 
 Session 2: /pickup unbound-variable-fix
   → Applies fix with documented context
