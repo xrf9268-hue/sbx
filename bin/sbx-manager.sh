@@ -89,10 +89,22 @@ case "${1:-}" in
     status)
         echo -e "${B}=== Service Status ===${N}"
         echo "[sing-box]"
-        systemctl is-active --quiet sing-box && echo -e "Status: ${G}Running${N}" || echo -e "Status: ${R}Stopped${N}"
-        echo "PID: $(systemctl show -p MainPID --value sing-box)"
+
+        service_status="Stopped"
+        status_color="$R"
+        if systemctl is-active --quiet sing-box; then
+            service_status="Running"
+            status_color="$G"
+        fi
+
+        pid_value=$(systemctl show -p MainPID --value sing-box 2>/dev/null || true)
+        pid_value=${pid_value:-N/A}
+
+        echo -e "Status: ${status_color}${service_status}${N}"
+        echo "PID: ${pid_value}"
         echo
-        systemctl status sing-box --no-pager | head -10
+        status_output=$(systemctl status sing-box --no-pager 2>&1 || true)
+        echo "$status_output" | head -10
         ;;
 
     info|show)
