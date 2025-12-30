@@ -32,7 +32,7 @@ source "${_LIB_DIR}/common.sh"
 json_parse() {
     local json_input="$1"
     shift
-    local jq_filter="$@"
+    local jq_filter="$*"
 
     # Primary: Use jq if available
     if have jq; then

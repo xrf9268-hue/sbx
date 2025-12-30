@@ -14,6 +14,8 @@ _LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=/dev/null
 source "${_LIB_DIR}/common.sh"
 
+# Note: DOMAIN, UUID, PUBLIC_KEY, SHORT_ID are loaded dynamically by load_client_info()
+
 #==============================================================================
 # Configuration Loading
 #==============================================================================

@@ -16,6 +16,18 @@ source "${_LIB_DIR}/common.sh"
 # shellcheck source=/dev/null
 source "${_LIB_DIR}/tools.sh"
 
+# Declare external variables from common.sh
+# shellcheck disable=SC2154
+: "${CERT_EXPIRY_WARNING_SEC:?}" "${CERT_EXPIRY_WARNING_DAYS:?}"
+# shellcheck disable=SC2154
+: "${REALITY_PORT_DEFAULT:?}" "${WS_PORT_DEFAULT:?}" "${HY2_PORT_DEFAULT:?}"
+# shellcheck disable=SC2154
+: "${REALITY_SHORT_ID_MIN_LENGTH:?}" "${REALITY_SHORT_ID_MAX_LENGTH:?}"
+# shellcheck disable=SC2154
+: "${X25519_KEY_MIN_LENGTH:?}" "${X25519_KEY_MAX_LENGTH:?}" "${X25519_KEY_BYTES:?}"
+# shellcheck disable=SC2154
+: "${SB_BIN:?}"
+
 #==============================================================================
 # Module Constants
 #==============================================================================

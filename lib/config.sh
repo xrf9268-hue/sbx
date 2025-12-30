@@ -20,6 +20,13 @@ source "${_LIB_DIR}/validation.sh"
 # shellcheck source=/dev/null
 source "${_LIB_DIR}/config_validator.sh"
 
+# Declare external variables from common.sh
+# shellcheck disable=SC2154
+: "${REALITY_FLOW_VISION:?}" "${REALITY_MAX_TIME_DIFF:?}" "${REALITY_ALPN_H2:?}" "${REALITY_ALPN_HTTP11:?}"
+# shellcheck disable=SC2154
+: "${SB_CONF:?}" "${SB_CONF_DIR:?}" "${SB_SVC:?}" "${REALITY_DEFAULT_HANDSHAKE_PORT:?}"
+# Note: UUID, PRIV, SID, REALITY_PORT_CHOSEN are set dynamically during runtime
+
 #==============================================================================
 # Configuration Variables Validation
 #==============================================================================
@@ -477,6 +484,7 @@ write_config() {
 
   # Create all inbounds (Reality + optional WS-TLS and Hysteria2)
   local inbound_result has_certs
+  # shellcheck disable=SC2154  # UUID, REALITY_PORT_CHOSEN, PRIV, SID set by caller
   inbound_result=$(_create_all_inbounds "$base_config" "$UUID" "$REALITY_PORT_CHOSEN" \
     "$listen_addr" "${SNI_DEFAULT:-www.microsoft.com}" "$PRIV" "$SID" \
     "${CERT_FULLCHAIN:-}" "${CERT_KEY:-}")

@@ -14,6 +14,12 @@ _LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=/dev/null
 source "${_LIB_DIR}/common.sh"
 
+# Declare external variables from common.sh and colors.sh
+# shellcheck disable=SC2154
+: "${B:?}" "${N:?}" "${R:?}" "${G:?}" "${Y:?}" "${BLUE:?}" "${PURPLE:?}" "${CYAN:?}"
+# shellcheck disable=SC2154
+: "${SB_BIN:?}" "${SB_CONF:?}" "${SB_SVC:?}"
+
 #==============================================================================
 # Logo and Banner
 #==============================================================================

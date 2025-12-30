@@ -566,8 +566,9 @@ _load_modules
 : "${CERT_DIR_BASE:=/etc/ssl/sbx}"
 : "${CERT_FULLCHAIN:=}"
 : "${CERT_KEY:=}"
-# Color variables (B, N, G, Y, R, CYAN, BLUE, PURPLE) are defined and made readonly by lib/colors.sh
-# No need to declare them here - they're already initialized
+# Color variables from lib/colors.sh (ShellCheck can't trace dynamic sourcing)
+# shellcheck disable=SC2154
+: "${B:-}" "${N:-}" "${G:-}" "${Y:-}" "${R:-}" "${CYAN:-}" "${BLUE:-}" "${PURPLE:-}"
 
 #==============================================================================
 # Additional Helper Functions
@@ -595,7 +596,8 @@ detect_libc() {
     [[ "$(uname -s)" != "Linux" ]] && { echo ""; return; }
 
     # Method 1: Check for musl shared library (most reliable)
-    if ls /lib/ld-musl-*.so.1 2>/dev/null | grep -q .; then
+    # shellcheck disable=SC2144  # -e with glob is intentional
+    if [[ -e /lib/ld-musl-*.so.1 ]]; then
         msg "Detected musl libc (Alpine/embedded Linux)"
         echo "-musl"
         return
