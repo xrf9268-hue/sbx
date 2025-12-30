@@ -29,7 +29,7 @@ Refactored `.claude/scripts/format-and-lint-shell.sh` to be minimal, efficient, 
 ├─────────────────────────────────────────────────────────────┤
 │ Install shfmt for automatic shell script formatting:        │
 │                                                              │
-│   Debian/Ubuntu:  sudo apt install shfmt                    │
+│   Linux (snap):   sudo snap install shfmt                   │
 │   macOS:          brew install shfmt                        │
 │   Go:             go install mvdan.cc/sh/v3/cmd/shfmt@latest│
 │                                                              │
@@ -61,7 +61,7 @@ Refactored `.claude/scripts/format-and-lint-shell.sh` to be minimal, efficient, 
 
 **Missing tool warnings (shown ONCE per session):**
 ```
-⚠ shfmt not installed. Install: apt install shfmt (or brew install shfmt)
+⚠ shfmt not installed. Install: snap install shfmt (or go install mvdan.cc/sh/v3/cmd/shfmt@latest)
 ```
 
 **Success messages (no output - uses suppressOutput):**
@@ -132,7 +132,8 @@ Edit file 3 → "shfmt not installed" warning (again!)
 SHFMT_WARNING_FILE="/tmp/sbx-shfmt-warning-shown"
 
 if [[ ! -f "$SHFMT_WARNING_FILE" ]]; then
-    echo "⚠ shfmt not installed. Install: apt install shfmt" >&2
+    # Note: shfmt is NOT in apt repos - use snap/go/binary
+    echo "⚠ shfmt not installed. Install: snap install shfmt" >&2
     touch "$SHFMT_WARNING_FILE"
 fi
 ```

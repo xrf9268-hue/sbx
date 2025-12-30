@@ -24,8 +24,8 @@ if [[ -z "$FILE_PATH" ]]; then
     exit 0
 fi
 
-# Only process shell script files
-if [[ ! "$FILE_PATH" =~ \.(sh)$ ]] && [[ ! "$FILE_PATH" != "install.sh" ]]; then
+# Only process shell script files (.sh extension or specific known scripts)
+if [[ ! "$FILE_PATH" =~ \.sh$ ]] && [[ "$(basename "$FILE_PATH")" != "install.sh" ]]; then
     exit 0
 fi
 
@@ -59,7 +59,7 @@ if command -v shfmt >/dev/null 2>&1; then
 else
     # Show warning only once per session (avoid spam)
     if [[ ! -f "$SHFMT_WARNING_FILE" ]]; then
-        echo "⚠ shfmt not installed. Install: apt install shfmt (or brew install shfmt)" >&2
+        echo "⚠ shfmt not installed. Install: snap install shfmt (or go install mvdan.cc/sh/v3/cmd/shfmt@latest)" >&2
         touch "$SHFMT_WARNING_FILE"
     fi
 fi

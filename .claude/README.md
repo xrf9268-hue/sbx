@@ -111,14 +111,22 @@ The SessionStart hook is triggered only on **new session startup** (not resume/c
 To enable automatic shell formatting and linting:
 
 ```bash
-# Debian/Ubuntu
-sudo apt install shfmt shellcheck
+# shellcheck - available via apt
+sudo apt install shellcheck
+
+# shfmt - NOT in apt repos, use one of these methods:
+# Option 1: snap (recommended for Linux)
+sudo snap install shfmt
+
+# Option 2: Go
+go install mvdan.cc/sh/v3/cmd/shfmt@latest
+
+# Option 3: Direct binary download
+wget -qO /usr/local/bin/shfmt https://github.com/mvdan/sh/releases/download/v3.10.0/shfmt_v3.10.0_linux_amd64
+sudo chmod +x /usr/local/bin/shfmt
 
 # macOS
 brew install shfmt shellcheck
-
-# Go (shfmt only)
-go install mvdan.cc/sh/v3/cmd/shfmt@latest
 
 # Verify installation
 shfmt --version
