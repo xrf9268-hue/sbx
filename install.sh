@@ -1370,5 +1370,7 @@ main() {
     fi
 }
 
-# Execute main function
-main "$@"
+# Execute main function only when run directly (not when sourced for tests)
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    main "$@"
+fi
