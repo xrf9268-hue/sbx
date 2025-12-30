@@ -1,32 +1,52 @@
----
-description: Start an iterative development loop that continues until task completion
-arguments: '"prompt" --max-iterations N --completion-promise "TEXT"'
-allowed-tools: Bash, Read, Write, Edit, Glob, Grep
----
-
 Start a Ralph Wiggum loop for iterative development.
 
-First, run the setup script to initialize the loop:
+The user specified task:
 
-```bash
-bash "$CLAUDE_PROJECT_DIR/.claude/scripts/setup-ralph-loop.sh" $ARGUMENTS
+<task>$ARGUMENTS</task>
+
+If no task was provided in the `<task>...</task>` tag, STOP and ask the user what task they want to iterate on.
+
+## Setup
+
+First, parse the arguments. The format is:
+- First argument: The task prompt (quoted string)
+- `--max-iterations N`: Maximum iterations (default: 30)
+- `--completion-promise "TEXT"`: Phrase to output when done
+
+Create the loop state file at `.claude/ralph-loop.local.md`:
+
+```yaml
+---
+active: true
+iteration: 1
+max_iterations: [N or 30]
+completion_promise: [TEXT or empty]
+started: [current timestamp]
+---
+
+[The task prompt]
 ```
 
-Now check the loop configuration:
+## Instructions
 
-```bash
-cat .claude/ralph-loop.local.md
-```
+Begin working on the task. You must:
 
-If there is a completion promise configured, you MUST output it wrapped in `<promise></promise>` XML tags when the task is truly complete.
+1. Work on the task iteratively
+2. Check your progress after each step
+3. When the task is TRULY complete, output: `<promise>[COMPLETION_PROMISE]</promise>`
 
-Begin working on the task described in the prompt.
-
-CRITICAL INSTRUCTIONS:
-- You MUST output the promise statement ONLY when it is completely and unequivocally TRUE
+CRITICAL RULES:
+- ONLY output the promise when the task is genuinely complete
 - DO NOT output the promise just to escape the loop
-- DO NOT lie about whether the task is complete
-- If you feel stuck, iterate and try different approaches
-- The loop will continue until you genuinely complete the task
+- If stuck, try different approaches
+- The loop continues until you complete the task
 
-Remember: Iteration leads to success. Keep working until the task is truly done.
+## Completion
+
+When you're done, output the completion promise wrapped in XML tags:
+
+```
+<promise>COMPLETION_PROMISE_HERE</promise>
+```
+
+The Stop hook will detect this and end the loop.

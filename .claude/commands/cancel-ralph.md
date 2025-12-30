@@ -1,9 +1,6 @@
----
-description: Cancel an active Ralph Wiggum iteration loop
-allowed-tools: Bash
----
+Cancel the active Ralph Wiggum iteration loop.
 
-Cancel active Ralph Wiggum loop.
+Check if there's an active Ralph loop and cancel it:
 
 ```bash
 if [[ -f ".claude/ralph-loop.local.md" ]]; then
@@ -14,3 +11,5 @@ else
   echo "No active Ralph loop found."
 fi
 ```
+
+If the loop was cancelled, confirm to the user that the Ralph Wiggum loop has been stopped.
