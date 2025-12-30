@@ -40,7 +40,7 @@ sbx info | status | check | restart   # Post-install management
 - Test with `bash -u script.sh` for unbound variables
 
 **Bootstrap constants** (defined before module loading):
-- Add early constants to `install.sh:16-44` to prevent unbound variable errors
+- Add early constants to `install.sh` (after `set -euo pipefail`, before module loading)
 - See `tests/unit/README_BOOTSTRAP_TESTS.md` for patterns
 
 ## File Locations
