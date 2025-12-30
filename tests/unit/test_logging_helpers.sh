@@ -139,6 +139,88 @@ test_warn_function() {
     fi
 }
 
+test_log_timestamp() {
+    echo ""
+    echo "Testing _log_timestamp function..."
+
+    if ! declare -f _log_timestamp >/dev/null 2>&1; then
+        test_result "skipped (function not defined)" "pass"
+        return
+    fi
+
+    # Test without timestamp enabled
+    unset LOG_TIMESTAMPS
+    local output
+    output=$(_log_timestamp)
+    if [[ -z "$output" ]]; then
+        test_result "_log_timestamp returns empty when disabled" "pass"
+    else
+        test_result "_log_timestamp returns empty when disabled" "fail"
+    fi
+
+    # Test with timestamp enabled
+    export LOG_TIMESTAMPS=1
+    output=$(_log_timestamp)
+    if [[ -n "$output" ]]; then
+        test_result "_log_timestamp returns timestamp when enabled" "pass"
+    else
+        test_result "_log_timestamp returns timestamp when enabled" "fail"
+    fi
+    unset LOG_TIMESTAMPS
+}
+
+test_log_to_file_function() {
+    echo ""
+    echo "Testing _log_to_file function..."
+
+    if ! declare -f _log_to_file >/dev/null 2>&1; then
+        test_result "skipped (function not defined)" "pass"
+        return
+    fi
+
+    # Test without LOG_FILE
+    unset LOG_FILE
+    _log_to_file "test message" 2>/dev/null
+    test_result "_log_to_file returns when no LOG_FILE" "pass"
+
+    # Test with LOG_FILE
+    export LOG_FILE="/tmp/test_log_$$"
+    export LOG_WRITE_COUNT=0
+    _log_to_file "test message"
+    if [[ -f "$LOG_FILE" ]] && grep -q "test message" "$LOG_FILE"; then
+        test_result "_log_to_file writes to file" "pass"
+    else
+        test_result "_log_to_file writes to file" "fail"
+    fi
+    rm -f "$LOG_FILE"
+    unset LOG_FILE
+    unset LOG_WRITE_COUNT
+}
+
+test_should_log_function() {
+    echo ""
+    echo "Testing _should_log function..."
+
+    if ! declare -f _should_log >/dev/null 2>&1; then
+        test_result "skipped (function not defined)" "pass"
+        return
+    fi
+
+    # Test without filter (should always return success)
+    unset LOG_LEVEL_FILTER
+    _should_log "ERROR" && test_result "_should_log allows all when no filter" "pass" || test_result "_should_log allows all when no filter" "fail"
+
+    # Test with filter
+    export LOG_LEVEL_FILTER="WARN"
+    export LOG_LEVEL_CURRENT=1
+    _should_log "ERROR" && test_result "_should_log allows ERROR when filter is WARN" "pass" || test_result "_should_log allows ERROR when filter is WARN" "fail"
+    _should_log "WARN" && test_result "_should_log allows WARN when filter is WARN" "pass" || test_result "_should_log allows WARN when filter is WARN" "fail"
+    _should_log "DEBUG" && test_result "_should_log blocks DEBUG when filter is WARN" "fail" || test_result "_should_log blocks DEBUG when filter is WARN" "pass"
+
+    unset LOG_LEVEL_FILTER
+    unset LOG_LEVEL_CURRENT
+}
+
 #==============================================================================
 # Run All Tests
 #==============================================================================
@@ -154,6 +236,9 @@ test_log_with_timestamp
 test_err_function
 test_success_function
 test_warn_function
+test_log_timestamp
+test_log_to_file_function
+test_should_log_function
 
 # Print summary
 echo ""
