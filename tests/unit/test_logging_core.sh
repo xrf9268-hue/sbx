@@ -7,6 +7,7 @@ set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
+export TERM="xterm"
 
 # Test statistics
 TOTAL_TESTS=0
@@ -60,6 +61,7 @@ assert_contains() {
     local test_name="$1"
     local haystack="$2"
     local needle="$3"
+    haystack="$(echo -e "$haystack" | sed -E $'s/\\x1B\\[[0-9;]*[A-Za-z]//g; s/\\x1B\\(B//g')"
 
     TOTAL_TESTS=$((TOTAL_TESTS + 1))
 
@@ -79,6 +81,7 @@ assert_not_contains() {
     local test_name="$1"
     local haystack="$2"
     local needle="$3"
+    haystack="$(echo -e "$haystack" | sed -E $'s/\\x1B\\[[0-9;]*[A-Za-z]//g; s/\\x1B\\(B//g')"
 
     TOTAL_TESTS=$((TOTAL_TESTS + 1))
 
