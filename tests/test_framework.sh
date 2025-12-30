@@ -220,6 +220,29 @@ assert_contains() {
     fi
 }
 
+# Assert string does NOT contain substring
+# Usage: assert_not_contains "haystack" "needle" ["message"]
+assert_not_contains() {
+    local haystack="$1"
+    local needle="$2"
+    local message="${3:-String should not contain substring}"
+
+    ((TESTS_RUN++))
+
+    if [[ "$haystack" != *"$needle"* ]]; then
+        ((TESTS_PASSED++))
+        echo "  ✓ $message"
+        return 0
+    else
+        ((TESTS_FAILED++))
+        echo "  ✗ $message"
+        echo "    String: '$haystack'"
+        echo "    Should NOT contain: '$needle'"
+        FAILED_TESTS+=("$message")
+        return 1
+    fi
+}
+
 # Assert string matches regex pattern
 # Usage: assert_matches "string" "pattern" ["message"]
 assert_matches() {
