@@ -145,7 +145,8 @@ if command -v shellcheck >/dev/null 2>&1; then
         if ! shellcheck -S warning -e SC2250 "$file" >/dev/null 2>&1; then
             shellcheck_errors=$((shellcheck_errors + 1))
             echo -e "${YELLOW}  Warnings in:${NC} $file"
-            shellcheck -S warning -e SC2250 "$file" | head -20
+            # Use process substitution to avoid SIGPIPE with set -o pipefail
+            head -20 < <(shellcheck -S warning -e SC2250 "$file" 2>&1) || true
         fi
     done
 

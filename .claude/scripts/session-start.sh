@@ -86,16 +86,36 @@ if [[ " ${optional_missing[*]} " =~ " shellcheck " ]]; then
     fi
 fi
 
-# Try to install shfmt (NOT in apt - use snap or binary)
+# Try to install shfmt (NOT in apt - use snap, go, or direct binary)
 if [[ " ${optional_missing[*]} " =~ " shfmt " ]]; then
     if command -v snap >/dev/null 2>&1; then
         sudo snap install shfmt >/dev/null 2>&1 || true
     elif command -v go >/dev/null 2>&1; then
         go install mvdan.cc/sh/v3/cmd/shfmt@latest >/dev/null 2>&1 || true
+        # Add Go bin to PATH for this session and future commands
+        export PATH="$PATH:$HOME/go/bin"
+        if [[ -n "${CLAUDE_ENV_FILE:-}" ]]; then
+            echo "export PATH=\"\$PATH:\$HOME/go/bin\"" >> "$CLAUDE_ENV_FILE"
+        fi
+    else
+        # Direct binary download as last resort
+        SHFMT_VERSION="v3.10.0"
+        if wget -qO /tmp/shfmt "https://github.com/mvdan/sh/releases/download/${SHFMT_VERSION}/shfmt_${SHFMT_VERSION}_linux_amd64" 2>/dev/null; then
+            sudo mv /tmp/shfmt /usr/local/bin/shfmt && sudo chmod +x /usr/local/bin/shfmt
+        fi
     fi
 fi
 
-# Re-check after installation attempts
+# Try to install shellcheck via direct binary if apt failed
+if [[ " ${optional_missing[*]} " =~ " shellcheck " ]] && ! command -v shellcheck >/dev/null 2>&1; then
+    SHELLCHECK_VERSION="v0.10.0"
+    if wget -qO- "https://github.com/koalaman/shellcheck/releases/download/${SHELLCHECK_VERSION}/shellcheck-${SHELLCHECK_VERSION}.linux.x86_64.tar.xz" 2>/dev/null | tar -xJf - -C /tmp/ 2>/dev/null; then
+        sudo mv "/tmp/shellcheck-${SHELLCHECK_VERSION}/shellcheck" /usr/local/bin/ && sudo chmod +x /usr/local/bin/shellcheck
+    fi
+fi
+
+# Re-check after installation attempts (include Go bin in PATH)
+export PATH="$PATH:$HOME/go/bin:/usr/local/bin"
 still_missing_essential=()
 still_missing_optional=()
 
