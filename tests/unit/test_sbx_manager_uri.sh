@@ -50,6 +50,8 @@ HY2_PASS="pass123"
 CERT_FULLCHAIN="/tmp/fullchain.pem"
 CERT_KEY="/tmp/key.pem"
 EOF
+  # Security check requires 600 permissions
+  chmod 600 "$path"
 }
 
 create_stub_lib() {

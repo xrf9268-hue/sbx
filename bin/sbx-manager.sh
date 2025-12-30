@@ -37,71 +37,6 @@ show_sbx_logo() {
   echo
 }
 
-client_info_file() {
-  if [[ -n "${TEST_CLIENT_INFO:-}" ]]; then
-    echo "$TEST_CLIENT_INFO"
-  elif [[ -n "${CLIENT_INFO:-}" ]]; then
-    echo "$CLIENT_INFO"
-  else
-    echo "/etc/sing-box/client-info.txt"
-  fi
-}
-
-load_client_state() {
-  local client_info
-  client_info="$(client_info_file)"
-
-  if command -v load_client_info >/dev/null 2>&1; then
-    TEST_CLIENT_INFO="$client_info" load_client_info
-    return
-  fi
-
-  if [[ ! -f "$client_info" ]]; then
-    echo -e "${R}[ERR]${N} Client info not found."
-    exit 1
-  fi
-
-  # shellcheck source=/dev/null
-  source "$client_info"
-
-  REALITY_PORT="${REALITY_PORT:-443}"
-  SNI="${SNI:-www.microsoft.com}"
-  WS_PORT="${WS_PORT:-8444}"
-  HY2_PORT="${HY2_PORT:-8443}"
-}
-
-generate_export_uri() {
-  local protocol="${1:-}"
-  local client_info
-  client_info="$(client_info_file)"
-
-  if command -v export_uri >/dev/null 2>&1; then
-    TEST_CLIENT_INFO="$client_info" export_uri "$protocol"
-    return
-  fi
-
-  local reality_flow
-  reality_flow="${REALITY_FLOW_VISION:-xtls-rprx-vision}"
-  local fingerprint
-  fingerprint="${REALITY_FINGERPRINT_DEFAULT:-chrome}"
-  local sni
-  sni="${SNI:-www.microsoft.com}"
-
-  case "$protocol" in
-    reality)
-      echo "vless://${UUID:-}@${DOMAIN:-}:${REALITY_PORT:-443}?encryption=none&security=reality&flow=${reality_flow}&sni=${sni}&pbk=${PUBLIC_KEY:-}&sid=${SHORT_ID:-}&type=tcp&fp=${fingerprint}#Reality-${DOMAIN:-}"
-      ;;
-    ws)
-      [[ -n "${WS_PORT:-}" ]] || return 0
-      echo "vless://${UUID:-}@${DOMAIN:-}:${WS_PORT:-8444}?encryption=none&security=tls&type=ws&host=${DOMAIN:-}&path=/ws&sni=${DOMAIN:-}&fp=${fingerprint}#WS-TLS-${DOMAIN:-}"
-      ;;
-    hysteria2|hy2)
-      [[ -n "${HY2_PORT:-}" ]] || return 0
-      echo "hysteria2://${HY2_PASS:-}@${DOMAIN:-}:${HY2_PORT:-8443}/?sni=${DOMAIN:-}&alpn=h3&insecure=0#Hysteria2-${DOMAIN:-}"
-      ;;
-  esac
-}
-
 # Show usage information
 show_usage() {
     cat <<EOF
@@ -150,32 +85,110 @@ ${B}Examples:${N}
 EOF
 }
 
+CLIENT_INFO_PATH="${CLIENT_INFO:-/etc/sing-box/client-info.txt}"
+CLIENT_INFO_ALLOWED_KEYS_REGEX="^(DOMAIN|UUID|PUBLIC_KEY|SHORT_ID|SNI|REALITY_PORT|WS_PORT|HY2_PORT|HY2_PASS|CERT_FULLCHAIN|CERT_KEY)$"
+
+error_exit() {
+    echo -e "${R}[ERR]${N} $1" >&2
+    exit "${2:-1}"
+}
+
+validate_client_info_file() {
+    local client_info_file="$1"
+    [[ -n "$client_info_file" ]] || error_exit "Client info path is empty."
+    [[ -f "$client_info_file" ]] || error_exit "Client info not found: $client_info_file"
+    [[ ! -L "$client_info_file" ]] || error_exit "Refusing to load client info from symlink: $client_info_file"
+
+    local resolved owner perm
+    resolved=$(readlink -f "$client_info_file") || error_exit "Failed to resolve client info path: $client_info_file"
+    owner=$(stat -c '%u' "$resolved") || error_exit "Unable to read client info ownership."
+    perm=$(stat -c '%a' "$resolved") || error_exit "Unable to read client info permissions."
+
+    [[ "$owner" -eq 0 ]] || error_exit "Client info must be owned by root (uid 0)."
+    [[ "$perm" == "600" ]] || error_exit "Client info permissions must be 600 (found $perm)."
+    [[ -s "$resolved" ]] || error_exit "Client info is empty."
+
+    echo "$resolved"
+}
+
+parse_client_info_file() {
+    local file="$1"
+    local invalid_line checksum line key value
+    declare -A client_info_map=()
+
+    # Accept both KEY="value" (quoted) and KEY=value (unquoted) formats
+    invalid_line=$(grep -nEv '^[[:space:]]*(#.*)?$|^[A-Z0-9_]+=(\"[^\"]*\"|[^[:space:]]*)[[:space:]]*$' "$file" | head -n1 || true)
+    [[ -z "$invalid_line" ]] || error_exit "Invalid client info format at ${invalid_line%%:*}: ${invalid_line#*:}"
+
+    checksum=$(sha256sum "$file" | awk '{print $1}')
+    CLIENT_INFO_CHECKSUM="$checksum"
+
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]] && continue
+        # Match quoted format: KEY="value"
+        if [[ "$line" =~ ^([A-Z0-9_]+)=\"([^\"]*)\"[[:space:]]*$ ]]; then
+            key="${BASH_REMATCH[1]}"
+            value="${BASH_REMATCH[2]}"
+        # Match unquoted format: KEY=value
+        elif [[ "$line" =~ ^([A-Z0-9_]+)=([^[:space:]]*)[[:space:]]*$ ]]; then
+            key="${BASH_REMATCH[1]}"
+            value="${BASH_REMATCH[2]}"
+        else
+            error_exit "Invalid client info entry: $line"
+        fi
+
+        [[ "$key" =~ $CLIENT_INFO_ALLOWED_KEYS_REGEX ]] || error_exit "Unexpected key '${key}' in client info."
+        { [[ "$value" == *'$('* ]] || [[ "$value" == *\`* ]]; } && error_exit "Suspicious characters in value for ${key}."
+
+        client_info_map["$key"]="$value"
+    done < "$file"
+
+    for key in "${!client_info_map[@]}"; do
+        printf -v "$key" '%s' "${client_info_map[$key]}"
+    done
+
+    # Set defaults for missing variables
+    local default_reality="${REALITY_PORT_DEFAULT:-443}"
+    local default_sni="${SNI_DEFAULT:-www.microsoft.com}"
+    local default_ws="${WS_PORT_DEFAULT:-8444}"
+    local default_hy2="${HY2_PORT_DEFAULT:-8443}"
+
+    REALITY_PORT="${REALITY_PORT:-$default_reality}"
+    SNI="${SNI:-$default_sni}"
+    WS_PORT="${WS_PORT:-$default_ws}"
+    HY2_PORT="${HY2_PORT:-$default_hy2}"
+}
+
+fallback_load_client_info() {
+    local target_file="${TEST_CLIENT_INFO:-$CLIENT_INFO_PATH}"
+    local resolved
+    resolved=$(validate_client_info_file "$target_file")
+    parse_client_info_file "$resolved"
+}
+
+ensure_client_info_loaded() {
+    if command -v load_client_info >/dev/null 2>&1; then
+        load_client_info
+    else
+        fallback_load_client_info
+    fi
+}
+
 case "${1:-}" in
     status)
         echo -e "${B}=== Service Status ===${N}"
         echo "[sing-box]"
-
-        service_status="Stopped"
-        status_color="$R"
-        if systemctl is-active --quiet sing-box; then
-            service_status="Running"
-            status_color="$G"
-        fi
-
-        pid_value=$(systemctl show -p MainPID --value sing-box 2>/dev/null || true)
-        pid_value=${pid_value:-N/A}
-
-        echo -e "Status: ${status_color}${service_status}${N}"
-        echo "PID: ${pid_value}"
+        systemctl is-active --quiet sing-box && echo -e "Status: ${G}Running${N}" || echo -e "Status: ${R}Stopped${N}"
+        echo "PID: $(systemctl show -p MainPID --value sing-box)"
         echo
-        status_output=$(systemctl status sing-box --no-pager 2>&1 || true)
-        echo "$status_output" | head -10
+        # Use || true to ensure status command always returns success
+        # (systemctl status returns 3 for inactive services)
+        systemctl status sing-box --no-pager | head -10 || true
         ;;
 
     info|show)
+        ensure_client_info_loaded
         show_sbx_logo
-
-        load_client_state
 
         # Validate required fields
         missing_fields=()
@@ -207,11 +220,19 @@ case "${1:-}" in
         echo "Service   : systemctl status sing-box"
         echo
 
+        # Reality (use defaults if not set)
+        REALITY_PORT="${REALITY_PORT:-443}"
+        SNI="${SNI:-www.microsoft.com}"
         echo "INBOUND   : VLESS-REALITY  ${REALITY_PORT}/tcp"
         echo "  PublicKey = ${PUBLIC_KEY:-[MISSING]}"
         echo "  Short ID  = ${SHORT_ID:-[MISSING]}"
         echo "  UUID      = ${UUID:-[MISSING]}"
-        URI_REAL="$(generate_export_uri reality)"
+        # Use export_uri() if available (DRY), otherwise generate inline
+        if command -v export_uri >/dev/null 2>&1; then
+            URI_REAL=$(export_uri reality)
+        else
+            URI_REAL="vless://${UUID:-}@${DOMAIN:-}:${REALITY_PORT}?encryption=none&security=reality&flow=xtls-rprx-vision&sni=${SNI}&pbk=${PUBLIC_KEY:-}&sid=${SHORT_ID:-}&type=tcp&fp=chrome#Reality-${DOMAIN:-}"
+        fi
         echo "  URI       = ${URI_REAL}"
 
         # Warn if URI has empty parameters
@@ -227,12 +248,21 @@ case "${1:-}" in
             echo
             echo "INBOUND   : VLESS-WS-TLS   ${WS_PORT}/tcp"
             echo "  CERT     = ${CERT_FULLCHAIN}"
-            URI_WS="$(generate_export_uri ws)"
+            # Use export_uri() if available (DRY), otherwise generate inline
+            if command -v export_uri >/dev/null 2>&1; then
+                URI_WS=$(export_uri ws)
+            else
+                URI_WS="vless://${UUID:-}@${DOMAIN:-}:${WS_PORT}?encryption=none&security=tls&type=ws&host=${DOMAIN:-}&path=/ws&sni=${DOMAIN:-}&fp=chrome#WS-TLS-${DOMAIN:-}"
+            fi
             echo "  URI      = ${URI_WS}"
             echo
             echo "INBOUND   : Hysteria2      ${HY2_PORT}/udp"
             echo "  CERT     = ${CERT_FULLCHAIN}"
-            URI_HY2="$(generate_export_uri hy2)"
+            if command -v export_uri >/dev/null 2>&1; then
+                URI_HY2=$(export_uri hy2)
+            else
+                URI_HY2="hysteria2://${HY2_PASS}@${DOMAIN:-}:${HY2_PORT}/?sni=${DOMAIN:-}&alpn=h3&insecure=0#Hysteria2-${DOMAIN:-}"
+            fi
             echo "  URI      = ${URI_HY2}"
         fi
         echo
@@ -249,11 +279,11 @@ case "${1:-}" in
 
     qr)
         if ! command -v qrencode >/dev/null 2>&1; then
-            echo -e "${R}[ERR]${N} qrencode not installed. Install with: apt install qrencode"
-            exit 1
-        fi
+        echo -e "${R}[ERR]${N} qrencode not installed. Install with: apt install qrencode"
+        exit 1
+    fi
 
-        load_client_state
+    ensure_client_info_loaded
 
         echo -e "${B}=== Configuration QR Codes ===${N}"
 
@@ -262,7 +292,13 @@ case "${1:-}" in
             echo
             echo -e "${G}VLESS-REALITY:${N}"
             echo "┌─────────────────────────────────────┐"
-            URI_REAL="$(generate_export_uri reality)"
+            # Use export_uri() if available (DRY), otherwise generate inline
+            if command -v export_uri >/dev/null 2>&1; then
+                URI_REAL=$(export_uri reality)
+            else
+                # Fallback: inline URI generation
+                URI_REAL="vless://${UUID}@${DOMAIN}:${REALITY_PORT}?encryption=none&security=reality&flow=xtls-rprx-vision&sni=${SNI}&pbk=${PUBLIC_KEY}&sid=${SHORT_ID}&type=tcp&fp=chrome#Reality-${DOMAIN}"
+            fi
             qrencode -t UTF8 -m 0 "$URI_REAL" 2>/dev/null || echo "QR code generation failed"
             echo "└─────────────────────────────────────┘"
         fi
@@ -272,14 +308,22 @@ case "${1:-}" in
             echo
             echo -e "${G}VLESS-WS-TLS:${N}"
             echo "┌─────────────────────────────────────┐"
-            URI_WS="$(generate_export_uri ws)"
+            if command -v export_uri >/dev/null 2>&1; then
+                URI_WS=$(export_uri ws)
+            else
+                URI_WS="vless://${UUID}@${DOMAIN}:${WS_PORT}?encryption=none&security=tls&type=ws&host=${DOMAIN}&path=/ws&sni=${DOMAIN}&fp=chrome#WS-TLS-${DOMAIN}"
+            fi
             qrencode -t UTF8 -m 0 "$URI_WS" 2>/dev/null || echo "QR code generation failed"
             echo "└─────────────────────────────────────┘"
 
             echo
             echo -e "${G}Hysteria2:${N}"
             echo "┌─────────────────────────────────────┐"
-            URI_HY2="$(generate_export_uri hy2)"
+            if command -v export_uri >/dev/null 2>&1; then
+                URI_HY2=$(export_uri hy2)
+            else
+                URI_HY2="hysteria2://${HY2_PASS}@${DOMAIN}:${HY2_PORT}/?sni=${DOMAIN}&alpn=h3&insecure=0#Hysteria2-${DOMAIN}"
+            fi
             qrencode -t UTF8 -m 0 "$URI_HY2" 2>/dev/null || echo "QR code generation failed"
             echo "└─────────────────────────────────────┘"
         fi

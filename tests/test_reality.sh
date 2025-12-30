@@ -545,7 +545,7 @@ test_uri_format_compliance() {
   export PUBLIC_KEY="jNXHt1yRo0vDuchQlIP6Z0ZvjT3KtzVI-T4E7RoLJS0"
   export SHORT_ID="a1b2c3d4"
 
-  # Create temporary client-info file
+  # Create temporary client-info file with required permissions
   cat > "$TEST_TEMP/client-info.txt" <<EOF
 UUID=$UUID
 DOMAIN=$DOMAIN
@@ -554,6 +554,7 @@ SNI=$SNI
 PUBLIC_KEY=$PUBLIC_KEY
 SHORT_ID=$SHORT_ID
 EOF
+  chmod 600 "$TEST_TEMP/client-info.txt"
 
   export TEST_CLIENT_INFO="$TEST_TEMP/client-info.txt"
 
@@ -631,6 +632,7 @@ SNI=$SNI
 PUBLIC_KEY=$PUBLIC_KEY
 SHORT_ID=$SHORT_ID
 EOF
+  chmod 600 "$TEST_TEMP/client-info.txt"
 
   export TEST_CLIENT_INFO="$TEST_TEMP/client-info.txt"
 
@@ -693,6 +695,7 @@ SNI=$SNI
 PUBLIC_KEY=$PUBLIC_KEY
 SHORT_ID=$SHORT_ID
 EOF
+  chmod 600 "$TEST_TEMP/client-info.txt"
 
   export TEST_CLIENT_INFO="$TEST_TEMP/client-info.txt"
 

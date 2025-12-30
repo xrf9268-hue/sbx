@@ -172,7 +172,8 @@ duplicate_found=0
 for const in "${REQUIRED_BOOTSTRAP_CONSTANTS[@]}"; do
     # Count unconditional declarations in lib/common.sh
     # Pattern: declare -r CONST= (not inside if statement)
-    unconditional_count=$(grep -c "^declare -r ${const}=" "$SCRIPT_DIR/lib/common.sh" 2>/dev/null || echo "0")
+    # Note: grep -c exits 1 when no match, so use || true to avoid exit, then check count
+    unconditional_count=$(grep -c "^declare -r ${const}=" "$SCRIPT_DIR/lib/common.sh" 2>/dev/null) || unconditional_count=0
 
     if [[ $unconditional_count -gt 0 ]]; then
         echo ""
@@ -251,7 +252,7 @@ test_start "Bootstrap functions don't use unbound variables"
 # Extract and test the early bootstrap functions
 unbound_errors=$(bash -uo pipefail -c "
     # Extract get_file_size function
-    $(sed -n '/^get_file_size() {/,/^}/p' '$SCRIPT_DIR/install.sh')
+    $(sed -n '/^get_file_size() {/,/^}/p' "$SCRIPT_DIR/install.sh")
 
     # Test it with a sample file
     test_file='/tmp/test-bootstrap-\$\$.txt'
