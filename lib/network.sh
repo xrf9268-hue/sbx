@@ -13,6 +13,7 @@ readonly _SBX_NETWORK_LOADED=1
 _LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=/dev/null
 source "${_LIB_DIR}/common.sh"
+[[ -z "${_SBX_LOGGING_LOADED:-}" ]] && source "${_LIB_DIR}/logging.sh"
 
 #==============================================================================
 # IP Detection and Validation
@@ -29,6 +30,10 @@ source "${_LIB_DIR}/common.sh"
 get_public_ip() {
   local ip="" service
   local services=()
+
+  if ! _require_network_tools "public IP detection"; then
+    return 1
+  fi
 
   # Use custom IP services if provided, otherwise use defaults
   if [[ -n "${CUSTOM_IP_SERVICES:-}" ]]; then
@@ -224,9 +229,35 @@ allocate_port() {
 # IPv6 Support Detection
 #==============================================================================
 
+# Ensure required external tools are available before running network operations
+_require_network_tools() {
+  local context="${1:-network operations}"
+  local require_downloader="${2:-true}"
+  local -a missing=()
+
+  if ! command -v timeout >/dev/null 2>&1; then
+    missing+=("timeout")
+  fi
+
+  if [[ "$require_downloader" == "true" ]] && ! have curl && ! have wget; then
+    missing+=("curl or wget")
+  fi
+
+  if [[ ${#missing[@]} -gt 0 ]]; then
+    err "Missing required tool(s) for ${context}: ${missing[*]}"
+    return 1
+  fi
+
+  return 0
+}
+
 # Detect IPv6 support with comprehensive checks
 detect_ipv6_support() {
   local ipv6_supported=false
+
+  if ! _require_network_tools "IPv6 detection" "false"; then
+    return 1
+  fi
 
   # Check 1: Kernel IPv6 support
   if [[ -f /proc/net/if_inet6 ]]; then
@@ -280,6 +311,10 @@ safe_http_get() {
   local max_retries=3
   local retry_count=0
   local timeout_seconds="${HTTP_DOWNLOAD_TIMEOUT_SEC}"
+
+  if ! _require_network_tools "HTTP requests"; then
+    return 1
+  fi
 
   # Security: Enforce HTTPS for security-critical domains
   if [[ "$url" =~ github\.com|githubusercontent\.com|cloudflare\.com ]]; then
