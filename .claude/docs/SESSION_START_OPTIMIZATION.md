@@ -83,27 +83,58 @@ Need help? Check CONTRIBUTING.md or CLAUDE.md
 
 **Total:** ~50 lines, ~2,000 tokens
 
-### After (125 lines of code, 6 lines of output)
+### After (145 lines of code, 6-8 lines of output)
 
 ```
 sbx-lite development environment initialized:
 • Status: git-hooks:✓ deps:✓ bootstrap:✓
-• Branch: claude/review-hooks-output-01LsveuFu2pbHJPCwvHhNS8Y
-• Latest: 98ec5ee Merge pull request #31 from xrf9268-hue/cl
+• Branch: claude/review-session-hook-kHNER
+• Latest: 98502da fix(hooks): add direct binary download fal
 • Tests: bash tests/test-runner.sh unit
 • Hooks: bash hooks/install-hooks.sh
 • Docs: CONTRIBUTING.md, CLAUDE.md, .claude/WORKFLOWS.md
 ```
 
-**Total:** 7 lines, ~280 tokens
+If optional tools (shellcheck, shfmt) are missing:
+```
+• Issues:
+  - Missing: shellcheck shfmt
+```
+
+**Total:** 7-8 lines, ~280-320 tokens
 
 ## Improvements
 
 ### Quantitative
-- **Code size:** 244 lines → 125 lines (48% reduction)
-- **Output size:** ~50 lines → 7 lines (86% reduction)
-- **Token usage:** ~2,000 → ~280 tokens (86% reduction)
-- **Context saved:** ~1,720 tokens per session
+- **Code size:** 244 lines → 145 lines (40% reduction)
+- **Output size:** ~50 lines → 7-8 lines (85% reduction)
+- **Token usage:** ~2,000 → ~280-320 tokens (85% reduction)
+- **Context saved:** ~1,680 tokens per session
+
+### Dependency Management (Updated 2025-12-30)
+
+The hook now separates dependencies into two categories:
+
+**Essential dependencies** (required for core functionality):
+- jq, openssl, bash, git
+- Hook fails if these cannot be installed
+
+**Optional dependencies** (code quality tools):
+- shellcheck, shfmt
+- Hook succeeds even if these are missing
+- Reports missing tools as "Issues" rather than failures
+
+**Auto-installation methods:**
+1. **apt-get** - For Debian/Ubuntu (shellcheck only, shfmt not in apt repos)
+2. **yum** - For RHEL/CentOS/Fedora
+3. **apk** - For Alpine Linux
+4. **snap** - For shfmt (if available)
+5. **go install** - For shfmt (if Go is available)
+6. **Direct binary download** - Fallback from GitHub releases
+
+**PATH persistence:**
+- When shfmt is installed via Go, `~/go/bin` is added to PATH
+- Uses `CLAUDE_ENV_FILE` to persist PATH for future commands in the session
 
 ### Qualitative
 1. **Removed:**
