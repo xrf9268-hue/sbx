@@ -131,6 +131,136 @@ test_validate_route_schema() {
     fi
 }
 
+test_validate_reality_field_types() {
+    echo ""
+    echo "Testing _validate_reality_field_types..."
+
+    if ! declare -f _validate_reality_field_types >/dev/null 2>&1; then
+        test_result "skipped (function not defined)" "pass"
+        return
+    fi
+
+    # Test with valid array format
+    local temp=$(mktemp)
+    cat > "$temp" <<'EOF'
+{
+  "inbounds": [{
+    "type": "vless",
+    "tls": {
+      "reality": {
+        "short_id": ["a1b2c3d4"]
+      }
+    }
+  }]
+}
+EOF
+    if _validate_reality_field_types "$temp" >/dev/null 2>&1; then
+        test_result "accepts valid array format" "pass"
+    else
+        test_result "accepts valid array format" "fail"
+    fi
+
+    # Test with invalid string format
+    cat > "$temp" <<'EOF'
+{
+  "inbounds": [{
+    "type": "vless",
+    "tls": {
+      "reality": {
+        "short_id": "a1b2c3d4"
+      }
+    }
+  }]
+}
+EOF
+    if ! _validate_reality_field_types "$temp" >/dev/null 2>&1; then
+        test_result "rejects invalid string format" "pass"
+    else
+        test_result "rejects invalid string format" "fail"
+    fi
+
+    rm -f "$temp"
+}
+
+test_validate_reality_field_values() {
+    echo ""
+    echo "Testing _validate_reality_field_values..."
+
+    if ! declare -f _validate_reality_field_values >/dev/null 2>&1; then
+        test_result "skipped (function not defined)" "pass"
+        return
+    fi
+
+    # Test with valid short ID (8 hex chars)
+    local temp=$(mktemp)
+    cat > "$temp" <<'EOF'
+{
+  "inbounds": [{
+    "type": "vless",
+    "tls": {
+      "reality": {
+        "short_id": ["a1b2c3d4"]
+      }
+    },
+    "users": [{
+      "flow": "xtls-rprx-vision"
+    }]
+  }]
+}
+EOF
+    if _validate_reality_field_values "$temp" >/dev/null 2>&1; then
+        test_result "accepts valid short ID format" "pass"
+    else
+        test_result "accepts valid short ID format" "fail"
+    fi
+
+    # Test with invalid short ID (too long)
+    cat > "$temp" <<'EOF'
+{
+  "inbounds": [{
+    "type": "vless",
+    "tls": {
+      "reality": {
+        "short_id": ["a1b2c3d4e5f67890"]
+      }
+    },
+    "users": [{
+      "flow": "xtls-rprx-vision"
+    }]
+  }]
+}
+EOF
+    if ! _validate_reality_field_values "$temp" >/dev/null 2>&1; then
+        test_result "rejects invalid short ID (too long)" "pass"
+    else
+        test_result "rejects invalid short ID (too long)" "fail"
+    fi
+
+    # Test with invalid flow value
+    cat > "$temp" <<'EOF'
+{
+  "inbounds": [{
+    "type": "vless",
+    "tls": {
+      "reality": {
+        "short_id": ["a1b2c3d4"]
+      }
+    },
+    "users": [{
+      "flow": "invalid-flow"
+    }]
+  }]
+}
+EOF
+    if ! _validate_reality_field_values "$temp" >/dev/null 2>&1; then
+        test_result "rejects invalid flow value" "pass"
+    else
+        test_result "rejects invalid flow value" "fail"
+    fi
+
+    rm -f "$temp"
+}
+
 #==============================================================================
 # Run All Tests
 #==============================================================================
@@ -145,6 +275,8 @@ test_validate_inbound_schema
 test_validate_outbound_schema
 test_validate_dns_schema
 test_validate_route_schema
+test_validate_reality_field_types
+test_validate_reality_field_values
 
 # Print summary
 echo ""

@@ -31,6 +31,10 @@ LOG_FILE="${LOG_FILE:-}"
 LOG_LEVEL_FILTER="${LOG_LEVEL_FILTER:-}"
 LOG_MAX_SIZE_KB="${LOG_MAX_SIZE_KB:-10240}"  # Default 10MB
 LOG_WRITE_COUNT=0  # Counter for periodic rotation checks
+# Rotation check interval (defined in common.sh, fallback if not loaded)
+if [[ -z "${LOG_ROTATION_CHECK_INTERVAL:-}" ]]; then
+  LOG_ROTATION_CHECK_INTERVAL=100
+fi
 
 # Log level values (lower number = higher priority)
 declare -r -A LOG_LEVELS=( [ERROR]=0 [WARN]=1 [INFO]=2 [DEBUG]=3 )
@@ -68,12 +72,12 @@ esac
 
 # Get timestamp prefix if enabled
 _log_timestamp() {
-  [[ "${LOG_TIMESTAMPS}" == "1" ]] && printf "[%s] " "$(date '+%Y-%m-%d %H:%M:%S')" || true
+  [[ "${LOG_TIMESTAMPS:-}" == "1" ]] && printf "[%s] " "$(date '+%Y-%m-%d %H:%M:%S')" || true
 }
 
 # Write to log file if configured
 _log_to_file() {
-  [[ -z "${LOG_FILE}" ]] && return 0
+  [[ -z "${LOG_FILE:-}" ]] && return 0
 
   # Periodic rotation check (configurable interval via LOG_ROTATION_CHECK_INTERVAL)
   LOG_WRITE_COUNT=$((LOG_WRITE_COUNT + 1))
@@ -125,8 +129,8 @@ _should_log() {
     *)     msg_level_value=2 ;;  # Default to INFO level
   esac
 
-  [[ -z "${LOG_LEVEL_FILTER}" ]] && return 0
-  [[ $msg_level_value -le $LOG_LEVEL_CURRENT ]] && return 0
+  [[ -z "${LOG_LEVEL_FILTER:-}" ]] && return 0
+  [[ $msg_level_value -le ${LOG_LEVEL_CURRENT:-2} ]] && return 0
   return 1
 }
 
