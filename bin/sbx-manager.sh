@@ -181,7 +181,9 @@ case "${1:-}" in
         systemctl is-active --quiet sing-box && echo -e "Status: ${G}Running${N}" || echo -e "Status: ${R}Stopped${N}"
         echo "PID: $(systemctl show -p MainPID --value sing-box)"
         echo
-        systemctl status sing-box --no-pager | head -10
+        # Use || true to ensure status command always returns success
+        # (systemctl status returns 3 for inactive services)
+        systemctl status sing-box --no-pager | head -10 || true
         ;;
 
     info|show)
@@ -225,7 +227,12 @@ case "${1:-}" in
         echo "  PublicKey = ${PUBLIC_KEY:-[MISSING]}"
         echo "  Short ID  = ${SHORT_ID:-[MISSING]}"
         echo "  UUID      = ${UUID:-[MISSING]}"
-        URI_REAL="vless://${UUID:-}@${DOMAIN:-}:${REALITY_PORT}?encryption=none&security=reality&flow=xtls-rprx-vision&sni=${SNI}&pbk=${PUBLIC_KEY:-}&sid=${SHORT_ID:-}&type=tcp&fp=chrome#Reality-${DOMAIN:-}"
+        # Use export_uri() if available (DRY), otherwise generate inline
+        if command -v export_uri >/dev/null 2>&1; then
+            URI_REAL=$(export_uri reality)
+        else
+            URI_REAL="vless://${UUID:-}@${DOMAIN:-}:${REALITY_PORT}?encryption=none&security=reality&flow=xtls-rprx-vision&sni=${SNI}&pbk=${PUBLIC_KEY:-}&sid=${SHORT_ID:-}&type=tcp&fp=chrome#Reality-${DOMAIN:-}"
+        fi
         echo "  URI       = ${URI_REAL}"
 
         # Warn if URI has empty parameters
@@ -241,12 +248,21 @@ case "${1:-}" in
             echo
             echo "INBOUND   : VLESS-WS-TLS   ${WS_PORT}/tcp"
             echo "  CERT     = ${CERT_FULLCHAIN}"
-            URI_WS="vless://${UUID:-}@${DOMAIN:-}:${WS_PORT}?encryption=none&security=tls&type=ws&host=${DOMAIN:-}&path=/ws&sni=${DOMAIN:-}&fp=chrome#WS-TLS-${DOMAIN:-}"
+            # Use export_uri() if available (DRY), otherwise generate inline
+            if command -v export_uri >/dev/null 2>&1; then
+                URI_WS=$(export_uri ws)
+            else
+                URI_WS="vless://${UUID:-}@${DOMAIN:-}:${WS_PORT}?encryption=none&security=tls&type=ws&host=${DOMAIN:-}&path=/ws&sni=${DOMAIN:-}&fp=chrome#WS-TLS-${DOMAIN:-}"
+            fi
             echo "  URI      = ${URI_WS}"
             echo
             echo "INBOUND   : Hysteria2      ${HY2_PORT}/udp"
             echo "  CERT     = ${CERT_FULLCHAIN}"
-            URI_HY2="hysteria2://${HY2_PASS}@${DOMAIN:-}:${HY2_PORT}/?sni=${DOMAIN:-}&alpn=h3&insecure=0#Hysteria2-${DOMAIN:-}"
+            if command -v export_uri >/dev/null 2>&1; then
+                URI_HY2=$(export_uri hy2)
+            else
+                URI_HY2="hysteria2://${HY2_PASS}@${DOMAIN:-}:${HY2_PORT}/?sni=${DOMAIN:-}&alpn=h3&insecure=0#Hysteria2-${DOMAIN:-}"
+            fi
             echo "  URI      = ${URI_HY2}"
         fi
         echo
