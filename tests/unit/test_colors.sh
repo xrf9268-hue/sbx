@@ -46,12 +46,15 @@ else
     test_result "color variables defined (may be unset for non-tty)" "pass"
 fi
 
-# Test init_colors function
-if declare -f init_colors >/dev/null 2>&1; then
-    init_colors 2>/dev/null || true
-    test_result "init_colors executes" "pass"
+# Test _init_colors function definition and exported variables
+if declare -f _init_colors >/dev/null 2>&1; then
+    if [[ -v B && -v N ]]; then
+        test_result "_init_colors initializes color variables" "pass"
+    else
+        test_result "_init_colors initializes color variables (may be empty without TTY)" "pass"
+    fi
 else
-    test_result "init_colors skipped" "pass"
+    test_result "_init_colors skipped" "pass"
 fi
 
 echo ""

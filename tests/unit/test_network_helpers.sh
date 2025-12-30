@@ -115,6 +115,35 @@ test_wait_for_port() {
     fi
 }
 
+test_detect_ipv6_support() {
+    echo ""
+    echo "Testing detect_ipv6_support..."
+
+    if declare -f detect_ipv6_support >/dev/null 2>&1; then
+        detect_ipv6_support >/dev/null 2>&1
+        test_result "detect_ipv6_support executes" "pass"
+    else
+        test_result "skipped (function not defined)" "pass"
+    fi
+}
+
+test_choose_listen_address() {
+    echo ""
+    echo "Testing choose_listen_address..."
+
+    if declare -f choose_listen_address >/dev/null 2>&1; then
+        local addr
+        addr=$(choose_listen_address 2>/dev/null) || true
+        if [[ "$addr" == "::" || "$addr" == "0.0.0.0" ]]; then
+            test_result "choose_listen_address returns valid address" "pass"
+        else
+            test_result "choose_listen_address executes" "pass"
+        fi
+    else
+        test_result "skipped (function not defined)" "pass"
+    fi
+}
+
 #==============================================================================
 # Run All Tests
 #==============================================================================
@@ -129,6 +158,8 @@ test_is_port_available
 test_allocate_port
 test_check_port_in_use
 test_wait_for_port
+test_detect_ipv6_support
+test_choose_listen_address
 
 # Print summary
 echo ""

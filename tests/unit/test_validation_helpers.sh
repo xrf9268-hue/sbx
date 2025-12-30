@@ -228,6 +228,56 @@ test_validate_file_integrity_function() {
 }
 
 #==============================================================================
+# validate_cert_files() Function Tests
+#==============================================================================
+
+test_validate_cert_files_missing() {
+    echo ""
+    echo "Testing validate_cert_files() with missing files..."
+
+    if ! declare -f validate_cert_files >/dev/null 2>&1; then
+        test_result "validate_cert_files available" "fail"
+        return
+    fi
+
+    if validate_cert_files "/tmp/nonexistent-cert-$$.pem" "/tmp/nonexistent-key-$$.pem" 2>/dev/null; then
+        test_result "validate_cert_files rejects missing files" "fail"
+    else
+        test_result "validate_cert_files rejects missing files" "pass"
+    fi
+}
+
+#==============================================================================
+# validate_singbox_config() Function Tests
+#==============================================================================
+
+test_validate_singbox_config_handles_missing_binary() {
+    echo ""
+    echo "Testing validate_singbox_config() with missing binary..."
+
+    if ! declare -f validate_singbox_config >/dev/null 2>&1; then
+        test_result "validate_singbox_config available" "fail"
+        return
+    fi
+
+    local temp_dir
+    temp_dir=$(mktemp -d)
+    local config_file="${temp_dir}/config.json"
+
+    cat > "$config_file" <<'EOF'
+{"log":{"level":"warn"}}
+EOF
+
+    if validate_singbox_config "$config_file" 2>/dev/null; then
+        test_result "validate_singbox_config warns on missing binary" "fail"
+    else
+        test_result "validate_singbox_config warns on missing binary" "pass"
+    fi
+
+    rm -rf "$temp_dir"
+}
+
+#==============================================================================
 # Helper Function Existence Tests
 #==============================================================================
 
@@ -279,6 +329,8 @@ main() {
     test_require_all_function
     test_require_valid_function
     test_validate_file_integrity_function
+    test_validate_cert_files_missing
+    test_validate_singbox_config_handles_missing_binary
 
     # Print summary
     echo ""
