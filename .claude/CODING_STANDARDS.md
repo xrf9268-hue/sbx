@@ -77,7 +77,7 @@ fi
 ```
 
 **Real production bugs caused by this:**
-1. `url` variable (install.sh:836) - Installation failed on 90% of systems
+1. `url` variable in `detect_libc()` - Installation failed on 90% of systems
 2. `HTTP_DOWNLOAD_TIMEOUT_SEC` - GitHub API completely broken
 3. `get_file_size()` - Bootstrap failures preventing installation
 

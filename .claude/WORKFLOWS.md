@@ -341,7 +341,7 @@ For complex multi-session work, use the `/handoff` and `/pickup` commands to pre
 /handoff "validation functions created, needs integration tests"
 
 # Before investigating a bug
-/handoff "found unbound variable error in install.sh:836, fix planned"
+/handoff "found unbound variable error in detect_libc(), fix planned"
 
 # During complex refactoring
 /handoff "module split designed: common.sh → logging.sh + generators.sh"
@@ -474,15 +474,15 @@ git commit -m "docs: archive reality validation handoff"
 **Bug investigation:**
 ```bash
 # Session 1: Investigation
-/handoff "root cause found: unbound variable in conditional block at install.sh:836"
+/handoff "root cause found: unbound variable in detect_libc() conditional block"
 
 # Session 2: Fix
-/pickup bug-836-investigation
+/pickup detect-libc-unbound-var
 # [apply fix]
 /handoff "fix applied, needs regression test"
 
 # Session 3: Testing
-/pickup bug-836-fix
+/pickup detect-libc-fix
 # [add tests]
 ```
 
