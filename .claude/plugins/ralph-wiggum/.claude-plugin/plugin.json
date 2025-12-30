@@ -5,5 +5,10 @@
   "author": {
     "name": "Anthropic",
     "email": "daisy@anthropic.com"
-  }
+  },
+  "repository": "https://github.com/anthropics/claude-code/tree/main/plugins/ralph-wiggum",
+  "license": "MIT",
+  "keywords": ["automation", "iteration", "testing", "coverage", "tdd"],
+  "commands": "./commands",
+  "hooks": "./hooks/hooks.json"
 }

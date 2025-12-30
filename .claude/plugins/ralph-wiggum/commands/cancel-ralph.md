@@ -1,4 +1,5 @@
 ---
+description: Cancel an active Ralph Wiggum iteration loop
 allowed-tools: Bash
 ---
 

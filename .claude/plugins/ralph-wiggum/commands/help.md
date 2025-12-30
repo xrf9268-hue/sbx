@@ -1,5 +1,6 @@
 ---
-allowed-tools:
+description: Show Ralph Wiggum plugin documentation and usage examples
+allowed-tools: Read
 ---
 
 # Ralph Wiggum Plugin Help

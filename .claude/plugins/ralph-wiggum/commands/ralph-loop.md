@@ -1,4 +1,6 @@
 ---
+description: Start an iterative development loop that continues until task completion
+arguments: '"prompt" --max-iterations N --completion-promise "TEXT"'
 allowed-tools: Bash
 ---
 
