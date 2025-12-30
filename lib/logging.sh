@@ -32,7 +32,9 @@ LOG_LEVEL_FILTER="${LOG_LEVEL_FILTER:-}"
 LOG_MAX_SIZE_KB="${LOG_MAX_SIZE_KB:-10240}"  # Default 10MB
 LOG_WRITE_COUNT=0  # Counter for periodic rotation checks
 # Rotation check interval (defined in common.sh, fallback if not loaded)
-LOG_ROTATION_CHECK_INTERVAL="${LOG_ROTATION_CHECK_INTERVAL:-100}"
+if [[ -z "${LOG_ROTATION_CHECK_INTERVAL:-}" ]]; then
+  LOG_ROTATION_CHECK_INTERVAL=100
+fi
 
 # Log level values (lower number = higher priority)
 declare -r -A LOG_LEVELS=( [ERROR]=0 [WARN]=1 [INFO]=2 [DEBUG]=3 )
