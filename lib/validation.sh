@@ -302,21 +302,12 @@ validate_reality_sni() {
 
   # Must be non-empty
   [[ -n "${sni}" ]] || {
-    err "Invalid Reality SNI: Cannot be empty"
-    err ""
-    err "The SNI (Server Name Indication) is used for the Reality handshake."
-    err "Choose a high-traffic domain that supports TLS 1.3."
-    err ""
-    err "Recommended SNI domains:"
-    err "  - www.microsoft.com (default)"
-    err "  - www.apple.com"
-    err "  - www.amazon.com"
-    err "  - www.cloudflare.com"
-    err ""
-    err "Avoid:"
-    err "  - Government websites"
-    err "  - Censored domains"
-    err "  - Low-traffic sites"
+    format_validation_error "Reality SNI" "(empty)" \
+      "The SNI (Server Name Indication) is used for the Reality handshake" \
+      "Choose a high-traffic domain that supports TLS 1.3" \
+      "" \
+      "Recommended: www.microsoft.com (default), www.apple.com, www.amazon.com, www.cloudflare.com" \
+      "Avoid: Government websites, censored domains, low-traffic sites"
     err ""
     err "See: docs/REALITY_BEST_PRACTICES.md for SNI selection guide"
     return 1
@@ -327,21 +318,17 @@ validate_reality_sni() {
 
   # Check basic domain format (alphanumeric, dots, hyphens)
   [[ "${cleaned_sni}" =~ ^[a-zA-Z0-9]([a-zA-Z0-9.-]{0,251}[a-zA-Z0-9])?$ ]] || {
-    err "Invalid Reality SNI format: ${sni}"
-    err ""
-    err "Requirements:"
-    err "  - Valid domain name (RFC 1035)"
-    err "  - Max length: 253 characters"
-    err "  - Format: letters, numbers, dots, hyphens only"
-    err "  - Must start and end with alphanumeric character"
+    format_validation_error "Reality SNI format" "${sni}" \
+      "Valid domain name (RFC 1035)" \
+      "Max length: 253 characters" \
+      "Format: letters, numbers, dots, hyphens only" \
+      "Must start and end with alphanumeric character"
     err ""
     err "Examples:"
     err "  ✓ www.microsoft.com"
     err "  ✓ *.cloudflare.com (wildcard)"
     err "  ✗ microsoft.com- (ends with hyphen)"
     err "  ✗ -microsoft.com (starts with hyphen)"
-    err ""
-    err "Current value: ${sni}"
     return 1
   }
 
@@ -474,78 +461,69 @@ validate_singbox_config() {
 # This module sources lib/tools.sh which contains the authoritative implementation.
 # The function is re-exported here for backward compatibility.
 
-# Validate transport+security+flow pairing for VLESS/Reality
-# Ensures compatible combinations according to sing-box requirements
-#
-# Args:
-#   $1 - transport type (tcp, ws, grpc, http, quic)
-#   $2 - security type (reality, tls, none)
-#   $3 - flow value (xtls-rprx-vision, empty)
-#
-# Returns:
-#   0 if pairing is valid
-#   1 if pairing is invalid
-#
-# sing-box Requirements:
-#   - Vision flow (xtls-rprx-vision) REQUIRES TCP transport
-#   - Vision flow (xtls-rprx-vision) REQUIRES Reality security
-#   - WebSocket is INCOMPATIBLE with Reality (use WS+TLS instead)
-#   - gRPC is INCOMPATIBLE with Reality (use gRPC+TLS instead)
-#   - HTTP is INCOMPATIBLE with Reality (use TCP+Reality for Vision)
-validate_transport_security_pairing() {
-  local transport="${1:-tcp}"  # Default to TCP
-  local security="${2:-}"      # TLS, Reality, or none
-  local flow="${3:-}"          # xtls-rprx-vision or empty
+#==============================================================================
+# Transport & Security Pairing Validation - Helper Functions
+#==============================================================================
 
-  # Validate Vision flow requirements
-  if [[ "${flow}" == "xtls-rprx-vision" ]]; then
-    # Vision REQUIRES TCP transport
-    if [[ "${transport}" != "tcp" ]]; then
-      err "Invalid configuration: Vision flow requires TCP transport"
-      err ""
-      err "Current settings:"
-      err "  Transport: ${transport}"
-      err "  Security:  ${security}"
-      err "  Flow:      ${flow}"
-      err ""
-      err "Valid Vision configuration:"
-      err "  Transport: tcp"
-      err "  Security:  reality"
-      err "  Flow:      xtls-rprx-vision"
-      err ""
-      err "See: https://sing-box.sagernet.org/configuration/inbound/vless/"
-      return 1
-    fi
+# Validate Vision flow requirements (TCP + Reality)
+# Arguments:
+#   $1 - transport value
+#   $2 - security value
+#   $3 - flow value
+# Returns: 0 if valid, 1 if invalid
+_validate_vision_requirements() {
+  local transport="$1"
+  local security="$2"
+  local flow="$3"
 
-    # Vision REQUIRES Reality security
-    if [[ "${security}" != "reality" ]]; then
-      err "Invalid configuration: Vision flow requires Reality security"
-      err ""
-      err "Current settings:"
-      err "  Transport: ${transport}"
-      err "  Security:  ${security}"
-      err "  Flow:      ${flow}"
-      err ""
-      err "Valid Vision configuration:"
-      err "  Transport: tcp"
-      err "  Security:  reality"
-      err "  Flow:      xtls-rprx-vision"
-      err ""
-      err "For TLS security, use flow=\"\" (empty flow field)"
-      return 1
-    fi
+  # Vision REQUIRES TCP transport
+  if [[ "${transport}" != "tcp" ]]; then
+    err "Invalid configuration: Vision flow requires TCP transport"
+    err ""
+    err "Current settings:"
+    err "  Transport: ${transport}"
+    err "  Security:  ${security}"
+    err "  Flow:      ${flow}"
+    err ""
+    err "Valid Vision configuration:"
+    err "  Transport: tcp"
+    err "  Security:  reality"
+    err "  Flow:      xtls-rprx-vision"
+    err ""
+    err "See: https://sing-box.sagernet.org/configuration/inbound/vless/"
+    return 1
   fi
 
-  # Validate Reality security requirements
-  if [[ "${security}" == "reality" ]]; then
-    # Reality works best with TCP (and Vision flow)
-    if [[ -n "${flow}" && "${flow}" != "xtls-rprx-vision" ]]; then
-      warn "Unusual configuration: Reality security with non-Vision flow: ${flow}"
-      warn "Common Reality configuration uses flow=\"xtls-rprx-vision\""
-    fi
+  # Vision REQUIRES Reality security
+  if [[ "${security}" != "reality" ]]; then
+    err "Invalid configuration: Vision flow requires Reality security"
+    err ""
+    err "Current settings:"
+    err "  Transport: ${transport}"
+    err "  Security:  ${security}"
+    err "  Flow:      ${flow}"
+    err ""
+    err "Valid Vision configuration:"
+    err "  Transport: tcp"
+    err "  Security:  reality"
+    err "  Flow:      xtls-rprx-vision"
+    err ""
+    err "For TLS security, use flow=\"\" (empty flow field)"
+    return 1
   fi
 
-  # Validate incompatible transport+security combinations
+  return 0
+}
+
+# Validate incompatible transport+security combinations
+# Arguments:
+#   $1 - transport value
+#   $2 - security value
+# Returns: 0 if valid, 1 if incompatible
+_validate_incompatible_combinations() {
+  local transport="$1"
+  local security="$2"
+
   case "${transport}:${security}" in
     "ws:reality")
       err "Invalid configuration: WebSocket transport is incompatible with Reality security"
@@ -586,7 +564,58 @@ validate_transport_security_pairing() {
       err "Reality protocol requires TCP transport"
       return 1
       ;;
+    *)
+      # Valid combinations or unchecked pairs - allow through
+      return 0
+      ;;
   esac
+
+  return 0
+}
+
+#==============================================================================
+# Transport & Security Pairing Validation - Main Function
+#==============================================================================
+
+# Validate transport+security+flow pairing for VLESS/Reality
+# Ensures compatible combinations according to sing-box requirements
+#
+# Args:
+#   $1 - transport type (tcp, ws, grpc, http, quic)
+#   $2 - security type (reality, tls, none)
+#   $3 - flow value (xtls-rprx-vision, empty)
+#
+# Returns:
+#   0 if pairing is valid
+#   1 if pairing is invalid
+#
+# sing-box Requirements:
+#   - Vision flow (xtls-rprx-vision) REQUIRES TCP transport
+#   - Vision flow (xtls-rprx-vision) REQUIRES Reality security
+#   - WebSocket is INCOMPATIBLE with Reality (use WS+TLS instead)
+#   - gRPC is INCOMPATIBLE with Reality (use gRPC+TLS instead)
+#   - HTTP is INCOMPATIBLE with Reality (use TCP+Reality for Vision)
+validate_transport_security_pairing() {
+  local transport="${1:-tcp}"  # Default to TCP
+  local security="${2:-}"      # TLS, Reality, or none
+  local flow="${3:-}"          # xtls-rprx-vision or empty
+
+  # Validate Vision flow requirements
+  if [[ "${flow}" == "xtls-rprx-vision" ]]; then
+    _validate_vision_requirements "${transport}" "${security}" "${flow}" || return 1
+  fi
+
+  # Validate Reality security requirements
+  if [[ "${security}" == "reality" ]]; then
+    # Reality works best with TCP (and Vision flow)
+    if [[ -n "${flow}" && "${flow}" != "xtls-rprx-vision" ]]; then
+      warn "Unusual configuration: Reality security with non-Vision flow: ${flow}"
+      warn "Common Reality configuration uses flow=\"xtls-rprx-vision\""
+    fi
+  fi
+
+  # Validate incompatible transport+security combinations
+  _validate_incompatible_combinations "${transport}" "${security}" || return 1
 
   # If we reach here, pairing is valid
   msg "Transport+security+flow pairing validated: ${transport}+${security}${flow:++${flow}}"

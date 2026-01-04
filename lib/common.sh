@@ -66,10 +66,16 @@ declare -r CADDY_CERT_WAIT_TIMEOUT_SEC=60
 # Input validation limits
 [[ -z "${MAX_INPUT_LENGTH:-}" ]] && declare -r MAX_INPUT_LENGTH=256
 [[ -z "${MAX_DOMAIN_LENGTH:-}" ]] && declare -r MAX_DOMAIN_LENGTH=253
+[[ -z "${MAX_URL_LENGTH:-}" ]] && declare -r MAX_URL_LENGTH=2048
+[[ -z "${MAX_QR_URI_LENGTH:-}" ]] && declare -r MAX_QR_URI_LENGTH=1500
 
 # Service operation wait times
 [[ -z "${SERVICE_WAIT_SHORT_SEC:-}" ]] && declare -r SERVICE_WAIT_SHORT_SEC=1
 [[ -z "${SERVICE_WAIT_MEDIUM_SEC:-}" ]] && declare -r SERVICE_WAIT_MEDIUM_SEC=2
+
+# Network connectivity test timeouts
+[[ -z "${IPV6_TEST_TIMEOUT_SEC:-}" ]] && declare -r IPV6_TEST_TIMEOUT_SEC=3
+[[ -z "${IPV6_PING_WAIT_SEC:-}" ]] && declare -r IPV6_PING_WAIT_SEC=2
 
 # Logging configuration
 # Check for log rotation every 100 writes (1% overhead - negligible performance impact)

@@ -84,6 +84,9 @@ show_existing_installation_menu() {
       "newer")
         info "You have a newer version than latest release (${current_version} > ${latest_version})"
         ;;
+      *)
+        debug "Unknown version status: ${version_status}"
+        ;;
     esac
   fi
 
@@ -160,7 +163,7 @@ prompt_input() {
   input=$(sanitize_input "${input}")
 
   # Validate if validator function provided
-  if [[ -n "${validator}" ]] && command -v "${validator}" >/dev/null 2>&1; then
+  if [[ -n "${validator}" ]] && command -v "${validator}" > /dev/null 2>&1; then
     if ! "${validator}" "${input}"; then
       err "Invalid input"
       return 1
@@ -194,8 +197,8 @@ show_spinner() {
   local spinstr='|/-\'
   local i=0
 
-  while kill -0 "${pid}" 2>/dev/null; do
-    i=$(( (i+1) % 4 ))
+  while kill -0 "${pid}" 2> /dev/null; do
+    i=$(((i + 1) % 4))
     printf "\r%s ${spinstr:${i}:1}" "${message}"
     sleep 0.1
   done

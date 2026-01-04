@@ -69,7 +69,7 @@ resolve_singbox_version() {
     msg "Resolving version: ${version_input}"
 
     case "${version_lower}" in
-        stable|"")
+        stable | "")
             # Fetch latest stable release (non-prerelease)
             msg "  Fetching latest stable release from GitHub..."
 
@@ -85,29 +85,29 @@ resolve_singbox_version() {
                 if have curl; then
                     api_response=$(curl -fsSL --max-time 30 \
                         -H "Authorization: token ${GITHUB_TOKEN}" \
-                        "${api_url}" 2>/dev/null)
-                else
-                    api_response=$(wget -q --timeout=30 -O - "${api_url}" 2>/dev/null)
-                fi
-            else
+                        "${api_url}" 2> /dev/null)
+        else
+                    api_response=$(wget -q --timeout=30 -O - "${api_url}" 2> /dev/null)
+        fi
+      else
                 api_response=$(safe_http_get "${api_url}")
-            fi
+      fi
 
             if [[ $? -ne 0 ]] || [[ -z "${api_response}" ]]; then
                 err "Failed to fetch release information from GitHub API"
                 return 1
-            fi
+      fi
 
             # Extract tag_name from JSON response
-            resolved_version=$(echo "${api_response}" | \
-                grep '"tag_name":' | \
-                head -1 | \
-                grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+')
+            resolved_version=$(echo "${api_response}" \
+                                                      | grep '"tag_name":' \
+                                   | head -1 \
+                        | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+')
 
             if [[ -z "${resolved_version}" ]]; then
                 err "Failed to parse version from API response"
                 return 1
-            fi
+      fi
             ;;
 
         latest)
@@ -126,29 +126,29 @@ resolve_singbox_version() {
                 if have curl; then
                     api_response=$(curl -fsSL --max-time 30 \
                         -H "Authorization: token ${GITHUB_TOKEN}" \
-                        "${api_url}" 2>/dev/null)
-                else
-                    api_response=$(wget -q --timeout=30 -O - "${api_url}" 2>/dev/null)
-                fi
-            else
+                        "${api_url}" 2> /dev/null)
+        else
+                    api_response=$(wget -q --timeout=30 -O - "${api_url}" 2> /dev/null)
+        fi
+      else
                 api_response=$(safe_http_get "${api_url}")
-            fi
+      fi
 
             if [[ $? -ne 0 ]] || [[ -z "${api_response}" ]]; then
                 err "Failed to fetch release information from GitHub API"
                 return 1
-            fi
+      fi
 
             # Extract first tag_name from releases array
-            resolved_version=$(echo "${api_response}" | \
-                grep '"tag_name":' | \
-                head -1 | \
-                grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?')
+            resolved_version=$(echo "${api_response}" \
+                                                      | grep '"tag_name":' \
+                                   | head -1 \
+                        | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?')
 
             if [[ -z "${resolved_version}" ]]; then
                 err "Failed to parse version from API response"
                 return 1
-            fi
+      fi
             ;;
 
         v[0-9]*)
@@ -157,11 +157,11 @@ resolve_singbox_version() {
             if [[ "${version_input}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
                 resolved_version="${version_input}"
                 msg "  Using specified version: ${resolved_version}"
-            else
+      else
                 err "Invalid version format: ${version_input}"
                 err "Expected: vX.Y.Z or vX.Y.Z-pre-release"
                 return 1
-            fi
+      fi
             ;;
 
         [0-9]*)
@@ -170,11 +170,11 @@ resolve_singbox_version() {
             if [[ "${version_input}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
                 resolved_version="v${version_input}"
                 msg "  Auto-prefixed version: ${resolved_version}"
-            else
+      else
                 err "Invalid version format: ${version_input}"
                 err "Expected: X.Y.Z or X.Y.Z-pre-release"
                 return 1
-            fi
+      fi
             ;;
 
         *)
@@ -188,27 +188,28 @@ resolve_singbox_version() {
             err "  - vX.Y.Z-beta.N    : Pre-release version"
             return 1
             ;;
-    esac
+  esac
 
     # Final validation
     if [[ -z "${resolved_version}" ]]; then
         err "Failed to resolve version: ${version_input}"
         return 1
-    fi
+  fi
 
     # Validate resolved version format
     if [[ ! "${resolved_version}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
         err "Resolved version has invalid format: ${resolved_version}"
         return 1
-    fi
+  fi
 
     # Determine version type for logging
     local version_type
     case "${version_lower}" in
-        stable|"") version_type="stable" ;;
+        stable | "") version_type="stable" ;;
         latest) version_type="latest" ;;
-        v*|[0-9]*) version_type="specific" ;;
-    esac
+        v* | [0-9]*) version_type="specific" ;;
+        *) version_type="unknown" ;;
+  esac
 
     success "Resolved sing-box version: ${resolved_version} (type: ${version_type})"
     echo "${resolved_version}"
@@ -398,7 +399,7 @@ validate_singbox_version() {
 #
 show_version_info() {
   local current_version
-  current_version=$(get_singbox_version 2>/dev/null) || current_version="unknown"
+  current_version=$(get_singbox_version 2> /dev/null) || current_version="unknown"
 
   echo ""
   echo "sing-box Version Information"

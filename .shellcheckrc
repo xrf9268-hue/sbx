@@ -4,9 +4,18 @@
 enable=all
 
 # Disable specific checks with justification
+disable=SC1003  # Info: Single quote escaping syntax (false positive)
 disable=SC1090  # Can't follow non-constant source (dynamic module loading)
 disable=SC1091  # Not following sourced files (intentional for acme.sh)
+disable=SC2012  # Info: Use find instead of ls (ls is appropriate for simple cases)
+disable=SC2015  # Info: A && B || C pattern (intentional for concise conditional execution)
+disable=SC2016  # Info: Single quotes don't expand (intentional for literal strings)
 disable=SC2034  # Variable appears unused (used in sourced scripts)
+disable=SC2153  # Info: Possible misspelling (false positive for valid variable names)
+disable=SC2310  # Info: Function return value used in condition (standard bash pattern)
+disable=SC2312  # Info: Command masking return values (intentional for concise error handling)
+disable=SC2317  # Info: Command appears unreachable (false positive for indirectly invoked functions)
+disable=SC2329  # Info: Function never invoked (exported/sourced functions used externally)
 
 # Shell dialect
 shell=bash

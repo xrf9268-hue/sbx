@@ -23,6 +23,10 @@ if [[ -z "${_SBX_LOGGING_LOADED:-}" ]]; then
     source "${_LIB_DIR}/logging.sh"
 fi
 
+# Declare external variables from common.sh
+# shellcheck disable=SC2154
+: "${MAX_QR_URI_LENGTH:?}"
+
 #==============================================================================
 # UUID Generation
 #==============================================================================
@@ -45,16 +49,16 @@ generate_uuid() {
   fi
 
   # Method 2: uuidgen command (available on most Unix systems)
-  if command -v uuidgen >/dev/null 2>&1; then
+  if command -v uuidgen > /dev/null 2>&1; then
     uuidgen | tr '[:upper:]' '[:lower:]'
     return 0
   fi
 
   # Method 3: Python (widely available)
-  if command -v python3 >/dev/null 2>&1; then
+  if command -v python3 > /dev/null 2>&1; then
     python3 -c 'import uuid; print(str(uuid.uuid4()))'
     return 0
-  elif command -v python >/dev/null 2>&1; then
+  elif command -v python > /dev/null 2>&1; then
     python -c 'import uuid; print(str(uuid.uuid4()))'
     return 0
   fi
@@ -69,7 +73,7 @@ generate_uuid() {
   # Use bitwise AND to get last 2 bits (0-3), then add to 8 to get 8-11
   variant_byte=$(openssl rand -hex 1)
   # Extract lower 2 bits using bitwise AND, ensuring uniform distribution
-  variant_value=$(( 8 + (0x${variant_byte} & 0x3) ))
+  variant_value=$((8 + (0x${variant_byte} & 0x3)))
 
   printf '%s-%s-4%s-%x%s-%s' \
     "${hex:0:8}" \
@@ -163,7 +167,7 @@ generate_qr_code() {
 
   # Check URI length (QR code capacity limitation)
   local uri_length=${#uri}
-  if [[ ${uri_length} -gt 1500 ]]; then
+  if [[ ${uri_length} -gt "${MAX_QR_URI_LENGTH}" ]]; then
     warn "URI is long (${uri_length} chars), QR code may be dense"
   fi
 
@@ -171,7 +175,7 @@ generate_qr_code() {
   success "${name} configuration QR code:"
   echo "┌─────────────────────────────────────┐"
   # Generate ASCII QR code for terminal display
-  if qrencode -t UTF8 -m 0 "${uri}" 2>/dev/null; then
+  if qrencode -t UTF8 -m 0 "${uri}" 2> /dev/null; then
     echo "└─────────────────────────────────────┘"
     info "Scan QR code to import config to client"
   else

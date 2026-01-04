@@ -17,7 +17,7 @@ source "${_LIB_DIR}/common.sh"
 
 # Declare external variables from common.sh
 # shellcheck disable=SC2154
-: "${NETWORK_TIMEOUT_SEC:?}" "${HTTP_DOWNLOAD_TIMEOUT_SEC:?}"
+: "${NETWORK_TIMEOUT_SEC:?}" "${HTTP_DOWNLOAD_TIMEOUT_SEC:?}" "${IPV6_TEST_TIMEOUT_SEC:?}" "${IPV6_PING_WAIT_SEC:?}"
 
 #==============================================================================
 # IP Detection and Validation
@@ -277,12 +277,12 @@ detect_ipv6_support() {
     # Check 2: IPv6 routing table
     if ip -6 route show 2> /dev/null | grep -q "default\|::/0"; then
       # Check 3: Actual connectivity test to a reliable IPv6 DNS server
-      if timeout 3 ping6 -c 1 -W 2 2001:4860:4860::8888 > /dev/null 2>&1; then
+      if timeout "${IPV6_TEST_TIMEOUT_SEC}" ping6 -c 1 -W "${IPV6_PING_WAIT_SEC}" 2001:4860:4860::8888 > /dev/null 2>&1; then
         ipv6_supported=true
       else
         # Fallback test: check if we can create IPv6 socket
         # Subshell automatically cleans up file descriptors on exit
-        if timeout 3 bash -c 'exec 3<>/dev/tcp/[::1]/22' 2> /dev/null; then
+        if timeout "${IPV6_TEST_TIMEOUT_SEC}" bash -c 'exec 3<>/dev/tcp/[::1]/22' 2> /dev/null; then
           ipv6_supported=true
         elif [[ -n "$(ip -6 addr show scope global 2> /dev/null)" ]]; then
           # Alternative fallback: Check if any global IPv6 address exists
