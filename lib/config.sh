@@ -82,7 +82,7 @@ create_base_config() {
         { type: "direct", tag: "direct" },
         { type: "block", tag: "block" }
       ]
-    }' 2>/dev/null); then
+    }' 2> /dev/null); then
     err "Failed to create base configuration with jq"
     return 1
   fi
@@ -105,51 +105,39 @@ create_reality_inbound() {
 
   # Input validation with helpful guidance
   [[ -n "${uuid}" ]] || {
-    err "Reality configuration error: UUID cannot be empty"
-    err ""
-    err "Generate a valid UUID:"
-    err "  sing-box generate uuid"
-    err "  OR"
-    err "  uuidgen (on Linux/macOS)"
-    err ""
-    err "Example UUID: a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+    format_validation_error_with_example "UUID" "(empty)" \
+      "a1b2c3d4-e5f6-7890-abcd-ef1234567890" \
+      "UUID cannot be empty" \
+      "Generate: sing-box generate uuid OR uuidgen"
     return 1
   }
 
   [[ -n "${priv_key}" ]] || {
-    err "Reality configuration error: Private key cannot be empty"
-    err ""
-    err "Generate Reality keypair:"
-    err "  sing-box generate reality-keypair"
-    err ""
-    err "Example output:"
-    err "  PrivateKey: UuMBgl7MXTPx9inmQp2UC7Jcnwc6XYbwDNebonM-FCc"
-    err "  PublicKey:  jNXHt1yRo0vDuchQlIP6Z0ZvjT3KtzVI-T4E7RoLJS0"
-    err ""
-    err "Use the PrivateKey on server, PublicKey on client"
+    format_validation_error_with_command "Reality private key" "(empty)" \
+      "sing-box generate reality-keypair" \
+      "Private key cannot be empty" \
+      "Example: PrivateKey: UuMBgl7MXTPx9inmQp2UC7Jcnwc6XYbwDNebonM-FCc" \
+      "Use PrivateKey on server, PublicKey on client"
     return 1
   }
 
   [[ -n "${short_id}" ]] || {
-    err "Reality configuration error: Short ID cannot be empty"
-    err ""
-    err "Generate short ID (8 hex characters):"
-    err "  openssl rand -hex 4"
-    err ""
-    err "Example: a1b2c3d4"
-    err ""
-    err "Note: sing-box uses 8-char short IDs (different from Xray's 16-char)"
+    format_validation_error_with_command "Reality short ID" "(empty)" \
+      "openssl rand -hex 4" \
+      "Short ID cannot be empty" \
+      "Example: a1b2c3d4" \
+      "Note: sing-box uses 8-char short IDs (different from Xray's 16-char)"
     return 1
   }
 
   # Validate port range
-  if ! validate_port "${port}" 2>/dev/null; then
+  if ! validate_port "${port}" 2> /dev/null; then
     err "Invalid port: ${port} (must be 1-65535)"
     return 1
   fi
 
   # Validate transport+security+flow pairing
-  if ! validate_transport_security_pairing "tcp" "reality" "${REALITY_FLOW_VISION}" 2>/dev/null; then
+  if ! validate_transport_security_pairing "tcp" "reality" "${REALITY_FLOW_VISION}" 2> /dev/null; then
     err "Invalid transport+security+flow combination for Reality"
     return 1
   fi
@@ -248,7 +236,7 @@ create_ws_inbound() {
         alpn: ["h2", "http/1.1"]
       },
       transport: { type: "ws", path: "/ws" }
-    }' 2>/dev/null); then
+    }' 2> /dev/null); then
     err "Failed to create WS-TLS configuration with jq"
     return 1
   fi
@@ -286,7 +274,7 @@ create_hysteria2_inbound() {
         key_path: $key_path,
         alpn: ["h3"]
       }
-    }' 2>/dev/null); then
+    }' 2> /dev/null); then
     err "Failed to create Hysteria2 configuration with jq"
     return 1
   fi
@@ -324,7 +312,7 @@ add_route_config() {
     "default_domain_resolver": {
       "server": "dns-local"
     }
-  }' 2>/dev/null); then
+  }' 2> /dev/null); then
     err "Failed to add route configuration"
     return 1
   fi
@@ -350,7 +338,7 @@ add_outbound_config() {
     "connect_timeout": "5s",
     "tcp_fast_open": true,
     "udp_fragment": true
-  }' 2>/dev/null); then
+  }' 2> /dev/null); then
     warn "Failed to add outbound parameters, continuing with default configuration"
     echo "${config}"
     return 0
@@ -404,12 +392,12 @@ _create_all_inbounds() {
   # Add Reality inbound (always present)
   local reality_config
   reality_config=$(create_reality_inbound "${uuid}" "${reality_port}" "${listen_addr}" \
-    "${sni}" "${priv_key}" "${short_id}") || \
-    die "Failed to create Reality inbound"
+    "${sni}" "${priv_key}" "${short_id}") \
+                                          || die "Failed to create Reality inbound"
 
   base_config=$(echo "${base_config}" | jq --argjson reality "${reality_config}" \
-    '.inbounds += [$reality]' 2>/dev/null) || \
-    die "Failed to add Reality configuration to base config"
+    '.inbounds += [$reality]' 2> /dev/null) \
+                                           || die "Failed to add Reality configuration to base config"
 
   # Add WS-TLS and Hysteria2 inbounds if certificates are available
   local has_certs="false"
@@ -419,19 +407,19 @@ _create_all_inbounds() {
     # Add WS-TLS inbound
     local ws_config
     ws_config=$(create_ws_inbound "${uuid}" "${WS_PORT_CHOSEN}" "${listen_addr}" \
-      "${DOMAIN}" "${cert_fullchain}" "${cert_key}") || \
-      die "Failed to create WS-TLS inbound"
+      "${DOMAIN}" "${cert_fullchain}" "${cert_key}") \
+                                                     || die "Failed to create WS-TLS inbound"
 
     # Add Hysteria2 inbound
     local hy2_config
     hy2_config=$(create_hysteria2_inbound "${HY2_PASS}" "${HY2_PORT_CHOSEN}" "${listen_addr}" \
-      "${cert_fullchain}" "${cert_key}") || \
-      die "Failed to create Hysteria2 inbound"
+      "${cert_fullchain}" "${cert_key}") \
+                                         || die "Failed to create Hysteria2 inbound"
 
     # Add both WS and Hysteria2 inbounds
     base_config=$(echo "${base_config}" | jq --argjson ws "${ws_config}" \
-      --argjson hy2 "${hy2_config}" '.inbounds += [$ws, $hy2]' 2>/dev/null) || \
-      die "Failed to add WS-TLS and Hysteria2 configurations"
+      --argjson hy2 "${hy2_config}" '.inbounds += [$ws, $hy2]' 2> /dev/null) \
+                                                                            || die "Failed to add WS-TLS and Hysteria2 configurations"
   fi
 
   # Return updated config and has_certs flag
@@ -473,14 +461,14 @@ write_config() {
 
   # Setup automatic cleanup on function exit/error
   cleanup_write_config() {
-    [[ -f "${temp_conf}" ]] && rm -f "${temp_conf}" 2>/dev/null || true
+    [[ -f "${temp_conf}" ]] && rm -f "${temp_conf}" 2> /dev/null || true
   }
   trap cleanup_write_config RETURN ERR EXIT INT TERM
 
   # Create base configuration
   local base_config
-  base_config=$(create_base_config "${ipv6_supported}" "${LOG_LEVEL:-warn}") || \
-    die "Failed to create base configuration"
+  base_config=$(create_base_config "${ipv6_supported}" "${LOG_LEVEL:-warn}") \
+                                                                             || die "Failed to create base configuration"
 
   # Create all inbounds (Reality + optional WS-TLS and Hysteria2)
   local inbound_result has_certs
@@ -492,13 +480,13 @@ write_config() {
   base_config="${inbound_result#*|}"
 
   # Add route and outbound configurations
-  base_config=$(add_route_config "${base_config}" "${has_certs}") || \
-    die "Failed to add route configuration"
+  base_config=$(add_route_config "${base_config}" "${has_certs}") \
+                                                                  || die "Failed to add route configuration"
   base_config=$(add_outbound_config "${base_config}")
 
   # Write configuration to temporary file
-  echo "${base_config}" > "${temp_conf}" || \
-    die "Failed to write configuration to temporary file"
+  echo "${base_config}" > "${temp_conf}" \
+                                         || die "Failed to write configuration to temporary file"
 
   # Run comprehensive validation pipeline before applying
   if ! validate_config_pipeline "${temp_conf}"; then

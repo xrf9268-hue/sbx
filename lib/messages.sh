@@ -28,92 +28,92 @@ source "${_LIB_DIR}/common.sh"
 # Note: All messages must be in English (no emoji, no CJK characters)
 declare -gA ERROR_MESSAGES=(
     # Validation errors
-    [INVALID_PORT]="Invalid port number: %s (must be 1-65535)"
-    [INVALID_DOMAIN]="Invalid domain format: %s"
-    [INVALID_IP]="Invalid IP address: %s"
-    [INVALID_UUID]="Invalid UUID format: %s"
-    [INVALID_PATH]="Invalid file path: %s"
+      [INVALID_PORT]="Invalid port number: %s (must be 1-65535)"
+      [INVALID_DOMAIN]="Invalid domain format: %s"
+      [INVALID_IP]="Invalid IP address: %s"
+      [INVALID_UUID]="Invalid UUID format: %s"
+      [INVALID_PATH]="Invalid file path: %s"
 
     # File errors
-    [FILE_NOT_FOUND]="File not found: %s"
-    [FILE_NOT_READABLE]="File is not readable: %s"
-    [FILE_WRITE_ERROR]="Failed to write to file: %s"
-    [DIRECTORY_NOT_FOUND]="Directory not found: %s"
+      [FILE_NOT_FOUND]="File not found: %s"
+      [FILE_NOT_READABLE]="File is not readable: %s"
+      [FILE_WRITE_ERROR]="Failed to write to file: %s"
+      [DIRECTORY_NOT_FOUND]="Directory not found: %s"
 
     # Network errors
-    [NETWORK_ERROR]="Network error: Failed to connect to %s"
-    [DOWNLOAD_FAILED]="Failed to download from: %s"
-    [CONNECTION_TIMEOUT]="Connection timeout after %s seconds: %s"
-    [DNS_RESOLUTION_FAILED]="DNS resolution failed for: %s"
+      [NETWORK_ERROR]="Network error: Failed to connect to %s"
+      [DOWNLOAD_FAILED]="Failed to download from: %s"
+      [CONNECTION_TIMEOUT]="Connection timeout after %s seconds: %s"
+      [DNS_RESOLUTION_FAILED]="DNS resolution failed for: %s"
 
     # Service errors
-    [SERVICE_START_FAILED]="Failed to start service: %s"
-    [SERVICE_STOP_FAILED]="Failed to stop service: %s"
-    [SERVICE_NOT_RUNNING]="Service is not running: %s"
-    [SERVICE_ALREADY_RUNNING]="Service is already running: %s"
+      [SERVICE_START_FAILED]="Failed to start service: %s"
+      [SERVICE_STOP_FAILED]="Failed to stop service: %s"
+      [SERVICE_NOT_RUNNING]="Service is not running: %s"
+      [SERVICE_ALREADY_RUNNING]="Service is already running: %s"
 
     # Configuration errors
-    [CONFIG_INVALID]="Invalid configuration in: %s"
-    [CONFIG_PARSE_ERROR]="Failed to parse configuration: %s"
-    [CONFIG_WRITE_FAILED]="Failed to write configuration to: %s"
-    [CONFIG_VALIDATION_FAILED]="Configuration validation failed: %s"
+      [CONFIG_INVALID]="Invalid configuration in: %s"
+      [CONFIG_PARSE_ERROR]="Failed to parse configuration: %s"
+      [CONFIG_WRITE_FAILED]="Failed to write configuration to: %s"
+      [CONFIG_VALIDATION_FAILED]="Configuration validation failed: %s"
 
     # Certificate errors
-    [CERT_NOT_FOUND]="Certificate not found: %s"
-    [CERT_EXPIRED]="Certificate has expired: %s"
-    [CERT_INVALID]="Invalid certificate: %s"
-    [CERT_KEY_MISMATCH]="Certificate and key do not match: %s"
+      [CERT_NOT_FOUND]="Certificate not found: %s"
+      [CERT_EXPIRED]="Certificate has expired: %s"
+      [CERT_INVALID]="Invalid certificate: %s"
+      [CERT_KEY_MISMATCH]="Certificate and key do not match: %s"
 
     # Checksum errors
-    [CHECKSUM_FAILED]="SHA256 checksum verification failed for: %s"
-    [CHECKSUM_MISMATCH]="Checksum mismatch for file: %s (expected: %s, actual: %s)"
-    [CHECKSUM_FILE_NOT_FOUND]="Checksum file not found: %s"
+      [CHECKSUM_FAILED]="SHA256 checksum verification failed for: %s"
+      [CHECKSUM_MISMATCH]="Checksum mismatch for file: %s (expected: %s, actual: %s)"
+      [CHECKSUM_FILE_NOT_FOUND]="Checksum file not found: %s"
 
     # Permission errors
-    [PERMISSION_DENIED]="Permission denied: %s"
-    [ROOT_REQUIRED]="This operation requires root privileges"
-    [USER_NOT_FOUND]="User not found: %s"
+      [PERMISSION_DENIED]="Permission denied: %s"
+      [ROOT_REQUIRED]="This operation requires root privileges"
+      [USER_NOT_FOUND]="User not found: %s"
 
     # Dependency errors
-    [MISSING_DEPENDENCY]="Required dependency not found: %s"
-    [VERSION_MISMATCH]="Version mismatch for %s (required: %s, found: %s)"
-    [TOOL_NOT_AVAILABLE]="Required tool not available: %s"
+      [MISSING_DEPENDENCY]="Required dependency not found: %s"
+      [VERSION_MISMATCH]="Version mismatch for %s (required: %s, found: %s)"
+      [TOOL_NOT_AVAILABLE]="Required tool not available: %s"
 
     # Port errors
-    [PORT_IN_USE]="Port already in use: %s"
-    [PORT_ALLOCATION_FAILED]="Failed to allocate port after %s attempts"
-    [PORT_NOT_LISTENING]="Service not listening on port: %s"
+      [PORT_IN_USE]="Port already in use: %s"
+      [PORT_ALLOCATION_FAILED]="Failed to allocate port after %s attempts"
+      [PORT_NOT_LISTENING]="Service not listening on port: %s"
 
     # Backup/Restore errors
-    [BACKUP_FAILED]="Backup operation failed: %s"
-    [RESTORE_FAILED]="Restore operation failed: %s"
-    [BACKUP_NOT_FOUND]="Backup file not found: %s"
-    [ENCRYPTION_FAILED]="Encryption failed: %s"
-    [DECRYPTION_FAILED]="Decryption failed: %s"
+      [BACKUP_FAILED]="Backup operation failed: %s"
+      [RESTORE_FAILED]="Restore operation failed: %s"
+      [BACKUP_NOT_FOUND]="Backup file not found: %s"
+      [ENCRYPTION_FAILED]="Encryption failed: %s"
+      [DECRYPTION_FAILED]="Decryption failed: %s"
 
     # Generic errors
-    [OPERATION_FAILED]="Operation failed: %s"
-    [UNEXPECTED_ERROR]="Unexpected error occurred: %s"
-    [NOT_IMPLEMENTED]="Feature not implemented: %s"
-    [DEPRECATED_FEATURE]="This feature is deprecated: %s"
+      [OPERATION_FAILED]="Operation failed: %s"
+      [UNEXPECTED_ERROR]="Unexpected error occurred: %s"
+      [NOT_IMPLEMENTED]="Feature not implemented: %s"
+      [DEPRECATED_FEATURE]="This feature is deprecated: %s"
 )
 
 # Warning message templates
 declare -gA WARNING_MESSAGES=(
-    [DEPRECATED_FUNCTION]="Function '%s' is deprecated and will be removed in version %s"
-    [EXPERIMENTAL_FEATURE]="Feature '%s' is experimental and may change in future versions"
-    [FALLBACK_IN_USE]="Using fallback method for: %s"
-    [RESOURCE_LOW]="Low system resources detected: %s"
-    [INSECURE_OPERATION]="Potentially insecure operation: %s"
+      [DEPRECATED_FUNCTION]="Function '%s' is deprecated and will be removed in version %s"
+      [EXPERIMENTAL_FEATURE]="Feature '%s' is experimental and may change in future versions"
+      [FALLBACK_IN_USE]="Using fallback method for: %s"
+      [RESOURCE_LOW]="Low system resources detected: %s"
+      [INSECURE_OPERATION]="Potentially insecure operation: %s"
 )
 
 # Info message templates
 declare -gA INFO_MESSAGES=(
-    [OPERATION_SUCCESS]="Operation completed successfully: %s"
-    [SERVICE_STARTED]="Service started: %s"
-    [SERVICE_STOPPED]="Service stopped: %s"
-    [BACKUP_CREATED]="Backup created: %s"
-    [CONFIG_UPDATED]="Configuration updated: %s"
+      [OPERATION_SUCCESS]="Operation completed successfully: %s"
+      [SERVICE_STARTED]="Service started: %s"
+      [SERVICE_STOPPED]="Service stopped: %s"
+      [BACKUP_CREATED]="Backup created: %s"
+      [CONFIG_UPDATED]="Configuration updated: %s"
 )
 
 #==============================================================================
@@ -137,7 +137,7 @@ format_error() {
         # Fallback for unknown error keys
         echo "Error: ${error_key} - $*"
         return 1
-    fi
+  fi
 
     # Use printf for safe formatting
     # shellcheck disable=SC2059
@@ -160,7 +160,7 @@ format_warning() {
     if [[ -z "${template}" ]]; then
         echo "Warning: ${warning_key} - $*"
         return 1
-    fi
+  fi
 
     # shellcheck disable=SC2059
     printf "${template}" "$@"
@@ -182,11 +182,83 @@ format_info() {
     if [[ -z "${template}" ]]; then
         echo "Info: ${info_key} - $*"
         return 1
-    fi
+  fi
 
     # shellcheck disable=SC2059
     printf "${template}" "$@"
     return 0
+}
+
+#==============================================================================
+# Validation Error Formatting
+#==============================================================================
+
+# Format multi-line validation error with requirements block
+#
+# Usage: format_validation_error <field_name> <invalid_value> <requirements...>
+# Example: format_validation_error "Short ID" "abc" "Length: 8 hex chars" "Format: 0-9, a-f"
+#
+# Outputs standardized validation error format:
+#   Invalid <field_name>: <invalid_value>
+#
+#   Requirements:
+#     - <requirement1>
+#     - <requirement2>
+#
+format_validation_error() {
+  local field_name="$1"
+  local invalid_value="$2"
+  shift 2
+  local requirements=("$@")
+
+  err "Invalid ${field_name}: ${invalid_value}"
+  err ""
+  err "Requirements:"
+
+  for req in "${requirements[@]}"; do
+    err "  - ${req}"
+  done
+
+  return 0
+}
+
+# Format validation error with example
+#
+# Usage: format_validation_error_with_example <field> <value> <example> <requirements...>
+# Example: format_validation_error_with_example "UUID" "bad" "a1b2-c3d4..." "Format: RFC 4122"
+#
+format_validation_error_with_example() {
+  local field_name="$1"
+  local invalid_value="$2"
+  local example="$3"
+  shift 3
+  local requirements=("$@")
+
+  format_validation_error "${field_name}" "${invalid_value}" "${requirements[@]}"
+  err ""
+  err "Example: ${example}"
+
+  return 0
+}
+
+# Format validation error with generation command
+#
+# Usage: format_validation_error_with_command <field> <value> <command> <requirements...>
+# Example: format_validation_error_with_command "Short ID" "g1h2" "openssl rand -hex 4" "8 hex chars"
+#
+format_validation_error_with_command() {
+  local field_name="$1"
+  local invalid_value="$2"
+  local generation_command="$3"
+  shift 3
+  local requirements=("$@")
+
+  format_validation_error "${field_name}" "${invalid_value}" "${requirements[@]}"
+  err ""
+  err "Generate valid ${field_name}:"
+  err "  ${generation_command}"
+
+  return 0
 }
 
 #==============================================================================
@@ -241,6 +313,7 @@ err_config() {
 #==============================================================================
 
 export -f format_error format_warning format_info
+export -f format_validation_error format_validation_error_with_example format_validation_error_with_command
 export -f err_invalid_port err_invalid_domain err_file_not_found
 export -f err_network err_checksum_failed err_missing_dependency
 export -f err_service err_config

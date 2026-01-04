@@ -145,7 +145,7 @@ validate_cert_files() {
   fi
 
   # Step 2: Certificate format validation
-  if ! openssl x509 -in "${fullchain}" -noout 2>/dev/null; then
+  if ! openssl x509 -in "${fullchain}" -noout 2> /dev/null; then
     err "Invalid certificate format (not a valid X.509 certificate)"
     err "  File: ${fullchain}"
     return 1
@@ -153,21 +153,21 @@ validate_cert_files() {
 
   # Step 3: Private key format validation
   # Try to parse as any valid key type (RSA, EC, Ed25519, etc.)
-  if ! openssl pkey -in "${key}" -noout 2>/dev/null; then
+  if ! openssl pkey -in "${key}" -noout 2> /dev/null; then
     err "Invalid private key format (not a valid private key)"
     err "  File: ${key}"
     return 1
   fi
 
   # Step 4: Certificate expiration check (warning only)
-  if ! openssl x509 -in "${fullchain}" -checkend "${CERT_EXPIRY_WARNING_SEC}" -noout 2>/dev/null; then
+  if ! openssl x509 -in "${fullchain}" -checkend "${CERT_EXPIRY_WARNING_SEC}" -noout 2> /dev/null; then
     warn "Certificate will expire within ${CERT_EXPIRY_WARNING_DAYS} days"
   fi
 
   # Step 5: Certificate-Key matching validation
   # Extract public key hash from certificate
   local cert_pubkey
-  cert_pubkey=$(openssl x509 -in "${fullchain}" -noout -pubkey 2>/dev/null | openssl md5 2>/dev/null | awk '{print $2}')
+  cert_pubkey=$(openssl x509 -in "${fullchain}" -noout -pubkey 2> /dev/null | openssl md5 2> /dev/null | awk '{print $2}')
 
   if [[ -z "${cert_pubkey}" || "${cert_pubkey}" == "${EMPTY_MD5_HASH}" ]]; then
     err "Failed to extract public key from certificate"
@@ -177,7 +177,7 @@ validate_cert_files() {
 
   # Extract public key hash from private key using generic pkey command
   local key_pubkey
-  key_pubkey=$(openssl pkey -in "${key}" -pubout 2>/dev/null | openssl md5 2>/dev/null | awk '{print $2}')
+  key_pubkey=$(openssl pkey -in "${key}" -pubout 2> /dev/null | openssl md5 2> /dev/null | awk '{print $2}')
 
   if [[ -z "${key_pubkey}" || "${key_pubkey}" == "${EMPTY_MD5_HASH}" ]]; then
     err "Failed to extract public key from private key"
@@ -202,7 +202,7 @@ validate_cert_files() {
 
   # Log expiry information if available
   local expiry_date
-  expiry_date=$(openssl x509 -in "${fullchain}" -noout -enddate 2>/dev/null | cut -d= -f2)
+  expiry_date=$(openssl x509 -in "${fullchain}" -noout -enddate 2> /dev/null | cut -d= -f2)
   [[ -n "${expiry_date}" ]] && debug "Certificate expires: ${expiry_date}"
 
   return 0
@@ -217,7 +217,7 @@ validate_env_vars() {
   # Validate DOMAIN if provided
   if [[ -n "${DOMAIN}" ]]; then
     # Check if it's an IP address or domain
-    if validate_ip_address "${DOMAIN}" 2>/dev/null; then
+    if validate_ip_address "${DOMAIN}" 2> /dev/null; then
       msg "Using IP address mode: ${DOMAIN}"
     elif validate_domain "${DOMAIN}"; then
       msg "Using domain mode: ${DOMAIN}"
@@ -243,11 +243,11 @@ validate_env_vars() {
 
   # Validate certificate files if provided
   if [[ -n "${CERT_FULLCHAIN}" || -n "${CERT_KEY}" ]]; then
-    [[ -n "${CERT_FULLCHAIN}" && -n "${CERT_KEY}" ]] || \
-      die "Both CERT_FULLCHAIN and CERT_KEY must be specified together"
+    [[ -n "${CERT_FULLCHAIN}" && -n "${CERT_KEY}" ]] \
+                                                     || die "Both CERT_FULLCHAIN and CERT_KEY must be specified together"
 
-    validate_cert_files "${CERT_FULLCHAIN}" "${CERT_KEY}" || \
-      die "Certificate file validation failed"
+    validate_cert_files "${CERT_FULLCHAIN}" "${CERT_KEY}" \
+                                                          || die "Certificate file validation failed"
   fi
 
   # Validate port numbers if custom values provided
@@ -265,8 +265,8 @@ validate_env_vars() {
 
   # Validate version string if provided
   if [[ -n "${SINGBOX_VERSION}" ]]; then
-    [[ "${SINGBOX_VERSION}" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]] || \
-      die "Invalid SINGBOX_VERSION format: ${SINGBOX_VERSION}"
+    [[ "${SINGBOX_VERSION}" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]] \
+                                                                              || die "Invalid SINGBOX_VERSION format: ${SINGBOX_VERSION}"
   fi
 
   return 0
@@ -284,15 +284,10 @@ validate_short_id() {
   # Note: sing-box typically uses 8 chars, but shorter IDs are valid
   local pattern="^[0-9a-fA-F]{${REALITY_SHORT_ID_MIN_LENGTH},${REALITY_SHORT_ID_MAX_LENGTH}}$"
   [[ "${sid}" =~ ${pattern} ]] || {
-    err "Invalid Reality short ID: ${sid}"
-    err ""
-    err "Requirements:"
-    err "  - Length: ${REALITY_SHORT_ID_MIN_LENGTH}-${REALITY_SHORT_ID_MAX_LENGTH} hexadecimal characters"
-    err "  - Format: Only 0-9, a-f, A-F allowed"
-    err "  - Example: a1b2c3d4"
-    err ""
-    err "Generate valid short ID:"
-    err "  openssl rand -hex 4"
+    format_validation_error_with_command "Reality short ID" "${sid}" "openssl rand -hex 4" \
+      "Length: ${REALITY_SHORT_ID_MIN_LENGTH}-${REALITY_SHORT_ID_MAX_LENGTH} hexadecimal characters" \
+      "Format: Only 0-9, a-f, A-F allowed" \
+      "Example: a1b2c3d4"
     err ""
     err "Note: sing-box uses 8-char short IDs (different from Xray's 16-char limit)"
     return 1
@@ -369,48 +364,35 @@ validate_reality_keypair() {
 
   # Both keys must be non-empty
   [[ -n "${priv}" ]] || {
-    err "Invalid Reality keypair: Private key cannot be empty"
-    err ""
-    err "Generate valid keypair:"
-    err "  sing-box generate reality-keypair"
-    err ""
-    err "Example output:"
-    err "  PrivateKey: UuMBgl7MXTPx9inmQp2UC7Jcnwc6XYbwDNebonM-FCc"
-    err "  PublicKey:  jNXHt1yRo0vDuchQlIP6Z0ZvjT3KtzVI-T4E7RoLJS0"
+    format_validation_error_with_command "Reality keypair" "(empty private key)" \
+      "sing-box generate reality-keypair" \
+      "Private key cannot be empty" \
+      "Example: PrivateKey: UuMBgl7MXTPx9inmQp2UC7Jcnwc6XYbwDNebonM-FCc"
     return 1
   }
   [[ -n "${pub}" ]] || {
-    err "Invalid Reality keypair: Public key cannot be empty"
-    err ""
-    err "Generate valid keypair:"
-    err "  sing-box generate reality-keypair"
+    format_validation_error_with_command "Reality keypair" "(empty public key)" \
+      "sing-box generate reality-keypair" \
+      "Public key cannot be empty"
     return 1
   }
 
   # Validate format: base64url characters (A-Za-z0-9_-)
   # Reality keys are base64url-encoded without padding
   [[ "${priv}" =~ ^[A-Za-z0-9_-]+$ ]] || {
-    err "Invalid Reality private key format"
-    err ""
-    err "Requirements:"
-    err "  - Base64url encoding (A-Za-z0-9_-)"
-    err "  - No padding (=) characters"
-    err "  - Length: 42-44 characters"
-    err ""
-    err "Generate valid keypair:"
-    err "  sing-box generate reality-keypair"
+    format_validation_error_with_command "Reality private key" "${priv}" \
+      "sing-box generate reality-keypair" \
+      "Base64url encoding (A-Za-z0-9_-)" \
+      "No padding (=) characters" \
+      "Length: 42-44 characters"
     return 1
   }
   [[ "${pub}" =~ ^[A-Za-z0-9_-]+$ ]] || {
-    err "Invalid Reality public key format"
-    err ""
-    err "Requirements:"
-    err "  - Base64url encoding (A-Za-z0-9_-)"
-    err "  - No padding (=) characters"
-    err "  - Length: 42-44 characters"
-    err ""
-    err "Generate valid keypair:"
-    err "  sing-box generate reality-keypair"
+    format_validation_error_with_command "Reality public key" "${pub}" \
+      "sing-box generate reality-keypair" \
+      "Base64url encoding (A-Za-z0-9_-)" \
+      "No padding (=) characters" \
+      "Length: 42-44 characters"
     return 1
   }
 
@@ -420,25 +402,22 @@ validate_reality_keypair() {
   local pub_len="${#pub}"
 
   if [[ ${priv_len} -lt "${X25519_KEY_MIN_LENGTH}" || ${priv_len} -gt "${X25519_KEY_MAX_LENGTH}" ]]; then
-    err "Private key has invalid length: ${priv_len}"
-    err "Expected: ${X25519_KEY_MIN_LENGTH}-${X25519_KEY_MAX_LENGTH} characters (X25519 key = ${X25519_KEY_BYTES} bytes base64url-encoded)"
-    err ""
-    err "Generate valid keypair:"
-    err "  sing-box generate reality-keypair"
+    format_validation_error_with_command "Reality private key length" "${priv_len}" \
+      "sing-box generate reality-keypair" \
+      "Expected: ${X25519_KEY_MIN_LENGTH}-${X25519_KEY_MAX_LENGTH} characters" \
+      "X25519 key = ${X25519_KEY_BYTES} bytes base64url-encoded"
     return 1
   fi
   if [[ ${pub_len} -lt "${X25519_KEY_MIN_LENGTH}" || ${pub_len} -gt "${X25519_KEY_MAX_LENGTH}" ]]; then
-    err "Public key has invalid length: ${pub_len}"
-    err "Expected: ${X25519_KEY_MIN_LENGTH}-${X25519_KEY_MAX_LENGTH} characters (X25519 key = ${X25519_KEY_BYTES} bytes base64url-encoded)"
-    err ""
-    err "Generate valid keypair:"
-    err "  sing-box generate reality-keypair"
+    format_validation_error_with_command "Reality public key length" "${pub_len}" \
+      "sing-box generate reality-keypair" \
+      "Expected: ${X25519_KEY_MIN_LENGTH}-${X25519_KEY_MAX_LENGTH} characters" \
+      "X25519 key = ${X25519_KEY_BYTES} bytes base64url-encoded"
     return 1
   fi
 
   return 0
 }
-
 
 #==============================================================================
 # User Input Validation
@@ -756,7 +735,7 @@ validate_file_integrity() {
     if [[ -d "${file_path}" ]]; then
       err "Type: directory"
     else
-      err "Type: $(file -b "${file_path}" 2>/dev/null || echo "unknown")"
+      err "Type: $(file -b "${file_path}" 2> /dev/null || echo "unknown")"
     fi
     return 1
   fi
@@ -764,7 +743,7 @@ validate_file_integrity() {
   # Check readable
   if [[ ! -r "${file_path}" ]]; then
     err "File not readable: ${file_path}"
-    err "Permissions: $(ls -l "${file_path}" 2>/dev/null | awk '{print $1}' || echo "unknown")"
+    err "Permissions: $(ls -l "${file_path}" 2> /dev/null | awk '{print $1}' || echo "unknown")"
     err "Try: sudo chmod +r \"${file_path}\""
     return 1
   fi
