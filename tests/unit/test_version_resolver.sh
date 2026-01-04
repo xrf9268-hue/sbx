@@ -14,18 +14,18 @@ export SBX_TEST_MODE=1
 cd "$PROJECT_ROOT" || exit 1
 
 # Load required modules
-if ! source lib/common.sh 2>/dev/null; then
+if ! source lib/common.sh 2> /dev/null; then
     echo "✗ Failed to load lib/common.sh"
     exit 1
 fi
 
-if ! source lib/network.sh 2>/dev/null; then
+if ! source lib/network.sh 2> /dev/null; then
     echo "✗ Failed to load lib/network.sh"
     exit 1
 fi
 
 # Try to load version module
-if ! source lib/version.sh 2>/dev/null; then
+if ! source lib/version.sh 2> /dev/null; then
     echo "⚠ SKIP: lib/version.sh not yet created (expected for TDD red phase)"
     exit 0
 fi
@@ -55,61 +55,79 @@ run_test() {
         echo "✓ PASSED"
         ((PASSED_TESTS++))
         return 0
-    else
+  else
         echo "✗ FAILED"
         ((FAILED_TESTS++))
         return 1
-    fi
+  fi
 }
 
 echo "=== Version Resolver Tests ==="
 
+# Check if network tools are available for network-dependent tests
+NETWORK_TESTS_AVAILABLE=false
+if command -v timeout > /dev/null 2>&1 || command -v gtimeout > /dev/null 2>&1; then
+    if command -v curl > /dev/null 2>&1 || command -v wget > /dev/null 2>&1; then
+        NETWORK_TESTS_AVAILABLE=true
+  fi
+fi
+
 # Test 1: Resolve 'stable' to latest stable release
 test_resolve_stable() {
+    if [[ "${NETWORK_TESTS_AVAILABLE}" != "true" ]]; then
+        echo "  Skipped (timeout or curl/wget not available)"
+        return 0
+  fi
+
     export SINGBOX_VERSION="stable"
 
     local resolved
-    resolved=$(resolve_singbox_version 2>/dev/null)
+    resolved=$(resolve_singbox_version 2> /dev/null)
     local result=$?
 
     # Should succeed
     if [[ $result -ne 0 ]]; then
         echo "  ERROR: Function failed"
         return 1
-    fi
+  fi
 
     # Should return vX.Y.Z format (no pre-release)
     if [[ "$resolved" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
         echo "  Resolved to: $resolved"
         return 0
-    else
+  else
         echo "  ERROR: Invalid format: $resolved"
         return 1
-    fi
+  fi
 }
 
 # Test 2: Resolve 'latest' to absolute latest release
 test_resolve_latest() {
+    if [[ "${NETWORK_TESTS_AVAILABLE}" != "true" ]]; then
+        echo "  Skipped (timeout or curl/wget not available)"
+        return 0
+  fi
+
     export SINGBOX_VERSION="latest"
 
     local resolved
-    resolved=$(resolve_singbox_version 2>/dev/null)
+    resolved=$(resolve_singbox_version 2> /dev/null)
     local result=$?
 
     # Should succeed
     if [[ $result -ne 0 ]]; then
         echo "  ERROR: Function failed"
         return 1
-    fi
+  fi
 
     # Should return vX.Y.Z or vX.Y.Z-beta.N format
     if [[ "$resolved" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
         echo "  Resolved to: $resolved"
         return 0
-    else
+  else
         echo "  ERROR: Invalid format: $resolved"
         return 1
-    fi
+  fi
 }
 
 # Test 3: Resolve specific version tag
@@ -117,21 +135,21 @@ test_resolve_specific_v() {
     export SINGBOX_VERSION="v1.10.7"
 
     local resolved
-    resolved=$(resolve_singbox_version 2>/dev/null)
+    resolved=$(resolve_singbox_version 2> /dev/null)
     local result=$?
 
     if [[ $result -ne 0 ]]; then
         echo "  ERROR: Function failed"
         return 1
-    fi
+  fi
 
     if [[ "$resolved" == "v1.10.7" ]]; then
         echo "  Resolved to: $resolved"
         return 0
-    else
+  else
         echo "  ERROR: Expected v1.10.7, got $resolved"
         return 1
-    fi
+  fi
 }
 
 # Test 4: Resolve version without 'v' prefix
@@ -139,21 +157,21 @@ test_resolve_without_v() {
     export SINGBOX_VERSION="1.10.7"
 
     local resolved
-    resolved=$(resolve_singbox_version 2>/dev/null)
+    resolved=$(resolve_singbox_version 2> /dev/null)
     local result=$?
 
     if [[ $result -ne 0 ]]; then
         echo "  ERROR: Function failed"
         return 1
-    fi
+  fi
 
     if [[ "$resolved" == "v1.10.7" ]]; then
         echo "  Resolved to: $resolved (auto-prefixed)"
         return 0
-    else
+  else
         echo "  ERROR: Expected v1.10.7, got $resolved"
         return 1
-    fi
+  fi
 }
 
 # Test 5: Reject invalid version format
@@ -161,40 +179,45 @@ test_invalid_version() {
     export SINGBOX_VERSION="invalid-version-123"
 
     local resolved
-    resolved=$(resolve_singbox_version 2>/dev/null)
+    resolved=$(resolve_singbox_version 2> /dev/null)
     local result=$?
 
     # Should fail
     if [[ $result -ne 0 ]]; then
         echo "  Correctly rejected invalid version"
         return 0
-    else
+  else
         echo "  ERROR: Should have rejected invalid version: $resolved"
         return 1
-    fi
+  fi
 }
 
 # Test 6: Default to stable when unset
 test_default_stable() {
+    if [[ "${NETWORK_TESTS_AVAILABLE}" != "true" ]]; then
+        echo "  Skipped (timeout or curl/wget not available)"
+        return 0
+  fi
+
     unset SINGBOX_VERSION
 
     local resolved
-    resolved=$(resolve_singbox_version 2>/dev/null)
+    resolved=$(resolve_singbox_version 2> /dev/null)
     local result=$?
 
     if [[ $result -ne 0 ]]; then
         echo "  ERROR: Function failed"
         return 1
-    fi
+  fi
 
     # Should return a valid stable version (no pre-release)
     if [[ "$resolved" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
         echo "  Default resolved to stable: $resolved"
         return 0
-    else
+  else
         echo "  ERROR: Invalid format: $resolved"
         return 1
-    fi
+  fi
 }
 
 # Test 7: Handle pre-release versions
@@ -202,44 +225,49 @@ test_prerelease_version() {
     export SINGBOX_VERSION="v1.11.0-beta.1"
 
     local resolved
-    resolved=$(resolve_singbox_version 2>/dev/null)
+    resolved=$(resolve_singbox_version 2> /dev/null)
     local result=$?
 
     if [[ $result -ne 0 ]]; then
         echo "  ERROR: Function failed"
         return 1
-    fi
+  fi
 
     if [[ "$resolved" == "v1.11.0-beta.1" ]]; then
         echo "  Resolved to: $resolved"
         return 0
-    else
+  else
         echo "  ERROR: Expected v1.11.0-beta.1, got $resolved"
         return 1
-    fi
+  fi
 }
 
 # Test 8: Case insensitivity for aliases
 test_case_insensitive_stable() {
+    if [[ "${NETWORK_TESTS_AVAILABLE}" != "true" ]]; then
+        echo "  Skipped (timeout or curl/wget not available)"
+        return 0
+  fi
+
     export SINGBOX_VERSION="STABLE"
 
     local resolved
-    resolved=$(resolve_singbox_version 2>/dev/null)
+    resolved=$(resolve_singbox_version 2> /dev/null)
     local result=$?
 
     if [[ $result -ne 0 ]]; then
         echo "  ERROR: Function failed"
         return 1
-    fi
+  fi
 
     # Should resolve despite uppercase
     if [[ "$resolved" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
         echo "  Resolved STABLE to: $resolved"
         return 0
-    else
+  else
         echo "  ERROR: Invalid format: $resolved"
         return 1
-    fi
+  fi
 }
 
 # Run all tests
