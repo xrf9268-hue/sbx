@@ -124,7 +124,7 @@ _download_with_curl() {
     fi
 
     # Execute download
-    curl "${args[@]}" "$url" -o "$output" 2>&1
+    curl "${args[@]}" "${url}" -o "${output}" 2>&1
     return $?
 }
 
@@ -150,7 +150,7 @@ _download_with_wget() {
     )
 
     # Execute download
-    wget "${args[@]}" "$url" -O "$output" 2>&1
+    wget "${args[@]}" "${url}" -O "${output}" 2>&1
     return $?
 }
 
@@ -170,9 +170,9 @@ validate_download_url() {
     local url="$1"
 
     # Must start with https://
-    if [[ ! "$url" =~ ^https:// ]]; then
+    if [[ ! "${url}" =~ ^https:// ]]; then
         err "Invalid URL: Must use HTTPS protocol"
-        err "URL: $url"
+        err "URL: ${url}"
         return 1
     fi
 
@@ -183,7 +183,7 @@ validate_download_url() {
     fi
 
     # Check for suspicious patterns (basic injection prevention)
-    if [[ "$url" =~ [[:space:]] ]]; then
+    if [[ "${url}" =~ [[:space:]] ]]; then
         err "Invalid URL: Contains whitespace"
         return 1
     fi
@@ -211,34 +211,34 @@ download_file() {
     local downloader_pref="${3:-${DOWNLOADER}}"
 
     # Validate URL
-    if ! validate_download_url "$url"; then
+    if ! validate_download_url "${url}"; then
         return 1
     fi
 
     # Create output directory if needed
     local output_dir
-    output_dir="$(dirname "$output")"
-    if [[ ! -d "$output_dir" ]]; then
-        mkdir -p "$output_dir" || {
-            err "Failed to create directory: $output_dir"
+    output_dir="$(dirname "${output}")"
+    if [[ ! -d "${output_dir}" ]]; then
+        mkdir -p "${output_dir}" || {
+            err "Failed to create directory: ${output_dir}"
             return 1
         }
     fi
 
     # Select downloader
-    local downloader="$downloader_pref"
-    if [[ "$downloader" == "auto" ]]; then
+    local downloader="${downloader_pref}"
+    if [[ "${downloader}" == "auto" ]]; then
         downloader="$(detect_downloader)"
     fi
 
     # Execute download with selected tool
-    case "$downloader" in
+    case "${downloader}" in
         curl)
             if ! command -v curl >/dev/null 2>&1; then
                 err "curl not found. Please install curl or set DOWNLOADER=wget"
                 return 1
             fi
-            _download_with_curl "$url" "$output"
+            _download_with_curl "${url}" "${output}"
             ;;
 
         wget)
@@ -246,7 +246,7 @@ download_file() {
                 err "wget not found. Please install wget or set DOWNLOADER=curl"
                 return 1
             fi
-            _download_with_wget "$url" "$output"
+            _download_with_wget "${url}" "${output}"
             ;;
 
         none)
@@ -262,7 +262,7 @@ download_file() {
             ;;
 
         *)
-            err "Invalid downloader: $downloader"
+            err "Invalid downloader: ${downloader}"
             err "Supported: curl, wget, auto"
             return 1
             ;;
@@ -288,7 +288,7 @@ download_file_with_retry() {
     local output="$2"
     local max_retries="${3:-${DOWNLOAD_MAX_RETRIES}}"
 
-    retry_with_backoff "$max_retries" download_file "$url" "$output"
+    retry_with_backoff "${max_retries}" download_file "${url}" "${output}"
 }
 
 # Verify downloaded file
@@ -305,17 +305,17 @@ verify_downloaded_file() {
     local min_size="${2:-100}"
 
     # Check file exists
-    if [[ ! -f "$file_path" ]]; then
-        err "Downloaded file not found: $file_path"
+    if [[ ! -f "${file_path}" ]]; then
+        err "Downloaded file not found: ${file_path}"
         return 1
     fi
 
     # Check file size
     local file_size
-    file_size=$(stat -c%s "$file_path" 2>/dev/null || stat -f%z "$file_path" 2>/dev/null || echo "0")
+    file_size=$(stat -c%s "${file_path}" 2>/dev/null || stat -f%z "${file_path}" 2>/dev/null || echo "0")
 
-    if [[ "$file_size" -lt "$min_size" ]]; then
-        err "Downloaded file too small: $file_path (${file_size} bytes, expected >= ${min_size})"
+    if [[ "${file_size}" -lt "${min_size}" ]]; then
+        err "Downloaded file too small: ${file_path} (${file_size} bytes, expected >= ${min_size})"
         return 1
     fi
 
@@ -343,13 +343,13 @@ download_and_verify() {
     local max_retries="${4:-${DOWNLOAD_MAX_RETRIES}}"
 
     # Download with retry
-    if ! download_file_with_retry "$url" "$output" "$max_retries"; then
+    if ! download_file_with_retry "${url}" "${output}" "${max_retries}"; then
         return 1
     fi
 
     # Verify
-    if ! verify_downloaded_file "$output" "$min_size"; then
-        rm -f "$output"  # Clean up invalid file
+    if ! verify_downloaded_file "${output}" "${min_size}"; then
+        rm -f "${output}"  # Clean up invalid file
         return 1
     fi
 
@@ -369,11 +369,11 @@ get_download_info() {
     echo "  Total timeout: ${DOWNLOAD_TIMEOUT}s"
     echo "  Max retries: ${DOWNLOAD_MAX_RETRIES}"
 
-    if [[ "$downloader" == "curl" ]]; then
+    if [[ "${downloader}" == "curl" ]]; then
         echo "  Curl version: $(curl --version 2>/dev/null | head -1)"
         echo "  Curl retry support: $(check_curl_retry_support && echo "Yes" || echo "No")"
         echo "  Curl continue support: $(check_curl_continue_support && echo "Yes" || echo "No")"
-    elif [[ "$downloader" == "wget" ]]; then
+    elif [[ "${downloader}" == "wget" ]]; then
         echo "  Wget version: $(wget --version 2>/dev/null | head -1)"
     fi
 }

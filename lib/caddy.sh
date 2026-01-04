@@ -31,7 +31,7 @@ caddy_config_file() { echo "$(caddy_config_dir)/Caddyfile"; }
 caddy_systemd_file() { echo "/etc/systemd/system/caddy.service"; }
 
 # Caddy stores certificates in data directory
-caddy_data_dir() { echo "$HOME/.local/share/caddy"; }
+caddy_data_dir() { echo "${HOME}/.local/share/caddy"; }
 caddy_cert_path() {
   local domain="$1"
   local data_dir
@@ -39,23 +39,23 @@ caddy_cert_path() {
 
   # Primary path structure (Let's Encrypt ACME v2)
   local cert_dir="${data_dir}/certificates/acme-v02.api.letsencrypt.org-directory/${domain}"
-  if [[ -d "$cert_dir" ]]; then
-    echo "$cert_dir"
+  if [[ -d "${cert_dir}" ]]; then
+    echo "${cert_dir}"
     return 0
   fi
 
   # Fallback: Try staging directory
   cert_dir="${data_dir}/certificates/acme-staging-v02.api.letsencrypt.org-directory/${domain}"
-  if [[ -d "$cert_dir" ]]; then
-    echo "$cert_dir"
+  if [[ -d "${cert_dir}" ]]; then
+    echo "${cert_dir}"
     return 0
   fi
 
   # Last resort: Search for domain directory (with safety limits)
   if [[ -d "${data_dir}/certificates" ]]; then
     cert_dir=$(find "${data_dir}/certificates" -maxdepth 3 -type d -name "${domain}" -print -quit 2>/dev/null)
-    if [[ -n "$cert_dir" && -d "$cert_dir" ]]; then
-      echo "$cert_dir"
+    if [[ -n "${cert_dir}" && -d "${cert_dir}" ]]; then
+      echo "${cert_dir}"
       return 0
     fi
   fi
@@ -72,12 +72,12 @@ caddy_cert_path() {
 caddy_detect_arch() {
   local arch
   arch="$(uname -m)"
-  case "$arch" in
+  case "${arch}" in
     x86_64|amd64) echo "amd64" ;;
     aarch64|arm64) echo "arm64" ;;
     armv7l) echo "armv7" ;;
     *)
-      err "Unsupported architecture for Caddy: $arch"
+      err "Unsupported architecture for Caddy: ${arch}"
       return 1
       ;;
   esac
@@ -95,7 +95,7 @@ caddy_get_latest_version() {
     return 1
   fi
 
-  printf '%s\n' "$response" \
+  printf '%s\n' "${response}" \
     | grep -o '"tag_name":[[:space:]]*"[^"]*"' \
     | cut -d'"' -f4
 }
@@ -105,7 +105,7 @@ caddy_install() {
   if [[ -x "$(caddy_bin)" ]]; then
     local version
     version=$("$(caddy_bin)" version 2>/dev/null | head -n1 | awk '{print $1}')
-    info "Caddy already installed: $version"
+    info "Caddy already installed: ${version}"
     return 0
   fi
 
@@ -130,9 +130,9 @@ caddy_install() {
   checksum_url="https://github.com/caddyserver/caddy/releases/download/${version}/caddy_${version:1}_checksums.txt"
 
   msg "  - Downloading Caddy ${version} for ${arch}..."
-  if ! safe_http_get "$url" "$tmpfile"; then
-    rm -rf "$tmpdir"
-    err "Failed to download Caddy from: $url"
+  if ! safe_http_get "${url}" "${tmpfile}"; then
+    rm -rf "${tmpdir}"
+    err "Failed to download Caddy from: ${url}"
     return 1
   fi
 
@@ -146,41 +146,41 @@ caddy_install() {
   # Trade-off: Higher security guarantee vs. installation resilience
   # Override: Not currently supported (Caddy is optional, users can provide manual certs)
   msg "  - Verifying checksum..."
-  if ! safe_http_get "$checksum_url" "$checksum_file"; then
-    rm -rf "$tmpdir"
+  if ! safe_http_get "${checksum_url}" "${checksum_file}"; then
+    rm -rf "${tmpdir}"
     err "Failed to download Caddy checksum file"
     return 1
   fi
 
-  expected=$(grep "${archive}$" "$checksum_file" | awk '{print $1}' | head -n1)
-  if [[ -z "$expected" ]]; then
-    rm -rf "$tmpdir"
+  expected=$(grep "${archive}$" "${checksum_file}" | awk '{print $1}' | head -n1)
+  if [[ -z "${expected}" ]]; then
+    rm -rf "${tmpdir}"
     err "Unable to find expected checksum for ${archive}"
     return 1
   fi
 
-  actual=$(sha256sum "$tmpfile" | awk '{print $1}')
-  if [[ "$expected" != "$actual" ]]; then
-    rm -rf "$tmpdir"
+  actual=$(sha256sum "${tmpfile}" | awk '{print $1}')
+  if [[ "${expected}" != "${actual}" ]]; then
+    rm -rf "${tmpdir}"
     err "Checksum mismatch for downloaded Caddy archive"
     return 1
   fi
 
   msg "  - Extracting Caddy..."
-  tar -xzf "$tmpfile" -C "$tmpdir" caddy || {
-    rm -rf "$tmpdir"
+  tar -xzf "${tmpfile}" -C "${tmpdir}" caddy || {
+    rm -rf "${tmpdir}"
     err "Failed to extract Caddy package"
     return 1
   }
 
   msg "  - Installing Caddy binary..."
   install -m 755 "${tmpdir}/caddy" "$(caddy_bin)" || {
-    rm -rf "$tmpdir"
+    rm -rf "${tmpdir}"
     err "Failed to install Caddy binary"
     return 1
   }
 
-  rm -rf "$tmpdir"
+  rm -rf "${tmpdir}"
 
   success "Caddy ${version} installed successfully"
   return 0
@@ -235,25 +235,25 @@ caddy_setup_auto_tls() {
   # Caddy ports (avoid conflicts with sing-box)
   # Caddy uses port 8445 for HTTPS certificate management
   # sing-box uses: 443 (Reality), 8444 (WS-TLS), 8443 (Hysteria2)
-  local caddy_http_port="${CADDY_HTTP_PORT:-$CADDY_HTTP_PORT_DEFAULT}"
-  local caddy_https_port="${CADDY_HTTPS_PORT:-$CADDY_HTTPS_PORT_DEFAULT}"
-  local caddy_fallback_port="${CADDY_FALLBACK_PORT:-$CADDY_FALLBACK_PORT_DEFAULT}"
+  local caddy_http_port="${CADDY_HTTP_PORT:-${CADDY_HTTP_PORT_DEFAULT}}"
+  local caddy_https_port="${CADDY_HTTPS_PORT:-${CADDY_HTTPS_PORT_DEFAULT}}"
+  local caddy_fallback_port="${CADDY_FALLBACK_PORT:-${CADDY_FALLBACK_PORT_DEFAULT}}"
 
-  msg "  - Configuring Caddy for domain: $domain"
-  info "  ℹ Caddy HTTPS port: $caddy_https_port (certificate management only)"
+  msg "  - Configuring Caddy for domain: ${domain}"
+  info "  ℹ Caddy HTTPS port: ${caddy_https_port} (certificate management only)"
   info "  ℹ sing-box ports: 443 (Reality), 8444 (WS-TLS), 8443 (Hysteria2)"
 
   # Validate ports
-  for port in "$caddy_http_port" "$caddy_https_port" "$caddy_fallback_port"; do
-    if ! [[ "$port" =~ ^[0-9]+$ ]] || [[ "$port" -lt 1 ]] || [[ "$port" -gt 65535 ]]; then
-      err "Invalid port number: $port"
+  for port in "${caddy_http_port}" "${caddy_https_port}" "${caddy_fallback_port}"; do
+    if ! [[ "${port}" =~ ^[0-9]+$ ]] || [[ "${port}" -lt 1 ]] || [[ "${port}" -gt 65535 ]]; then
+      err "Invalid port number: ${port}"
       return 1
     fi
   done
 
   # Check for port conflicts with sing-box
-  if [[ "$caddy_https_port" == "443" ]] || [[ "$caddy_https_port" == "8444" ]] || [[ "$caddy_https_port" == "8443" ]]; then
-    err "Port conflict: Caddy HTTPS port ($caddy_https_port) conflicts with sing-box"
+  if [[ "${caddy_https_port}" == "443" ]] || [[ "${caddy_https_port}" == "8444" ]] || [[ "${caddy_https_port}" == "8443" ]]; then
+    err "Port conflict: Caddy HTTPS port (${caddy_https_port}) conflicts with sing-box"
     info "  ℹ Use a different port (default: 8445)"
     return 1
   fi
@@ -299,7 +299,7 @@ EOF
   }
 
   # Wait for Caddy to be ready
-  sleep "$CADDY_STARTUP_WAIT_SEC"
+  sleep "${CADDY_STARTUP_WAIT_SEC}"
 
   if ! systemctl is-active caddy >/dev/null 2>&1; then
     err "Caddy service failed to start"
@@ -321,10 +321,10 @@ caddy_wait_for_cert() {
   local max_wait="${2:-60}"  # Wait up to 60 seconds
   local cert_dir
 
-  cert_dir=$(caddy_cert_path "$domain")
+  cert_dir=$(caddy_cert_path "${domain}")
 
   msg "  - Checking for certificate..."
-  msg "    Certificate directory: $cert_dir"
+  msg "    Certificate directory: ${cert_dir}"
 
   # Check if certificate already exists
   if [[ -f "${cert_dir}/${domain}.crt" && -f "${cert_dir}/${domain}.key" ]]; then
@@ -336,13 +336,13 @@ caddy_wait_for_cert() {
   msg "  - Waiting for Caddy to obtain new certificate..."
 
   local elapsed=0
-  while [[ $elapsed -lt $max_wait ]]; do
+  while [[ ${elapsed} -lt ${max_wait} ]]; do
     if [[ -f "${cert_dir}/${domain}.crt" && -f "${cert_dir}/${domain}.key" ]]; then
       success "  ✓ Certificate obtained from Let's Encrypt"
       return 0
     fi
 
-    sleep "$CADDY_CERT_POLL_INTERVAL_SEC"
+    sleep "${CADDY_CERT_POLL_INTERVAL_SEC}"
     elapsed=$((elapsed + CADDY_CERT_POLL_INTERVAL_SEC))
 
     if [[ $((elapsed % 15)) -eq 0 ]]; then
@@ -363,14 +363,14 @@ caddy_setup_cert_sync() {
   msg "  - Setting up certificate synchronization..."
 
   # Wait for initial certificate
-  caddy_wait_for_cert "$domain" || return 1
+  caddy_wait_for_cert "${domain}" || return 1
 
   local caddy_cert_dir
-  caddy_cert_dir=$(caddy_cert_path "$domain")
+  caddy_cert_dir=$(caddy_cert_path "${domain}")
 
   # Create target directory
-  mkdir -p "$target_dir"
-  chmod 700 "$target_dir"
+  mkdir -p "${target_dir}"
+  chmod 700 "${target_dir}"
 
   # Sync certificates
   msg "  - Copying certificates to sing-box directory..."
@@ -392,10 +392,10 @@ caddy_setup_cert_sync() {
   export CERT_FULLCHAIN="${target_dir}/fullchain.pem"
   export CERT_KEY="${target_dir}/privkey.pem"
 
-  success "  ✓ Certificates synced to: $target_dir"
+  success "  ✓ Certificates synced to: ${target_dir}"
 
   # Create certificate renewal hook
-  caddy_create_renewal_hook "$domain" "$target_dir" || return 1
+  caddy_create_renewal_hook "${domain}" "${target_dir}" || return 1
 
   return 0
 }
@@ -408,8 +408,8 @@ caddy_create_renewal_hook() {
 
   # CRITICAL: Validate domain BEFORE using it in any operation
   # Strict validation prevents command injection and path traversal
-  if [[ ! "$domain" =~ ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$ ]]; then
-    err "Invalid domain format for certificate sync hook: $domain"
+  if [[ ! "${domain}" =~ ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$ ]]; then
+    err "Invalid domain format for certificate sync hook: ${domain}"
     err "  Domain must contain only lowercase letters, numbers, dots, and hyphens"
     return 1
   fi
@@ -424,7 +424,7 @@ caddy_create_renewal_hook() {
 
   # Create hook script with single-quoted HEREDOC to prevent variable expansion
   # Domain is passed as argument for security (prevents command injection)
-  cat > "$hook_script" <<'EOFSCRIPT'
+  cat > "${hook_script}" <<'EOFSCRIPT'
 #!/usr/bin/env bash
 # Caddy certificate sync hook
 # Syncs certificates from Caddy to sing-box and restarts service
@@ -501,24 +501,24 @@ else
 fi
 EOFSCRIPT
 
-  chmod 750 "$hook_script"  # More restrictive: owner+group execute only
-  chown root:root "$hook_script" 2>/dev/null || true
+  chmod 750 "${hook_script}"  # More restrictive: owner+group execute only
+  chown root:root "${hook_script}" 2>/dev/null || true
 
   # Create systemd service - pass domain and target_dir as arguments
   # Use printf %q to properly escape arguments
   local escaped_domain
   local escaped_target
-  escaped_domain=$(printf '%q' "$domain")
-  escaped_target=$(printf '%q' "$target_dir")
+  escaped_domain=$(printf '%q' "${domain}")
+  escaped_target=$(printf '%q' "${target_dir}")
 
   cat > /etc/systemd/system/caddy-cert-sync.service <<EOF
 [Unit]
-Description=Sync Caddy certificates to sing-box for $domain
+Description=Sync Caddy certificates to sing-box for ${domain}
 After=caddy.service
 
 [Service]
 Type=oneshot
-ExecStart=$hook_script $escaped_domain $escaped_target
+ExecStart=${hook_script} ${escaped_domain} ${escaped_target}
 EOF
 
   cat > /etc/systemd/system/caddy-cert-sync.timer <<EOF

@@ -59,7 +59,7 @@ calculate_backoff() {
     else
         # Fallback to bash arithmetic (may overflow for large attempts)
         backoff=$((base ** attempt))
-        [[ $backoff -gt $max ]] && backoff=$max
+        [[ ${backoff} -gt ${max} ]] && backoff=${max}
     fi
 
     # Add jitter: random(0, RETRY_JITTER_MAX) milliseconds
@@ -76,7 +76,7 @@ calculate_backoff() {
 # Returns:
 #   0 if budget available, 1 if exhausted
 check_retry_budget() {
-    if [[ $GLOBAL_RETRY_COUNT -ge $GLOBAL_RETRY_BUDGET ]]; then
+    if [[ ${GLOBAL_RETRY_COUNT} -ge ${GLOBAL_RETRY_BUDGET} ]]; then
         err ""
         err "Global retry budget exhausted (${GLOBAL_RETRY_BUDGET} retries)"
         err "This may indicate a systemic issue (e.g., GitHub outage)"
@@ -113,7 +113,7 @@ is_retriable_error() {
     local exit_code="$1"
 
     # Retriable network errors (temporary conditions)
-    case "$exit_code" in
+    case "${exit_code}" in
         # Curl temporary errors
         6|7|28|35|52|56)
             return 0 ;;  # Retriable
@@ -164,7 +164,7 @@ retry_with_backoff() {
     local attempt=0
     local exit_code=0
 
-    while [[ $attempt -lt $max_attempts ]]; do
+    while [[ ${attempt} -lt ${max_attempts} ]]; do
         ((attempt++))
 
         # Check global retry budget before attempting
@@ -176,33 +176,33 @@ retry_with_backoff() {
         "${command[@]}"
         exit_code=$?
 
-        if [[ $exit_code -eq 0 ]]; then
+        if [[ ${exit_code} -eq 0 ]]; then
             # Success
-            if [[ $attempt -gt 1 ]]; then
+            if [[ ${attempt} -gt 1 ]]; then
                 success "✓ Succeeded on attempt ${attempt}"
             fi
             return 0
         fi
 
         # Check if error is retriable
-        if ! is_retriable_error "$exit_code"; then
+        if ! is_retriable_error "${exit_code}"; then
             err "✗ Non-retriable error (exit code: ${exit_code})"
             err "This error indicates a permanent condition that won't improve with retries."
-            return "$exit_code"
+            return "${exit_code}"
         fi
 
         # Increment global retry counter
         ((GLOBAL_RETRY_COUNT++))
 
         # Check if this was the last attempt
-        if [[ $attempt -ge $max_attempts ]]; then
+        if [[ ${attempt} -ge ${max_attempts} ]]; then
             err "✗ Failed after ${max_attempts} attempts (exit code: ${exit_code})"
-            return "$exit_code"
+            return "${exit_code}"
         fi
 
         # Calculate backoff time
         local backoff_ms
-        backoff_ms="$(calculate_backoff "$attempt")"
+        backoff_ms="$(calculate_backoff "${attempt}")"
 
         # Calculate backoff in seconds for display (use bc if available)
         local backoff_sec
@@ -232,7 +232,7 @@ retry_with_backoff() {
         fi
     done
 
-    return "$exit_code"
+    return "${exit_code}"
 }
 
 # Retry with custom backoff parameters
@@ -257,19 +257,19 @@ retry_with_custom_backoff() {
     local old_base="${RETRY_BACKOFF_BASE}"
     local old_backoff_max="${RETRY_BACKOFF_MAX}"
 
-    RETRY_MAX_ATTEMPTS="$max_attempts"
-    RETRY_BACKOFF_BASE="$base"
-    RETRY_BACKOFF_MAX="$max_backoff"
+    RETRY_MAX_ATTEMPTS="${max_attempts}"
+    RETRY_BACKOFF_BASE="${base}"
+    RETRY_BACKOFF_MAX="${max_backoff}"
 
     retry_with_backoff "$@"
     local result=$?
 
     # Restore constants
-    RETRY_MAX_ATTEMPTS="$old_max"
-    RETRY_BACKOFF_BASE="$old_base"
-    RETRY_BACKOFF_MAX="$old_backoff_max"
+    RETRY_MAX_ATTEMPTS="${old_max}"
+    RETRY_BACKOFF_BASE="${old_base}"
+    RETRY_BACKOFF_MAX="${old_backoff_max}"
 
-    return "$result"
+    return "${result}"
 }
 
 # Reset global retry counter

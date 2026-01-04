@@ -24,9 +24,9 @@ source "${_LIB_DIR}/colors.sh"
 
 declare -r SB_BIN="/usr/local/bin/sing-box"
 declare -r SB_CONF_DIR="/etc/sing-box"
-declare -r SB_CONF="$SB_CONF_DIR/config.json"
+declare -r SB_CONF="${SB_CONF_DIR}/config.json"
 declare -r SB_SVC="/etc/systemd/system/sing-box.service"
-declare -r CLIENT_INFO="$SB_CONF_DIR/client-info.txt"
+declare -r CLIENT_INFO="${SB_CONF_DIR}/client-info.txt"
 
 # Default ports
 declare -r REALITY_PORT_DEFAULT=443
@@ -116,7 +116,7 @@ fi
 declare -r REALITY_FINGERPRINT_CHROME="chrome"
 declare -r REALITY_FINGERPRINT_FIREFOX="firefox"
 declare -r REALITY_FINGERPRINT_SAFARI="safari"
-declare -r REALITY_FINGERPRINT_DEFAULT="$REALITY_FINGERPRINT_CHROME"
+declare -r REALITY_FINGERPRINT_DEFAULT="${REALITY_FINGERPRINT_CHROME}"
 
 # X25519 key validation (base64url-encoded 32-byte keys)
 declare -r X25519_KEY_MIN_LENGTH=42
@@ -177,9 +177,9 @@ CERT_FORCE="${CERT_FORCE:-0}"
 CERT_FULLCHAIN="${CERT_FULLCHAIN:-}"
 CERT_KEY="${CERT_KEY:-}"
 
-REALITY_PORT="${REALITY_PORT:-$REALITY_PORT_DEFAULT}"
-WS_PORT="${WS_PORT:-$WS_PORT_DEFAULT}"
-HY2_PORT="${HY2_PORT:-$HY2_PORT_DEFAULT}"
+REALITY_PORT="${REALITY_PORT:-${REALITY_PORT_DEFAULT}}"
+WS_PORT="${WS_PORT:-${WS_PORT_DEFAULT}}"
+HY2_PORT="${HY2_PORT:-${HY2_PORT_DEFAULT}}"
 
 SINGBOX_VERSION="${SINGBOX_VERSION:-}"
 
@@ -211,14 +211,17 @@ need_root() {
 
 # Check if command exists
 have() {
-  command -v "$1" >/dev/null 2>&1
+  command -v "$1" > /dev/null 2>&1
 }
 
 # Safe temporary directory cleanup
+# Supports Linux (/tmp/) and macOS (/var/folders/) temp directories
 safe_rm_temp() {
   local temp_path="$1"
-  [[ -n "$temp_path" && "$temp_path" != "/" && "$temp_path" =~ ^/tmp/ ]] || return 1
-  [[ -d "$temp_path" ]] && rm -rf "$temp_path" 2>/dev/null || true
+  [[ -n "${temp_path}" && "${temp_path}" != "/" ]] || return 1
+  # Accept both Linux /tmp/ and macOS /var/folders/ temp directories
+  [[ "${temp_path}" =~ ^/tmp/ || "${temp_path}" =~ ^/var/folders/ ]] || return 1
+  [[ -d "${temp_path}" ]] && rm -rf "${temp_path}" 2> /dev/null || true
 }
 
 # Get file size in bytes (cross-platform)
@@ -233,7 +236,7 @@ get_file_size() {
   local file="$1"
 
   # Validate file exists
-  [[ -f "$file" ]] || {
+  [[ -f "${file}" ]] || {
     echo "0"
     return 1
   }
@@ -241,7 +244,7 @@ get_file_size() {
   # Cross-platform file size retrieval
   # Linux: stat -c%s
   # BSD/macOS: stat -f%z
-  stat -c%s "$file" 2>/dev/null || stat -f%z "$file" 2>/dev/null || echo "0"
+  stat -c%s "${file}" 2> /dev/null || stat -f%z "${file}" 2> /dev/null || echo "0"
 }
 
 #------------------------------------------------------------------------------
@@ -261,7 +264,7 @@ get_file_mtime() {
   local file="$1"
 
   # Validate file exists
-  [[ -f "$file" ]] || {
+  [[ -f "${file}" ]] || {
     echo ""
     return 1
   }
@@ -269,9 +272,9 @@ get_file_mtime() {
   # Cross-platform modification time retrieval
   # Linux: stat -c %y (returns: YYYY-MM-DD HH:MM:SS.nanoseconds +timezone)
   # BSD/macOS: stat -f %Sm (returns: format depends on -t option)
-  stat -c %y "$file" 2>/dev/null | cut -d' ' -f1,2 | cut -d'.' -f1 || \
-  stat -f %Sm "$file" 2>/dev/null || \
-  echo ""
+  stat -c %y "${file}" 2> /dev/null | cut -d' ' -f1,2 | cut -d'.' -f1 \
+                                                                     || stat -f %Sm "${file}" 2> /dev/null \
+                                    || echo ""
 }
 
 #==============================================================================
@@ -282,37 +285,37 @@ cleanup() {
   local exit_code=$?
 
   # Skip error reporting in test mode (tests manage their own error reporting)
-  if [[ $exit_code -ne 0 && -z "${SBX_TEST_MODE:-}" ]]; then
+  if [[ ${exit_code} -ne 0 && -z "${SBX_TEST_MODE:-}" ]]; then
     # err() function will be available from logging.sh
-    if declare -f err >/dev/null 2>&1; then
-      err "Script execution failed with exit code $exit_code"
+    if declare -f err > /dev/null 2>&1; then
+      err "Script execution failed with exit code ${exit_code}"
     else
-      echo "[ERR] Script execution failed with exit code $exit_code" >&2
+      echo "[ERR] Script execution failed with exit code ${exit_code}" >&2
     fi
   fi
 
   # Clean up process-specific temporary directory (safe)
-  if [[ -n "${SBX_TMP_DIR:-}" && -d "$SBX_TMP_DIR" ]]; then
+  if [[ -n "${SBX_TMP_DIR:-}" && -d "${SBX_TMP_DIR}" ]]; then
     # Verify it's a safe path before removal
-    if [[ "$SBX_TMP_DIR" =~ ^/tmp/sbx-[a-zA-Z0-9._-]+$ ]]; then
-      rm -rf "$SBX_TMP_DIR" 2>/dev/null || true
+    if [[ "${SBX_TMP_DIR}" =~ ^/tmp/sbx-[a-zA-Z0-9._-]+$ ]]; then
+      rm -rf "${SBX_TMP_DIR}" 2> /dev/null || true
     fi
   fi
 
   # Clean up known temporary config files (specific to this process)
-  rm -f "${SB_CONF}.tmp" 2>/dev/null || true
+  rm -f "${SB_CONF}.tmp" 2> /dev/null || true
 
   # Remove temporary installer directory created during one-liner bootstrap
   if [[ -n "${INSTALLER_TEMP_DIR:-}" && -d "${INSTALLER_TEMP_DIR}" ]]; then
     # Validate: Must be in a temp directory and contain PID pattern for safety
     if [[ "${INSTALLER_TEMP_DIR}" =~ ^(/tmp|/var/tmp)/sbx-install-[0-9]+$ ]]; then
-      if ! rm -rf "${INSTALLER_TEMP_DIR}" 2>/dev/null; then
-        if declare -f warn >/dev/null 2>&1; then
+      if ! rm -rf "${INSTALLER_TEMP_DIR}" 2> /dev/null; then
+        if declare -f warn > /dev/null 2>&1; then
           warn "Failed to cleanup temporary installer directory: ${INSTALLER_TEMP_DIR}"
         fi
       fi
     else
-      if declare -f warn >/dev/null 2>&1; then
+      if declare -f warn > /dev/null 2>&1; then
         warn "Skipping cleanup of INSTALLER_TEMP_DIR (path validation failed): ${INSTALLER_TEMP_DIR}"
       fi
     fi
@@ -321,18 +324,18 @@ cleanup() {
   # Clean up stale port lock files (over 60 minutes old, with safe timeout)
   # This is safe because it only removes very old locks that are likely orphaned
   if [[ -d "/var/lock" ]]; then
-    find /var/lock -maxdepth 1 -name 'sbx-port-*.lock' -type f -mmin +"${CLEANUP_OLD_FILES_MIN:-60}" -delete 2>/dev/null || true
+    find /var/lock -maxdepth 1 -name 'sbx-port-*.lock' -type f -mmin +"${CLEANUP_OLD_FILES_MIN:-60}" -delete 2> /dev/null || true
   fi
 
   # If we're in the middle of an upgrade/install and something fails,
   # try to restore service if it was previously running
-  if [[ $exit_code -ne 0 && -f "$SB_SVC" ]]; then
-    if systemctl is-enabled sing-box >/dev/null 2>&1; then
-      systemctl start sing-box 2>/dev/null || true
+  if [[ ${exit_code} -ne 0 && -f "${SB_SVC}" ]]; then
+    if systemctl is-enabled sing-box > /dev/null 2>&1; then
+      systemctl start sing-box 2> /dev/null || true
     fi
   fi
 
-  exit $exit_code
+  exit "${exit_code}"
 }
 
 #==============================================================================
@@ -358,18 +361,18 @@ create_temp_dir() {
     err "  - Disk full (check: df -h /tmp)"
     err "  - No write permission to /tmp"
     err "  - SELinux/AppArmor restrictions"
-    err "Details: $temp_dir"
+    err "Details: ${temp_dir}"
     return 1
   fi
 
   # Set secure permissions
-  chmod 700 "$temp_dir" || {
-    err "Failed to set permissions on temp directory: $temp_dir"
-    rm -rf "$temp_dir" 2>/dev/null
+  chmod 700 "${temp_dir}" || {
+    err "Failed to set permissions on temp directory: ${temp_dir}"
+    rm -rf "${temp_dir}" 2> /dev/null
     return 1
   }
 
-  echo "$temp_dir"
+  echo "${temp_dir}"
   return 0
 }
 
@@ -392,18 +395,18 @@ create_temp_file() {
     err "  - Disk full (check: df -h /tmp)"
     err "  - No write permission to /tmp"
     err "  - SELinux/AppArmor restrictions"
-    err "Details: $tmpfile"
+    err "Details: ${tmpfile}"
     return 1
   fi
 
   # Set secure permissions
-  chmod 600 "$tmpfile" || {
-    err "Failed to set permissions on temp file: $tmpfile"
-    rm -f "$tmpfile" 2>/dev/null
+  chmod 600 "${tmpfile}" || {
+    err "Failed to set permissions on temp file: ${tmpfile}"
+    rm -f "${tmpfile}" 2> /dev/null
     return 1
   }
 
-  echo "$tmpfile"
+  echo "${tmpfile}"
   return 0
 }
 

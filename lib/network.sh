@@ -41,9 +41,9 @@ get_public_ip() {
 
   # Use custom IP services if provided, otherwise use defaults
   if [[ -n "${CUSTOM_IP_SERVICES:-}" ]]; then
-    debug "Using custom IP detection services: $CUSTOM_IP_SERVICES"
+    debug "Using custom IP detection services: ${CUSTOM_IP_SERVICES}"
     # Convert space-separated string to array
-    read -ra services <<< "$CUSTOM_IP_SERVICES"
+    read -ra services <<< "${CUSTOM_IP_SERVICES}"
   else
     services=(
       "https://ipv4.icanhazip.com"
@@ -56,20 +56,20 @@ get_public_ip() {
   # Try multiple IP detection services for redundancy
   for service in "${services[@]}"; do
     if have curl; then
-      ip=$(timeout "$NETWORK_TIMEOUT_SEC" curl -s --max-time "$NETWORK_TIMEOUT_SEC" "$service" 2>/dev/null | grep -E '^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$' | head -1)
+      ip=$(timeout "${NETWORK_TIMEOUT_SEC}" curl -s --max-time "${NETWORK_TIMEOUT_SEC}" "${service}" 2> /dev/null | grep -E '^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$' | head -1)
     elif have wget; then
-      ip=$(timeout "$NETWORK_TIMEOUT_SEC" wget -qO- --timeout="$NETWORK_TIMEOUT_SEC" "$service" 2>/dev/null | grep -E '^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$' | head -1)
+      ip=$(timeout "${NETWORK_TIMEOUT_SEC}" wget -qO- --timeout="${NETWORK_TIMEOUT_SEC}" "${service}" 2> /dev/null | grep -E '^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$' | head -1)
     else
       break
     fi
 
     # Validate the detected IP more thoroughly
-    if [[ -n "$ip" ]] && validate_ip_address "$ip"; then
+    if [[ -n "${ip}" ]] && validate_ip_address "${ip}"; then
       # Extract service name for logging
       local service_name="${service##*/}"
-      [[ -z "$service_name" ]] && service_name="${service#https://}"
-      success "Public IP detected: $ip (source: ${service_name%%/*})"
-      echo "$ip"
+      [[ -z "${service_name}" ]] && service_name="${service#https://}"
+      success "Public IP detected: ${ip} (source: ${service_name%%/*})"
+      echo "${ip}"
       return 0
     fi
   done
@@ -97,24 +97,24 @@ validate_ip_address() {
 
   # Normalize boolean values
   case "${allow_private}" in
-    1|true|TRUE|yes|YES) allow_private="true" ;;
+    1 | true | TRUE | yes | YES) allow_private="true" ;;
     *) allow_private="false" ;;
   esac
 
   # Basic format check
-  [[ "$ip" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]] || return 1
+  [[ "${ip}" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]] || return 1
 
   # Check for leading zeros (e.g., 192.168.001.001)
   # Leading zeros are not allowed in standard IP notation
-  [[ ! "$ip" =~ (^|\.)0[0-9] ]] || return 1
+  [[ ! "${ip}" =~ (^|\.)0[0-9] ]] || return 1
 
   # Check each octet is in valid range (0-255)
   local IFS='.'
   local -a octets
-  read -ra octets <<< "$ip"
+  read -ra octets <<< "${ip}"
   for octet in "${octets[@]}"; do
     # Validate range (0-255)
-    [[ $octet -le 255 ]] || return 1
+    [[ ${octet} -le 255 ]] || return 1
   done
 
   # Check for reserved addresses (always rejected)
@@ -131,7 +131,7 @@ validate_ip_address() {
   [[ "${octets[0]}" -lt 240 ]] || return 1
 
   # Check for private addresses (rejected unless allow_private=true)
-  if [[ "$allow_private" != "true" ]]; then
+  if [[ "${allow_private}" != "true" ]]; then
     # 10.0.0.0/8 - Private network
     if [[ "${octets[0]}" == "10" ]]; then
       return 1
@@ -158,8 +158,8 @@ validate_ip_address() {
 # Check if port is in use
 port_in_use() {
   local p="$1"
-  ss -lntp 2>/dev/null | grep -q ":$p " && return 0
-  lsof -iTCP -sTCP:LISTEN -P -n 2>/dev/null | grep -q ":$p" && return 0
+  ss -lntp 2> /dev/null | grep -q ":${p} " && return 0
+  lsof -iTCP -sTCP:LISTEN -P -n 2> /dev/null | grep -q ":${p}" && return 0
   return 1
 }
 
@@ -171,61 +171,70 @@ allocate_port() {
   local retry_count=0
   local max_retries=3
 
-  # Ensure lock directory exists
-  mkdir -p /var/lock 2>/dev/null || true
+  # Use cross-platform lock directory: /var/lock on Linux, /tmp on macOS
+  local lock_dir="/var/lock"
+  if [[ ! -d "${lock_dir}" ]]; then
+    lock_dir="/tmp"
+  fi
 
-  # Helper function: atomic port check with file lock
+  # Check if flock is available (Linux has it, macOS doesn't)
+  local have_flock=false
+  command -v flock > /dev/null 2>&1 && have_flock=true
+
+  # Helper function: atomic port check with file lock (if flock available)
   try_allocate_port() {
     local p="$1"
-    local lock_file="/var/lock/sbx-port-${p}.lock"
 
-    # Use flock for atomic check (non-blocking)
-    # File descriptor 200 is used for the lock
-    (
-      # Try to acquire exclusive lock (non-blocking)
-      if ! flock -n 200; then
-        # Lock held by another process - port is being allocated
+    if [[ "${have_flock}" == "true" ]]; then
+      # Use flock for atomic check (non-blocking)
+      local lock_file="${lock_dir}/sbx-port-${p}.lock"
+      ( 
+        # Try to acquire exclusive lock (non-blocking)
+        if ! flock -n 200 2> /dev/null; then
+          # Lock held by another process - port is being allocated
+          return 1
+        fi
+
+        # Lock acquired - now check if port is actually in use
+        if port_in_use "${p}"; then
+          return 1
+        fi
+
+        echo "${p}"
+        return 0
+      ) 200> "${lock_file}" 2> /dev/null
+      return $?
+    else
+      # Fallback for systems without flock (macOS)
+      # Just check if port is in use without locking
+      if port_in_use "${p}"; then
         return 1
       fi
-
-      # Lock acquired - now check if port is actually in use
-      # port_in_use() already checks all interfaces via ss/lsof
-      if port_in_use "$p"; then
-        return 1
-      fi
-
-      # Port is available on all interfaces
-      # No need for additional /dev/tcp check which only tests localhost
-      # and can create race conditions on multi-interface systems
-      echo "$p"
+      echo "${p}"
       return 0
-
-    ) 200>"$lock_file"
-
-    # Return status from subshell
-    return $?
+    fi
   }
 
   # First try the preferred port with retries
-  while [[ $retry_count -lt $max_retries ]]; do
-    if try_allocate_port "$port"; then
-      success "Port $port allocated successfully for $name"
+  while [[ ${retry_count} -lt ${max_retries} ]]; do
+    if try_allocate_port "${port}"; then
+      success "Port ${port} allocated successfully for ${name}"
       return 0
     fi
 
-    if [[ $retry_count -eq 0 ]]; then
-      msg "$name port $port in use, retrying in 2 seconds..." >&2
+    if [[ ${retry_count} -eq 0 ]]; then
+      msg "${name} port ${port} in use, retrying in 2 seconds..." >&2
     fi
     sleep 2
     ((retry_count++))
   done
 
   # Try fallback port with same atomic check
-  if try_allocate_port "$fallback"; then
-    warn "$name port $port persistently in use; switching to $fallback" >&2
+  if try_allocate_port "${fallback}"; then
+    warn "${name} port ${port} persistently in use; switching to ${fallback}" >&2
     return 0
   else
-    die "Both $name ports $port and $fallback are in use. Please free up these ports or specify different ones."
+    die "Both ${name} ports ${port} and ${fallback} are in use. Please free up these ports or specify different ones."
   fi
 }
 
@@ -239,11 +248,11 @@ _require_network_tools() {
   local require_downloader="${2:-true}"
   local -a missing=()
 
-  if ! command -v timeout >/dev/null 2>&1; then
+  if ! command -v timeout > /dev/null 2>&1; then
     missing+=("timeout")
   fi
 
-  if [[ "$require_downloader" == "true" ]] && ! have curl && ! have wget; then
+  if [[ "${require_downloader}" == "true" ]] && ! have curl && ! have wget; then
     missing+=("curl or wget")
   fi
 
@@ -266,16 +275,16 @@ detect_ipv6_support() {
   # Check 1: Kernel IPv6 support
   if [[ -f /proc/net/if_inet6 ]]; then
     # Check 2: IPv6 routing table
-    if ip -6 route show 2>/dev/null | grep -q "default\|::/0"; then
+    if ip -6 route show 2> /dev/null | grep -q "default\|::/0"; then
       # Check 3: Actual connectivity test to a reliable IPv6 DNS server
-      if timeout 3 ping6 -c 1 -W 2 2001:4860:4860::8888 >/dev/null 2>&1; then
+      if timeout 3 ping6 -c 1 -W 2 2001:4860:4860::8888 > /dev/null 2>&1; then
         ipv6_supported=true
       else
         # Fallback test: check if we can create IPv6 socket
         # Subshell automatically cleans up file descriptors on exit
-        if timeout 3 bash -c 'exec 3<>/dev/tcp/[::1]/22' 2>/dev/null; then
+        if timeout 3 bash -c 'exec 3<>/dev/tcp/[::1]/22' 2> /dev/null; then
           ipv6_supported=true
-        elif [[ -n "$(ip -6 addr show scope global 2>/dev/null)" ]]; then
+        elif [[ -n "$(ip -6 addr show scope global 2> /dev/null)" ]]; then
           # Alternative fallback: Check if any global IPv6 address exists
           ipv6_supported=true
         fi
@@ -284,13 +293,13 @@ detect_ipv6_support() {
   fi
 
   # Log detection result
-  if [[ "$ipv6_supported" == "true" ]]; then
+  if [[ "${ipv6_supported}" == "true" ]]; then
     success "IPv6 support detected and verified"
   else
     msg "IPv6 not available, using IPv4-only configuration"
   fi
 
-  echo "$ipv6_supported"
+  echo "${ipv6_supported}"
 }
 
 # Choose optimal listen address based on sing-box 1.12.0 best practices
@@ -321,23 +330,23 @@ safe_http_get() {
   fi
 
   # Security: Enforce HTTPS for security-critical domains
-  if [[ "$url" =~ github\.com|githubusercontent\.com|cloudflare\.com ]]; then
-    if [[ ! "$url" =~ ^https:// ]]; then
+  if [[ "${url}" =~ github\.com|githubusercontent\.com|cloudflare\.com ]]; then
+    if [[ ! "${url}" =~ ^https:// ]]; then
       err "Security: Downloads from ${url%%/*} must use HTTPS"
       return 1
     fi
   fi
 
-  while [[ $retry_count -lt $max_retries ]]; do
+  while [[ ${retry_count} -lt ${max_retries} ]]; do
     if have curl; then
       # Enhanced curl options for security
       local curl_opts=(
         -fsSL
-        --max-time "$timeout_seconds"
+        --max-time "${timeout_seconds}"
       )
 
       # Add SSL/TLS security options for HTTPS URLs
-      if [[ "$url" =~ ^https:// ]]; then
+      if [[ "${url}" =~ ^https:// ]]; then
         curl_opts+=(
           --proto '=https'        # Only allow HTTPS protocol
           --tlsv1.2               # Minimum TLS 1.2
@@ -345,12 +354,12 @@ safe_http_get() {
         )
       fi
 
-      if [[ -n "$output_file" ]]; then
-        if timeout "$timeout_seconds" curl "${curl_opts[@]}" "$url" -o "$output_file" 2>/dev/null; then
+      if [[ -n "${output_file}" ]]; then
+        if timeout "${timeout_seconds}" curl "${curl_opts[@]}" "${url}" -o "${output_file}" 2> /dev/null; then
           return 0
         fi
       else
-        if timeout "$timeout_seconds" curl "${curl_opts[@]}" "$url" 2>/dev/null; then
+        if timeout "${timeout_seconds}" curl "${curl_opts[@]}" "${url}" 2> /dev/null; then
           return 0
         fi
       fi
@@ -358,23 +367,23 @@ safe_http_get() {
       # Enhanced wget options for security
       local wget_opts=(
         -q
-        --timeout="$timeout_seconds"
+        --timeout="${timeout_seconds}"
       )
 
       # Add SSL/TLS security options for HTTPS URLs
-      if [[ "$url" =~ ^https:// ]]; then
+      if [[ "${url}" =~ ^https:// ]]; then
         wget_opts+=(
           --https-only            # Only use HTTPS
           --secure-protocol=TLSv1_2  # Minimum TLS 1.2
         )
       fi
 
-      if [[ -n "$output_file" ]]; then
-        if timeout "$timeout_seconds" wget "${wget_opts[@]}" -O "$output_file" "$url" 2>/dev/null; then
+      if [[ -n "${output_file}" ]]; then
+        if timeout "${timeout_seconds}" wget "${wget_opts[@]}" -O "${output_file}" "${url}" 2> /dev/null; then
           return 0
         fi
       else
-        if timeout "$timeout_seconds" wget "${wget_opts[@]}" -O- "$url" 2>/dev/null; then
+        if timeout "${timeout_seconds}" wget "${wget_opts[@]}" -O- "${url}" 2> /dev/null; then
           return 0
         fi
       fi
@@ -384,13 +393,13 @@ safe_http_get() {
     fi
 
     ((retry_count++))
-    if [[ $retry_count -lt $max_retries ]]; then
-      warn "Download failed, retrying ($retry_count/$max_retries)..."
+    if [[ ${retry_count} -lt ${max_retries} ]]; then
+      warn "Download failed, retrying (${retry_count}/${max_retries})..."
       sleep 2
     fi
   done
 
-  err "Failed to download after $max_retries attempts: $url"
+  err "Failed to download after ${max_retries} attempts: ${url}"
   return 1
 }
 

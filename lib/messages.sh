@@ -131,17 +131,17 @@ format_error() {
     local error_key="$1"
     shift
 
-    local template="${ERROR_MESSAGES[$error_key]:-}"
+    local template="${ERROR_MESSAGES[${error_key}]:-}"
 
-    if [[ -z "$template" ]]; then
+    if [[ -z "${template}" ]]; then
         # Fallback for unknown error keys
-        echo "Error: $error_key - $*"
+        echo "Error: ${error_key} - $*"
         return 1
     fi
 
     # Use printf for safe formatting
     # shellcheck disable=SC2059
-    printf "$template" "$@"
+    printf "${template}" "$@"
     return 0
 }
 
@@ -155,15 +155,15 @@ format_warning() {
     local warning_key="$1"
     shift
 
-    local template="${WARNING_MESSAGES[$warning_key]:-}"
+    local template="${WARNING_MESSAGES[${warning_key}]:-}"
 
-    if [[ -z "$template" ]]; then
-        echo "Warning: $warning_key - $*"
+    if [[ -z "${template}" ]]; then
+        echo "Warning: ${warning_key} - $*"
         return 1
     fi
 
     # shellcheck disable=SC2059
-    printf "$template" "$@"
+    printf "${template}" "$@"
     return 0
 }
 
@@ -177,15 +177,15 @@ format_info() {
     local info_key="$1"
     shift
 
-    local template="${INFO_MESSAGES[$info_key]:-}"
+    local template="${INFO_MESSAGES[${info_key}]:-}"
 
-    if [[ -z "$template" ]]; then
-        echo "Info: $info_key - $*"
+    if [[ -z "${template}" ]]; then
+        echo "Info: ${info_key} - $*"
         return 1
     fi
 
     # shellcheck disable=SC2059
-    printf "$template" "$@"
+    printf "${template}" "$@"
     return 0
 }
 

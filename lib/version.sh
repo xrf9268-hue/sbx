@@ -66,9 +66,9 @@ resolve_singbox_version() {
     # Normalize to lowercase for comparison
     local version_lower="${version_input,,}"
 
-    msg "Resolving version: $version_input"
+    msg "Resolving version: ${version_input}"
 
-    case "$version_lower" in
+    case "${version_lower}" in
         stable|"")
             # Fetch latest stable release (non-prerelease)
             msg "  Fetching latest stable release from GitHub..."
@@ -77,7 +77,7 @@ resolve_singbox_version() {
             local api_url="${github_api_base}/repos/SagerNet/sing-box/releases/latest"
             local api_response
 
-            debug "Using GitHub API: $github_api_base"
+            debug "Using GitHub API: ${github_api_base}"
 
             # Use GitHub API with optional token
             if [[ -n "${GITHUB_TOKEN:-}" ]]; then
@@ -85,26 +85,26 @@ resolve_singbox_version() {
                 if have curl; then
                     api_response=$(curl -fsSL --max-time 30 \
                         -H "Authorization: token ${GITHUB_TOKEN}" \
-                        "$api_url" 2>/dev/null)
+                        "${api_url}" 2>/dev/null)
                 else
-                    api_response=$(wget -q --timeout=30 -O - "$api_url" 2>/dev/null)
+                    api_response=$(wget -q --timeout=30 -O - "${api_url}" 2>/dev/null)
                 fi
             else
-                api_response=$(safe_http_get "$api_url")
+                api_response=$(safe_http_get "${api_url}")
             fi
 
-            if [[ $? -ne 0 ]] || [[ -z "$api_response" ]]; then
+            if [[ $? -ne 0 ]] || [[ -z "${api_response}" ]]; then
                 err "Failed to fetch release information from GitHub API"
                 return 1
             fi
 
             # Extract tag_name from JSON response
-            resolved_version=$(echo "$api_response" | \
+            resolved_version=$(echo "${api_response}" | \
                 grep '"tag_name":' | \
                 head -1 | \
                 grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+')
 
-            if [[ -z "$resolved_version" ]]; then
+            if [[ -z "${resolved_version}" ]]; then
                 err "Failed to parse version from API response"
                 return 1
             fi
@@ -118,7 +118,7 @@ resolve_singbox_version() {
             local api_url="${github_api_base}/repos/SagerNet/sing-box/releases"
             local api_response
 
-            debug "Using GitHub API: $github_api_base"
+            debug "Using GitHub API: ${github_api_base}"
 
             # Use GitHub API with optional token
             if [[ -n "${GITHUB_TOKEN:-}" ]]; then
@@ -126,26 +126,26 @@ resolve_singbox_version() {
                 if have curl; then
                     api_response=$(curl -fsSL --max-time 30 \
                         -H "Authorization: token ${GITHUB_TOKEN}" \
-                        "$api_url" 2>/dev/null)
+                        "${api_url}" 2>/dev/null)
                 else
-                    api_response=$(wget -q --timeout=30 -O - "$api_url" 2>/dev/null)
+                    api_response=$(wget -q --timeout=30 -O - "${api_url}" 2>/dev/null)
                 fi
             else
-                api_response=$(safe_http_get "$api_url")
+                api_response=$(safe_http_get "${api_url}")
             fi
 
-            if [[ $? -ne 0 ]] || [[ -z "$api_response" ]]; then
+            if [[ $? -ne 0 ]] || [[ -z "${api_response}" ]]; then
                 err "Failed to fetch release information from GitHub API"
                 return 1
             fi
 
             # Extract first tag_name from releases array
-            resolved_version=$(echo "$api_response" | \
+            resolved_version=$(echo "${api_response}" | \
                 grep '"tag_name":' | \
                 head -1 | \
                 grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?')
 
-            if [[ -z "$resolved_version" ]]; then
+            if [[ -z "${resolved_version}" ]]; then
                 err "Failed to parse version from API response"
                 return 1
             fi
@@ -154,11 +154,11 @@ resolve_singbox_version() {
         v[0-9]*)
             # Already a version tag with 'v' prefix
             # Validate format: vX.Y.Z or vX.Y.Z-pre-release
-            if [[ "$version_input" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
-                resolved_version="$version_input"
-                msg "  Using specified version: $resolved_version"
+            if [[ "${version_input}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
+                resolved_version="${version_input}"
+                msg "  Using specified version: ${resolved_version}"
             else
-                err "Invalid version format: $version_input"
+                err "Invalid version format: ${version_input}"
                 err "Expected: vX.Y.Z or vX.Y.Z-pre-release"
                 return 1
             fi
@@ -167,11 +167,11 @@ resolve_singbox_version() {
         [0-9]*)
             # Version without 'v' prefix - add it
             # Validate format: X.Y.Z or X.Y.Z-pre-release
-            if [[ "$version_input" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
+            if [[ "${version_input}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
                 resolved_version="v${version_input}"
-                msg "  Auto-prefixed version: $resolved_version"
+                msg "  Auto-prefixed version: ${resolved_version}"
             else
-                err "Invalid version format: $version_input"
+                err "Invalid version format: ${version_input}"
                 err "Expected: X.Y.Z or X.Y.Z-pre-release"
                 return 1
             fi
@@ -179,7 +179,7 @@ resolve_singbox_version() {
 
         *)
             # Invalid format
-            err "Invalid version specifier: $version_input"
+            err "Invalid version specifier: ${version_input}"
             err "Supported formats:"
             err "  - stable           : Latest stable release"
             err "  - latest           : Latest release (including pre-releases)"
@@ -191,27 +191,27 @@ resolve_singbox_version() {
     esac
 
     # Final validation
-    if [[ -z "$resolved_version" ]]; then
-        err "Failed to resolve version: $version_input"
+    if [[ -z "${resolved_version}" ]]; then
+        err "Failed to resolve version: ${version_input}"
         return 1
     fi
 
     # Validate resolved version format
-    if [[ ! "$resolved_version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
-        err "Resolved version has invalid format: $resolved_version"
+    if [[ ! "${resolved_version}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
+        err "Resolved version has invalid format: ${resolved_version}"
         return 1
     fi
 
     # Determine version type for logging
     local version_type
-    case "$version_lower" in
+    case "${version_lower}" in
         stable|"") version_type="stable" ;;
         latest) version_type="latest" ;;
         v*|[0-9]*) version_type="specific" ;;
     esac
 
-    success "Resolved sing-box version: $resolved_version (type: $version_type)"
-    echo "$resolved_version"
+    success "Resolved sing-box version: ${resolved_version} (type: ${version_type})"
+    echo "${resolved_version}"
     return 0
 }
 
@@ -231,30 +231,30 @@ resolve_singbox_version() {
 get_singbox_version() {
   local sb_bin="${SB_BIN:-/usr/local/bin/sing-box}"
 
-  if [[ ! -f "$sb_bin" ]]; then
-    debug "sing-box binary not found: $sb_bin"
+  if [[ ! -f "${sb_bin}" ]]; then
+    debug "sing-box binary not found: ${sb_bin}"
     return 1
   fi
 
-  if [[ ! -x "$sb_bin" ]]; then
-    debug "sing-box binary not executable: $sb_bin"
+  if [[ ! -x "${sb_bin}" ]]; then
+    debug "sing-box binary not executable: ${sb_bin}"
     return 1
   fi
 
   local version_output
-  version_output=$("$sb_bin" version 2>&1) || {
+  version_output=$("${sb_bin}" version 2>&1) || {
     debug "Failed to get sing-box version"
     return 1
   }
 
   # Extract version number (e.g., "1.12.0" or "1.11.0-beta.1")
   local version
-  version=$(echo "$version_output" | grep -oP 'sing-box version \K[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?') || {
-    debug "Failed to parse version from: $version_output"
+  version=$(echo "${version_output}" | grep -oP 'sing-box version \K[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?') || {
+    debug "Failed to parse version from: ${version_output}"
     return 1
   }
 
-  echo "$version"
+  echo "${version}"
   return 0
 }
 
@@ -276,13 +276,13 @@ compare_versions() {
   local version1="${1:-}"
   local version2="${2:-}"
 
-  if [[ -z "$version1" || -z "$version2" ]]; then
+  if [[ -z "${version1}" || -z "${version2}" ]]; then
     err "compare_versions: both version parameters required"
     return 1
   fi
 
   # Use sort -V for version comparison
-  printf '%s\n%s\n' "$version1" "$version2" | sort -V | head -n1
+  printf '%s\n%s\n' "${version1}" "${version2}" | sort -V | head -n1
 }
 
 # Check if current version meets minimum requirement
@@ -304,7 +304,7 @@ version_meets_minimum() {
   local current="${1:-}"
   local minimum="${2:-}"
 
-  if [[ -z "$current" || -z "$minimum" ]]; then
+  if [[ -z "${current}" || -z "${minimum}" ]]; then
     err "version_meets_minimum: both version parameters required"
     return 1
   fi
@@ -315,10 +315,10 @@ version_meets_minimum() {
 
   # Get lowest version
   local lowest
-  lowest=$(compare_versions "$current" "$minimum")
+  lowest=$(compare_versions "${current}" "${minimum}")
 
   # If lowest is minimum, current >= minimum
-  if [[ "$lowest" == "$minimum" ]]; then
+  if [[ "${lowest}" == "${minimum}" ]]; then
     return 0
   else
     return 1
@@ -350,19 +350,19 @@ validate_singbox_version() {
   local current_version
   current_version=$(get_singbox_version) || {
     warn "Could not detect sing-box version"
-    warn "Reality protocol requires sing-box $min_version or later"
+    warn "Reality protocol requires sing-box ${min_version} or later"
     return 0  # Don't fail on detection failure
   }
 
-  debug "Detected sing-box version: $current_version"
+  debug "Detected sing-box version: ${current_version}"
 
   # Check minimum version
-  if ! version_meets_minimum "$current_version" "$min_version"; then
+  if ! version_meets_minimum "${current_version}" "${min_version}"; then
     err ""
-    err "sing-box version $current_version is too old for Reality protocol"
+    err "sing-box version ${current_version} is too old for Reality protocol"
     err ""
-    err "Minimum required: $min_version"
-    err "Current version:   $current_version"
+    err "Minimum required: ${min_version}"
+    err "Current version:   ${current_version}"
     err ""
     err "Please upgrade sing-box:"
     err "  https://github.com/SagerNet/sing-box/releases"
@@ -371,16 +371,16 @@ validate_singbox_version() {
   fi
 
   # Check recommended version
-  if ! version_meets_minimum "$current_version" "$recommended_version"; then
+  if ! version_meets_minimum "${current_version}" "${recommended_version}"; then
     warn ""
-    warn "sing-box version $current_version detected"
-    warn "Recommended: $recommended_version or later for modern config format"
+    warn "sing-box version ${current_version} detected"
+    warn "Recommended: ${recommended_version} or later for modern config format"
     warn ""
-    warn "Current version: $current_version"
+    warn "Current version: ${current_version}"
     warn "Your version will work, but newer versions have improved features"
     warn ""
   else
-    success "sing-box version $current_version (meets all requirements)"
+    success "sing-box version ${current_version} (meets all requirements)"
   fi
 
   return 0
@@ -404,16 +404,16 @@ show_version_info() {
   echo "sing-box Version Information"
   echo "============================"
   echo ""
-  echo "Current version:     $current_version"
+  echo "Current version:     ${current_version}"
   echo "Minimum required:    1.8.0  (Reality protocol support)"
   echo "Recommended:         1.12.0 (Modern configuration format)"
   echo "Latest info:         https://github.com/SagerNet/sing-box/releases"
   echo ""
 
-  if [[ "$current_version" != "unknown" ]]; then
-    if version_meets_minimum "$current_version" "1.12.0"; then
+  if [[ "${current_version}" != "unknown" ]]; then
+    if version_meets_minimum "${current_version}" "1.12.0"; then
       echo "Status: ✓ Fully compatible"
-    elif version_meets_minimum "$current_version" "1.8.0"; then
+    elif version_meets_minimum "${current_version}" "1.8.0"; then
       echo "Status: ⚠ Compatible (upgrade recommended)"
     else
       echo "Status: ✗ Upgrade required"

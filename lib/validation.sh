@@ -44,10 +44,10 @@ sanitize_input() {
   local input="$1"
   # Remove potential dangerous characters using tr for explicit character removal
   # This avoids escaping issues with backticks in parameter expansion
-  input="$(printf '%s' "$input" | tr -d ';|&`$()<>')"
+  input="$(printf '%s' "${input}" | tr -d ';|&`$()<>')"
   # Limit length after sanitization
   input="${input:0:${MAX_INPUT_LENGTH:-256}}"
-  printf '%s' "$input"
+  printf '%s' "${input}"
 }
 
 #==============================================================================
@@ -69,14 +69,14 @@ validate_port() {
   local port_name="${2:-Port}"
 
   # Validate numeric
-  if [[ ! "$port" =~ ^[0-9]+$ ]]; then
-    err "${port_name} must be numeric: $port"
+  if [[ ! "${port}" =~ ^[0-9]+$ ]]; then
+    err "${port_name} must be numeric: ${port}"
     return 1
   fi
 
   # Validate range (1-65535)
-  if [[ "$port" -lt 1 || "$port" -gt 65535 ]]; then
-    err "${port_name} must be between 1-65535: $port"
+  if [[ "${port}" -lt 1 || "${port}" -gt 65535 ]]; then
+    err "${port_name} must be between 1-65535: ${port}"
     return 1
   fi
 
@@ -88,39 +88,39 @@ validate_domain() {
   local domain="$1"
 
   # Enhanced domain validation
-  [[ -n "$domain" ]] || return 1
+  [[ -n "${domain}" ]] || return 1
 
   # Check length (max 253 characters for FQDN)
   [[ ${#domain} -le "${MAX_DOMAIN_LENGTH:-253}" ]] || return 1
 
   # Must contain at least one dot (require domain.tld format)
-  [[ "$domain" =~ \. ]] || return 1
+  [[ "${domain}" =~ \. ]] || return 1
 
   # Check for valid domain format (letters, numbers, dots, hyphens only)
-  [[ "$domain" =~ ^[a-zA-Z0-9.-]+$ ]] || return 1
+  [[ "${domain}" =~ ^[a-zA-Z0-9.-]+$ ]] || return 1
 
   # Must not start or end with hyphen or dot
-  [[ ! "$domain" =~ ^[-.]|[-.]$ ]] || return 1
+  [[ ! "${domain}" =~ ^[-.]|[-.]$ ]] || return 1
 
   # Must not contain consecutive dots
-  [[ ! "$domain" =~ \.\. ]] || return 1
+  [[ ! "${domain}" =~ \.\. ]] || return 1
 
   # Each label (part between dots) must not end with hyphen
   # Split by dots and check each label
   local IFS='.'
   local -a labels
-  read -ra labels <<< "$domain"
+  read -ra labels <<< "${domain}"
   for label in "${labels[@]}"; do
     # Label must not be empty
-    [[ -n "$label" ]] || return 1
+    [[ -n "${label}" ]] || return 1
     # Label must not end with hyphen
-    [[ ! "$label" =~ -$ ]] || return 1
+    [[ ! "${label}" =~ -$ ]] || return 1
   done
 
   # Reserved names
-  [[ "$domain" != "localhost" ]] || return 1
-  [[ "$domain" != "127.0.0.1" ]] || return 1
-  [[ ! "$domain" =~ ^[0-9.]+$ ]] || return 1  # Not an IP address
+  [[ "${domain}" != "localhost" ]] || return 1
+  [[ "${domain}" != "127.0.0.1" ]] || return 1
+  [[ ! "${domain}" =~ ^[0-9.]+$ ]] || return 1  # Not an IP address
 
   return 0
 }
@@ -135,41 +135,41 @@ validate_cert_files() {
   local key="$2"
 
   # Step 1: Basic file integrity validation (existence, readability, non-empty)
-  if ! validate_file_integrity "$fullchain" true 1; then
-    err "Certificate file validation failed: $fullchain"
+  if ! validate_file_integrity "${fullchain}" true 1; then
+    err "Certificate file validation failed: ${fullchain}"
     return 1
   fi
-  if ! validate_file_integrity "$key" true 1; then
-    err "Private key file validation failed: $key"
+  if ! validate_file_integrity "${key}" true 1; then
+    err "Private key file validation failed: ${key}"
     return 1
   fi
 
   # Step 2: Certificate format validation
-  if ! openssl x509 -in "$fullchain" -noout 2>/dev/null; then
+  if ! openssl x509 -in "${fullchain}" -noout 2>/dev/null; then
     err "Invalid certificate format (not a valid X.509 certificate)"
-    err "  File: $fullchain"
+    err "  File: ${fullchain}"
     return 1
   fi
 
   # Step 3: Private key format validation
   # Try to parse as any valid key type (RSA, EC, Ed25519, etc.)
-  if ! openssl pkey -in "$key" -noout 2>/dev/null; then
+  if ! openssl pkey -in "${key}" -noout 2>/dev/null; then
     err "Invalid private key format (not a valid private key)"
-    err "  File: $key"
+    err "  File: ${key}"
     return 1
   fi
 
   # Step 4: Certificate expiration check (warning only)
-  if ! openssl x509 -in "$fullchain" -checkend "$CERT_EXPIRY_WARNING_SEC" -noout 2>/dev/null; then
+  if ! openssl x509 -in "${fullchain}" -checkend "${CERT_EXPIRY_WARNING_SEC}" -noout 2>/dev/null; then
     warn "Certificate will expire within ${CERT_EXPIRY_WARNING_DAYS} days"
   fi
 
   # Step 5: Certificate-Key matching validation
   # Extract public key hash from certificate
   local cert_pubkey
-  cert_pubkey=$(openssl x509 -in "$fullchain" -noout -pubkey 2>/dev/null | openssl md5 2>/dev/null | awk '{print $2}')
+  cert_pubkey=$(openssl x509 -in "${fullchain}" -noout -pubkey 2>/dev/null | openssl md5 2>/dev/null | awk '{print $2}')
 
-  if [[ -z "$cert_pubkey" || "$cert_pubkey" == "$EMPTY_MD5_HASH" ]]; then
+  if [[ -z "${cert_pubkey}" || "${cert_pubkey}" == "${EMPTY_MD5_HASH}" ]]; then
     err "Failed to extract public key from certificate"
     err "  This may indicate a corrupted certificate file"
     return 1
@@ -177,33 +177,33 @@ validate_cert_files() {
 
   # Extract public key hash from private key using generic pkey command
   local key_pubkey
-  key_pubkey=$(openssl pkey -in "$key" -pubout 2>/dev/null | openssl md5 2>/dev/null | awk '{print $2}')
+  key_pubkey=$(openssl pkey -in "${key}" -pubout 2>/dev/null | openssl md5 2>/dev/null | awk '{print $2}')
 
-  if [[ -z "$key_pubkey" || "$key_pubkey" == "$EMPTY_MD5_HASH" ]]; then
+  if [[ -z "${key_pubkey}" || "${key_pubkey}" == "${EMPTY_MD5_HASH}" ]]; then
     err "Failed to extract public key from private key"
     err "  This may indicate a corrupted or unsupported key file"
     return 1
   fi
 
   # Compare public key hashes
-  if [[ "$cert_pubkey" != "$key_pubkey" ]]; then
+  if [[ "${cert_pubkey}" != "${key_pubkey}" ]]; then
     err "Certificate and private key do not match"
-    err "  Certificate pubkey MD5: $cert_pubkey"
-    err "  Private key pubkey MD5: $key_pubkey"
+    err "  Certificate pubkey MD5: ${cert_pubkey}"
+    err "  Private key pubkey MD5: ${key_pubkey}"
     err "  Make sure the certificate was generated from this private key"
     return 1
   fi
 
   # All validations passed
   success "Certificate validation passed"
-  debug "Certificate: $fullchain"
-  debug "Private key: $key"
-  debug "Certificate-key match confirmed (pubkey MD5: $cert_pubkey)"
+  debug "Certificate: ${fullchain}"
+  debug "Private key: ${key}"
+  debug "Certificate-key match confirmed (pubkey MD5: ${cert_pubkey})"
 
   # Log expiry information if available
   local expiry_date
-  expiry_date=$(openssl x509 -in "$fullchain" -noout -enddate 2>/dev/null | cut -d= -f2)
-  [[ -n "$expiry_date" ]] && debug "Certificate expires: $expiry_date"
+  expiry_date=$(openssl x509 -in "${fullchain}" -noout -enddate 2>/dev/null | cut -d= -f2)
+  [[ -n "${expiry_date}" ]] && debug "Certificate expires: ${expiry_date}"
 
   return 0
 }
@@ -215,58 +215,58 @@ validate_cert_files() {
 # Validate environment variables on startup
 validate_env_vars() {
   # Validate DOMAIN if provided
-  if [[ -n "$DOMAIN" ]]; then
+  if [[ -n "${DOMAIN}" ]]; then
     # Check if it's an IP address or domain
-    if validate_ip_address "$DOMAIN" 2>/dev/null; then
-      msg "Using IP address mode: $DOMAIN"
-    elif validate_domain "$DOMAIN"; then
-      msg "Using domain mode: $DOMAIN"
+    if validate_ip_address "${DOMAIN}" 2>/dev/null; then
+      msg "Using IP address mode: ${DOMAIN}"
+    elif validate_domain "${DOMAIN}"; then
+      msg "Using domain mode: ${DOMAIN}"
     else
-      die "Invalid DOMAIN format: $DOMAIN"
+      die "Invalid DOMAIN format: ${DOMAIN}"
     fi
   fi
 
   # Validate certificate mode
-  if [[ -n "$CERT_MODE" ]]; then
-    case "$CERT_MODE" in
+  if [[ -n "${CERT_MODE}" ]]; then
+    case "${CERT_MODE}" in
       cf_dns)
-        [[ -n "$CF_Token" ]] || die "CF_Token required for Cloudflare DNS-01 challenge"
+        [[ -n "${CF_Token}" ]] || die "CF_Token required for Cloudflare DNS-01 challenge"
         ;;
       le_http)
         # No additional validation needed
         ;;
       *)
-        die "Invalid CERT_MODE: $CERT_MODE (must be cf_dns or le_http)"
+        die "Invalid CERT_MODE: ${CERT_MODE} (must be cf_dns or le_http)"
         ;;
     esac
   fi
 
   # Validate certificate files if provided
-  if [[ -n "$CERT_FULLCHAIN" || -n "$CERT_KEY" ]]; then
-    [[ -n "$CERT_FULLCHAIN" && -n "$CERT_KEY" ]] || \
+  if [[ -n "${CERT_FULLCHAIN}" || -n "${CERT_KEY}" ]]; then
+    [[ -n "${CERT_FULLCHAIN}" && -n "${CERT_KEY}" ]] || \
       die "Both CERT_FULLCHAIN and CERT_KEY must be specified together"
 
-    validate_cert_files "$CERT_FULLCHAIN" "$CERT_KEY" || \
+    validate_cert_files "${CERT_FULLCHAIN}" "${CERT_KEY}" || \
       die "Certificate file validation failed"
   fi
 
   # Validate port numbers if custom values provided
-  if [[ -n "${REALITY_PORT}" && "${REALITY_PORT}" != "$REALITY_PORT_DEFAULT" ]]; then
-    validate_port "$REALITY_PORT" || die "Invalid REALITY_PORT: $REALITY_PORT"
+  if [[ -n "${REALITY_PORT}" && "${REALITY_PORT}" != "${REALITY_PORT_DEFAULT}" ]]; then
+    validate_port "${REALITY_PORT}" || die "Invalid REALITY_PORT: ${REALITY_PORT}"
   fi
 
-  if [[ -n "${WS_PORT}" && "${WS_PORT}" != "$WS_PORT_DEFAULT" ]]; then
-    validate_port "$WS_PORT" || die "Invalid WS_PORT: $WS_PORT"
+  if [[ -n "${WS_PORT}" && "${WS_PORT}" != "${WS_PORT_DEFAULT}" ]]; then
+    validate_port "${WS_PORT}" || die "Invalid WS_PORT: ${WS_PORT}"
   fi
 
-  if [[ -n "${HY2_PORT}" && "${HY2_PORT}" != "$HY2_PORT_DEFAULT" ]]; then
-    validate_port "$HY2_PORT" || die "Invalid HY2_PORT: $HY2_PORT"
+  if [[ -n "${HY2_PORT}" && "${HY2_PORT}" != "${HY2_PORT_DEFAULT}" ]]; then
+    validate_port "${HY2_PORT}" || die "Invalid HY2_PORT: ${HY2_PORT}"
   fi
 
   # Validate version string if provided
-  if [[ -n "$SINGBOX_VERSION" ]]; then
-    [[ "$SINGBOX_VERSION" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]] || \
-      die "Invalid SINGBOX_VERSION format: $SINGBOX_VERSION"
+  if [[ -n "${SINGBOX_VERSION}" ]]; then
+    [[ "${SINGBOX_VERSION}" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]] || \
+      die "Invalid SINGBOX_VERSION format: ${SINGBOX_VERSION}"
   fi
 
   return 0
@@ -283,8 +283,8 @@ validate_short_id() {
   # Allow 1-8 hexadecimal characters for flexibility (using constants)
   # Note: sing-box typically uses 8 chars, but shorter IDs are valid
   local pattern="^[0-9a-fA-F]{${REALITY_SHORT_ID_MIN_LENGTH},${REALITY_SHORT_ID_MAX_LENGTH}}$"
-  [[ "$sid" =~ $pattern ]] || {
-    err "Invalid Reality short ID: $sid"
+  [[ "${sid}" =~ ${pattern} ]] || {
+    err "Invalid Reality short ID: ${sid}"
     err ""
     err "Requirements:"
     err "  - Length: ${REALITY_SHORT_ID_MIN_LENGTH}-${REALITY_SHORT_ID_MAX_LENGTH} hexadecimal characters"
@@ -306,7 +306,7 @@ validate_reality_sni() {
   local sni="$1"
 
   # Must be non-empty
-  [[ -n "$sni" ]] || {
+  [[ -n "${sni}" ]] || {
     err "Invalid Reality SNI: Cannot be empty"
     err ""
     err "The SNI (Server Name Indication) is used for the Reality handshake."
@@ -331,8 +331,8 @@ validate_reality_sni() {
   local cleaned_sni="${sni#\*.}"
 
   # Check basic domain format (alphanumeric, dots, hyphens)
-  [[ "$cleaned_sni" =~ ^[a-zA-Z0-9]([a-zA-Z0-9.-]{0,251}[a-zA-Z0-9])?$ ]] || {
-    err "Invalid Reality SNI format: $sni"
+  [[ "${cleaned_sni}" =~ ^[a-zA-Z0-9]([a-zA-Z0-9.-]{0,251}[a-zA-Z0-9])?$ ]] || {
+    err "Invalid Reality SNI format: ${sni}"
     err ""
     err "Requirements:"
     err "  - Valid domain name (RFC 1035)"
@@ -346,13 +346,13 @@ validate_reality_sni() {
     err "  ✗ microsoft.com- (ends with hyphen)"
     err "  ✗ -microsoft.com (starts with hyphen)"
     err ""
-    err "Current value: $sni"
+    err "Current value: ${sni}"
     return 1
   }
 
   # Validate domain doesn't contain invalid patterns
-  if [[ "$cleaned_sni" =~ \.\. ]]; then
-    err "Invalid Reality SNI: Contains consecutive dots: $sni"
+  if [[ "${cleaned_sni}" =~ \.\. ]]; then
+    err "Invalid Reality SNI: Contains consecutive dots: ${sni}"
     err ""
     err "Domain names cannot have consecutive dots (..)"
     err "Example: www..microsoft.com is invalid"
@@ -368,7 +368,7 @@ validate_reality_keypair() {
   local pub="$2"
 
   # Both keys must be non-empty
-  [[ -n "$priv" ]] || {
+  [[ -n "${priv}" ]] || {
     err "Invalid Reality keypair: Private key cannot be empty"
     err ""
     err "Generate valid keypair:"
@@ -379,7 +379,7 @@ validate_reality_keypair() {
     err "  PublicKey:  jNXHt1yRo0vDuchQlIP6Z0ZvjT3KtzVI-T4E7RoLJS0"
     return 1
   }
-  [[ -n "$pub" ]] || {
+  [[ -n "${pub}" ]] || {
     err "Invalid Reality keypair: Public key cannot be empty"
     err ""
     err "Generate valid keypair:"
@@ -389,7 +389,7 @@ validate_reality_keypair() {
 
   # Validate format: base64url characters (A-Za-z0-9_-)
   # Reality keys are base64url-encoded without padding
-  [[ "$priv" =~ ^[A-Za-z0-9_-]+$ ]] || {
+  [[ "${priv}" =~ ^[A-Za-z0-9_-]+$ ]] || {
     err "Invalid Reality private key format"
     err ""
     err "Requirements:"
@@ -401,7 +401,7 @@ validate_reality_keypair() {
     err "  sing-box generate reality-keypair"
     return 1
   }
-  [[ "$pub" =~ ^[A-Za-z0-9_-]+$ ]] || {
+  [[ "${pub}" =~ ^[A-Za-z0-9_-]+$ ]] || {
     err "Invalid Reality public key format"
     err ""
     err "Requirements:"
@@ -419,16 +419,16 @@ validate_reality_keypair() {
   local priv_len="${#priv}"
   local pub_len="${#pub}"
 
-  if [[ $priv_len -lt "$X25519_KEY_MIN_LENGTH" || $priv_len -gt "$X25519_KEY_MAX_LENGTH" ]]; then
-    err "Private key has invalid length: $priv_len"
+  if [[ ${priv_len} -lt "${X25519_KEY_MIN_LENGTH}" || ${priv_len} -gt "${X25519_KEY_MAX_LENGTH}" ]]; then
+    err "Private key has invalid length: ${priv_len}"
     err "Expected: ${X25519_KEY_MIN_LENGTH}-${X25519_KEY_MAX_LENGTH} characters (X25519 key = ${X25519_KEY_BYTES} bytes base64url-encoded)"
     err ""
     err "Generate valid keypair:"
     err "  sing-box generate reality-keypair"
     return 1
   fi
-  if [[ $pub_len -lt "$X25519_KEY_MIN_LENGTH" || $pub_len -gt "$X25519_KEY_MAX_LENGTH" ]]; then
-    err "Public key has invalid length: $pub_len"
+  if [[ ${pub_len} -lt "${X25519_KEY_MIN_LENGTH}" || ${pub_len} -gt "${X25519_KEY_MAX_LENGTH}" ]]; then
+    err "Public key has invalid length: ${pub_len}"
     err "Expected: ${X25519_KEY_MIN_LENGTH}-${X25519_KEY_MAX_LENGTH} characters (X25519 key = ${X25519_KEY_BYTES} bytes base64url-encoded)"
     err ""
     err "Generate valid keypair:"
@@ -450,8 +450,8 @@ validate_menu_choice() {
   local min="${2:-1}"
   local max="${3:-9}"
 
-  [[ "$choice" =~ ^[0-9]+$ ]] || return 1
-  [[ "$choice" -ge "$min" && "$choice" -le "$max" ]] || return 1
+  [[ "${choice}" =~ ^[0-9]+$ ]] || return 1
+  [[ "${choice}" -ge "${min}" && "${choice}" -le "${max}" ]] || return 1
 
   return 0
 }
@@ -459,7 +459,7 @@ validate_menu_choice() {
 # Validate Yes/No input
 validate_yes_no() {
   local input="$1"
-  [[ "$input" =~ ^[YyNn]$ ]] || return 1
+  [[ "${input}" =~ ^[YyNn]$ ]] || return 1
   return 0
 }
 
@@ -469,21 +469,21 @@ validate_yes_no() {
 
 # Validate sing-box configuration JSON syntax
 validate_singbox_config() {
-  local config_file="${1:-$SB_CONF}"
+  local config_file="${1:-${SB_CONF}}"
 
-  [[ -f "$config_file" ]] || {
-    err "Configuration file not found: $config_file"
+  [[ -f "${config_file}" ]] || {
+    err "Configuration file not found: ${config_file}"
     return 1
   }
 
   # Check if sing-box binary exists
-  [[ -f "$SB_BIN" ]] || {
-    err "sing-box binary not found: $SB_BIN"
+  [[ -f "${SB_BIN}" ]] || {
+    err "sing-box binary not found: ${SB_BIN}"
     return 1
   }
 
   # Use sing-box built-in validation
-  if ! "$SB_BIN" check -c "$config_file" 2>&1; then
+  if ! "${SB_BIN}" check -c "${config_file}" 2>&1; then
     err "Configuration validation failed"
     return 1
   fi
@@ -519,15 +519,15 @@ validate_transport_security_pairing() {
   local flow="${3:-}"          # xtls-rprx-vision or empty
 
   # Validate Vision flow requirements
-  if [[ "$flow" == "xtls-rprx-vision" ]]; then
+  if [[ "${flow}" == "xtls-rprx-vision" ]]; then
     # Vision REQUIRES TCP transport
-    if [[ "$transport" != "tcp" ]]; then
+    if [[ "${transport}" != "tcp" ]]; then
       err "Invalid configuration: Vision flow requires TCP transport"
       err ""
       err "Current settings:"
-      err "  Transport: $transport"
-      err "  Security:  $security"
-      err "  Flow:      $flow"
+      err "  Transport: ${transport}"
+      err "  Security:  ${security}"
+      err "  Flow:      ${flow}"
       err ""
       err "Valid Vision configuration:"
       err "  Transport: tcp"
@@ -539,13 +539,13 @@ validate_transport_security_pairing() {
     fi
 
     # Vision REQUIRES Reality security
-    if [[ "$security" != "reality" ]]; then
+    if [[ "${security}" != "reality" ]]; then
       err "Invalid configuration: Vision flow requires Reality security"
       err ""
       err "Current settings:"
-      err "  Transport: $transport"
-      err "  Security:  $security"
-      err "  Flow:      $flow"
+      err "  Transport: ${transport}"
+      err "  Security:  ${security}"
+      err "  Flow:      ${flow}"
       err ""
       err "Valid Vision configuration:"
       err "  Transport: tcp"
@@ -558,16 +558,16 @@ validate_transport_security_pairing() {
   fi
 
   # Validate Reality security requirements
-  if [[ "$security" == "reality" ]]; then
+  if [[ "${security}" == "reality" ]]; then
     # Reality works best with TCP (and Vision flow)
-    if [[ -n "$flow" && "$flow" != "xtls-rprx-vision" ]]; then
-      warn "Unusual configuration: Reality security with non-Vision flow: $flow"
+    if [[ -n "${flow}" && "${flow}" != "xtls-rprx-vision" ]]; then
+      warn "Unusual configuration: Reality security with non-Vision flow: ${flow}"
       warn "Common Reality configuration uses flow=\"xtls-rprx-vision\""
     fi
   fi
 
   # Validate incompatible transport+security combinations
-  case "$transport:$security" in
+  case "${transport}:${security}" in
     "ws:reality")
       err "Invalid configuration: WebSocket transport is incompatible with Reality security"
       err ""
@@ -610,7 +610,7 @@ validate_transport_security_pairing() {
   esac
 
   # If we reach here, pairing is valid
-  msg "Transport+security+flow pairing validated: $transport+$security${flow:++$flow}"
+  msg "Transport+security+flow pairing validated: ${transport}+${security}${flow:++${flow}}"
   return 0
 }
 
@@ -636,14 +636,14 @@ validate_transport_security_pairing() {
 #
 require() {
   local var_name="$1"
-  local description="${2:-$var_name}"
+  local description="${2:-${var_name}}"
 
   # Use indirect variable expansion to get the value
   local var_value="${!var_name:-}"
 
-  if [[ -z "$var_value" ]]; then
-    err "Required parameter missing: $description"
-    err "Variable: $var_name"
+  if [[ -z "${var_value}" ]]; then
+    err "Required parameter missing: ${description}"
+    err "Variable: ${var_name}"
     return 1
   fi
 
@@ -669,12 +669,12 @@ require_all() {
   local failed=0
 
   for var_name in "$@"; do
-    if ! require "$var_name"; then
+    if ! require "${var_name}"; then
       failed=1
     fi
   done
 
-  return $failed
+  return "${failed}"
 }
 
 # Require variable and validate with function
@@ -700,16 +700,16 @@ require_valid() {
   local validator="$3"
 
   # First check if variable exists
-  require "$var_name" "$description" || return 1
+  require "${var_name}" "${description}" || return 1
 
   # Get the variable value
   local var_value="${!var_name}"
 
   # Run validator function
-  if ! "$validator" "$var_value"; then
-    err "Validation failed for: $description"
-    err "Variable: $var_name"
-    err "Value: $var_value"
+  if ! "${validator}" "${var_value}"; then
+    err "Validation failed for: ${description}"
+    err "Variable: ${var_name}"
+    err "Value: ${var_value}"
     return 1
   fi
 
@@ -744,46 +744,46 @@ validate_file_integrity() {
   local min_size="${3:-1}"
 
   # Check file exists
-  if [[ ! -e "$file_path" ]]; then
-    err "File not found: $file_path"
+  if [[ ! -e "${file_path}" ]]; then
+    err "File not found: ${file_path}"
     err "Please ensure the file exists and path is correct"
     return 1
   fi
 
   # Check it's a regular file (not directory, symlink, etc.)
-  if [[ ! -f "$file_path" ]]; then
-    err "Not a regular file: $file_path"
-    if [[ -d "$file_path" ]]; then
+  if [[ ! -f "${file_path}" ]]; then
+    err "Not a regular file: ${file_path}"
+    if [[ -d "${file_path}" ]]; then
       err "Type: directory"
     else
-      err "Type: $(file -b "$file_path" 2>/dev/null || echo "unknown")"
+      err "Type: $(file -b "${file_path}" 2>/dev/null || echo "unknown")"
     fi
     return 1
   fi
 
   # Check readable
-  if [[ ! -r "$file_path" ]]; then
-    err "File not readable: $file_path"
-    err "Permissions: $(ls -l "$file_path" 2>/dev/null | awk '{print $1}' || echo "unknown")"
-    err "Try: sudo chmod +r \"$file_path\""
+  if [[ ! -r "${file_path}" ]]; then
+    err "File not readable: ${file_path}"
+    err "Permissions: $(ls -l "${file_path}" 2>/dev/null | awk '{print $1}' || echo "unknown")"
+    err "Try: sudo chmod +r \"${file_path}\""
     return 1
   fi
 
   # Check size if required
-  if [[ "$require_content" == "true" ]]; then
-    if [[ ! -s "$file_path" ]]; then
-      err "File is empty: $file_path"
+  if [[ "${require_content}" == "true" ]]; then
+    if [[ ! -s "${file_path}" ]]; then
+      err "File is empty: ${file_path}"
       err "Size: 0 bytes"
       return 1
     fi
 
     # Check minimum size if specified
     local actual_size
-    actual_size=$(get_file_size "$file_path")
-    if [[ "$actual_size" -lt "$min_size" ]]; then
-      err "File too small: $file_path"
-      err "Expected: at least $min_size bytes"
-      err "Actual: $actual_size bytes"
+    actual_size=$(get_file_size "${file_path}")
+    if [[ "${actual_size}" -lt "${min_size}" ]]; then
+      err "File too small: ${file_path}"
+      err "Expected: at least ${min_size} bytes"
+      err "Actual: ${actual_size} bytes"
       return 1
     fi
   fi
@@ -810,12 +810,12 @@ validate_files_integrity() {
   local failed=0
 
   for file in "$@"; do
-    if ! validate_file_integrity "$file"; then
+    if ! validate_file_integrity "${file}"; then
       failed=1
     fi
   done
 
-  return $failed
+  return "${failed}"
 }
 
 #==============================================================================

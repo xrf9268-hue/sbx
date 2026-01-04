@@ -57,7 +57,7 @@ create_base_config() {
 
   # Determine DNS strategy
   local dns_strategy=""
-  if [[ "$ipv6_supported" == "false" ]]; then
+  if [[ "${ipv6_supported}" == "false" ]]; then
     msg "  - Applying IPv4-only DNS configuration for network compatibility"
     dns_strategy="ipv4_only"
   else
@@ -67,8 +67,8 @@ create_base_config() {
   # Build configuration with conditional DNS strategy injection
   local base_config
   if ! base_config=$(jq -n \
-    --arg log_level "$log_level" \
-    --arg dns_strategy "$dns_strategy" \
+    --arg log_level "${log_level}" \
+    --arg dns_strategy "${dns_strategy}" \
     '{
       log: { level: $log_level, timestamp: true },
       dns: ({
@@ -87,7 +87,7 @@ create_base_config() {
     return 1
   fi
 
-  echo "$base_config"
+  echo "${base_config}"
 }
 
 #==============================================================================
@@ -104,7 +104,7 @@ create_reality_inbound() {
   local short_id="$6"
 
   # Input validation with helpful guidance
-  [[ -n "$uuid" ]] || {
+  [[ -n "${uuid}" ]] || {
     err "Reality configuration error: UUID cannot be empty"
     err ""
     err "Generate a valid UUID:"
@@ -116,7 +116,7 @@ create_reality_inbound() {
     return 1
   }
 
-  [[ -n "$priv_key" ]] || {
+  [[ -n "${priv_key}" ]] || {
     err "Reality configuration error: Private key cannot be empty"
     err ""
     err "Generate Reality keypair:"
@@ -130,7 +130,7 @@ create_reality_inbound() {
     return 1
   }
 
-  [[ -n "$short_id" ]] || {
+  [[ -n "${short_id}" ]] || {
     err "Reality configuration error: Short ID cannot be empty"
     err ""
     err "Generate short ID (8 hex characters):"
@@ -143,8 +143,8 @@ create_reality_inbound() {
   }
 
   # Validate port range
-  if ! validate_port "$port" 2>/dev/null; then
-    err "Invalid port: $port (must be 1-65535)"
+  if ! validate_port "${port}" 2>/dev/null; then
+    err "Invalid port: ${port} (must be 1-65535)"
     return 1
   fi
 
@@ -159,12 +159,12 @@ create_reality_inbound() {
   msg "  - Creating Reality inbound configuration..."
 
   if ! reality_config=$(jq -n \
-    --arg uuid "$uuid" \
-    --arg port "$port" \
-    --arg listen_addr "$listen_addr" \
-    --arg sni "$sni" \
-    --arg priv "$priv_key" \
-    --arg sid "$short_id" \
+    --arg uuid "${uuid}" \
+    --arg port "${port}" \
+    --arg listen_addr "${listen_addr}" \
+    --arg sni "${sni}" \
+    --arg priv "${priv_key}" \
+    --arg sid "${short_id}" \
     --arg flow "${REALITY_FLOW_VISION}" \
     --arg max_time_diff "${REALITY_MAX_TIME_DIFF}" \
     --arg alpn_h2 "${REALITY_ALPN_H2}" \
@@ -199,12 +199,12 @@ create_reality_inbound() {
       }
     }' 2>&1); then
     err "Failed to create Reality configuration. jq output:"
-    err "$reality_config"
+    err "${reality_config}"
     return 1
   fi
 
   success "  ✓ Reality inbound configured"
-  echo "$reality_config"
+  echo "${reality_config}"
 }
 
 # Create WS-TLS inbound configuration
@@ -219,12 +219,12 @@ create_ws_inbound() {
   local ws_config
 
   if ! ws_config=$(jq -n \
-    --arg uuid "$uuid" \
-    --arg port "$port" \
-    --arg listen_addr "$listen_addr" \
-    --arg domain "$domain" \
-    --arg cert_path "$cert_path" \
-    --arg key_path "$key_path" \
+    --arg uuid "${uuid}" \
+    --arg port "${port}" \
+    --arg listen_addr "${listen_addr}" \
+    --arg domain "${domain}" \
+    --arg cert_path "${cert_path}" \
+    --arg key_path "${key_path}" \
     '{
       type: "vless",
       tag: "in-ws",
@@ -253,7 +253,7 @@ create_ws_inbound() {
     return 1
   fi
 
-  echo "$ws_config"
+  echo "${ws_config}"
 }
 
 # Create Hysteria2 inbound configuration
@@ -267,11 +267,11 @@ create_hysteria2_inbound() {
   local hy2_config
 
   if ! hy2_config=$(jq -n \
-    --arg password "$password" \
-    --arg port "$port" \
-    --arg listen_addr "$listen_addr" \
-    --arg cert_path "$cert_path" \
-    --arg key_path "$key_path" \
+    --arg password "${password}" \
+    --arg port "${port}" \
+    --arg listen_addr "${listen_addr}" \
+    --arg cert_path "${cert_path}" \
+    --arg key_path "${key_path}" \
     '{
       type: "hysteria2",
       tag: "in-hy2",
@@ -291,7 +291,7 @@ create_hysteria2_inbound() {
     return 1
   fi
 
-  echo "$hy2_config"
+  echo "${hy2_config}"
 }
 
 #==============================================================================
@@ -304,12 +304,12 @@ add_route_config() {
   local has_certs="${2:-false}"
 
   local route_inbounds='["in-reality"]'
-  if [[ "$has_certs" == "true" ]]; then
+  if [[ "${has_certs}" == "true" ]]; then
     route_inbounds='["in-reality", "in-ws", "in-hy2"]'
   fi
 
   local updated_config
-  if ! updated_config=$(echo "$config" | jq --argjson inbounds "$route_inbounds" '.route = {
+  if ! updated_config=$(echo "${config}" | jq --argjson inbounds "${route_inbounds}" '.route = {
     "rules": [
       {
         "inbound": $inbounds,
@@ -329,7 +329,7 @@ add_route_config() {
     return 1
   fi
 
-  echo "$updated_config"
+  echo "${updated_config}"
 }
 
 #==============================================================================
@@ -343,7 +343,7 @@ add_outbound_config() {
   msg "  - Configuring outbound connection parameters"
 
   local updated_config
-  if ! updated_config=$(echo "$config" | jq '.outbounds[0] += {
+  if ! updated_config=$(echo "${config}" | jq '.outbounds[0] += {
     "bind_interface": "",
     "routing_mark": 0,
     "reuse_addr": false,
@@ -352,12 +352,12 @@ add_outbound_config() {
     "udp_fragment": true
   }' 2>/dev/null); then
     warn "Failed to add outbound parameters, continuing with default configuration"
-    echo "$config"
+    echo "${config}"
     return 0
   fi
 
   success "  ✓ Outbound configuration applied"
-  echo "$updated_config"
+  echo "${updated_config}"
 }
 
 #==============================================================================
@@ -369,22 +369,22 @@ _validate_certificate_config() {
   local cert_fullchain="$1"
   local cert_key="$2"
 
-  if [[ -z "$cert_fullchain" || -z "$cert_key" ]]; then
+  if [[ -z "${cert_fullchain}" || -z "${cert_key}" ]]; then
     return 0  # No certificates provided, skip validation
   fi
 
-  if [[ ! -f "$cert_fullchain" || ! -f "$cert_key" ]]; then
+  if [[ ! -f "${cert_fullchain}" || ! -f "${cert_key}" ]]; then
     return 0  # Files don't exist, skip (handled elsewhere)
   fi
 
   # Validate certificate files
-  validate_cert_files "$cert_fullchain" "$cert_key" || die "Certificate validation failed"
+  validate_cert_files "${cert_fullchain}" "${cert_key}" || die "Certificate validation failed"
 
   # Validate required variables for certificate-based configurations
-  [[ -n "$WS_PORT_CHOSEN" ]] || die "WebSocket port is not set for certificate configuration."
-  [[ -n "$HY2_PORT_CHOSEN" ]] || die "Hysteria2 port is not set for certificate configuration."
-  [[ -n "$DOMAIN" ]] || die "Domain is not set for certificate configuration."
-  [[ -n "$HY2_PASS" ]] || die "Hysteria2 password is not set for certificate configuration."
+  [[ -n "${WS_PORT_CHOSEN}" ]] || die "WebSocket port is not set for certificate configuration."
+  [[ -n "${HY2_PORT_CHOSEN}" ]] || die "Hysteria2 port is not set for certificate configuration."
+  [[ -n "${DOMAIN}" ]] || die "Domain is not set for certificate configuration."
+  [[ -n "${HY2_PASS}" ]] || die "Hysteria2 password is not set for certificate configuration."
 
   return 0
 }
@@ -403,39 +403,39 @@ _create_all_inbounds() {
 
   # Add Reality inbound (always present)
   local reality_config
-  reality_config=$(create_reality_inbound "$uuid" "$reality_port" "$listen_addr" \
-    "$sni" "$priv_key" "$short_id") || \
+  reality_config=$(create_reality_inbound "${uuid}" "${reality_port}" "${listen_addr}" \
+    "${sni}" "${priv_key}" "${short_id}") || \
     die "Failed to create Reality inbound"
 
-  base_config=$(echo "$base_config" | jq --argjson reality "$reality_config" \
+  base_config=$(echo "${base_config}" | jq --argjson reality "${reality_config}" \
     '.inbounds += [$reality]' 2>/dev/null) || \
     die "Failed to add Reality configuration to base config"
 
   # Add WS-TLS and Hysteria2 inbounds if certificates are available
   local has_certs="false"
-  if [[ -n "$cert_fullchain" && -n "$cert_key" && -f "$cert_fullchain" && -f "$cert_key" ]]; then
+  if [[ -n "${cert_fullchain}" && -n "${cert_key}" && -f "${cert_fullchain}" && -f "${cert_key}" ]]; then
     has_certs="true"
 
     # Add WS-TLS inbound
     local ws_config
-    ws_config=$(create_ws_inbound "$uuid" "$WS_PORT_CHOSEN" "$listen_addr" \
-      "$DOMAIN" "$cert_fullchain" "$cert_key") || \
+    ws_config=$(create_ws_inbound "${uuid}" "${WS_PORT_CHOSEN}" "${listen_addr}" \
+      "${DOMAIN}" "${cert_fullchain}" "${cert_key}") || \
       die "Failed to create WS-TLS inbound"
 
     # Add Hysteria2 inbound
     local hy2_config
-    hy2_config=$(create_hysteria2_inbound "$HY2_PASS" "$HY2_PORT_CHOSEN" "$listen_addr" \
-      "$cert_fullchain" "$cert_key") || \
+    hy2_config=$(create_hysteria2_inbound "${HY2_PASS}" "${HY2_PORT_CHOSEN}" "${listen_addr}" \
+      "${cert_fullchain}" "${cert_key}") || \
       die "Failed to create Hysteria2 inbound"
 
     # Add both WS and Hysteria2 inbounds
-    base_config=$(echo "$base_config" | jq --argjson ws "$ws_config" \
-      --argjson hy2 "$hy2_config" '.inbounds += [$ws, $hy2]' 2>/dev/null) || \
+    base_config=$(echo "${base_config}" | jq --argjson ws "${ws_config}" \
+      --argjson hy2 "${hy2_config}" '.inbounds += [$ws, $hy2]' 2>/dev/null) || \
       die "Failed to add WS-TLS and Hysteria2 configurations"
   fi
 
   # Return updated config and has_certs flag
-  echo "$has_certs|$base_config"
+  echo "${has_certs}|${base_config}"
 }
 
 #==============================================================================
@@ -444,8 +444,8 @@ _create_all_inbounds() {
 
 # Generate complete sing-box configuration
 write_config() {
-  msg "Writing $SB_CONF ..."
-  mkdir -p "$SB_CONF_DIR"
+  msg "Writing ${SB_CONF} ..."
+  mkdir -p "${SB_CONF_DIR}"
 
   # Detect network stack support
   msg "Detecting network stack support..."
@@ -453,9 +453,9 @@ write_config() {
   ipv6_supported=$(detect_ipv6_support)
 
   local listen_addr
-  listen_addr=$(choose_listen_address "$ipv6_supported")
+  listen_addr=$(choose_listen_address "${ipv6_supported}")
 
-  if [[ "$ipv6_supported" == "true" ]]; then
+  if [[ "${ipv6_supported}" == "true" ]]; then
     success "  ✓ IPv6 support detected - using dual-stack listen with default DNS strategy"
   else
     warn "  ⚠ IPv6 not available - using dual-stack listen with IPv4-only DNS strategy"
@@ -473,35 +473,35 @@ write_config() {
 
   # Setup automatic cleanup on function exit/error
   cleanup_write_config() {
-    [[ -f "$temp_conf" ]] && rm -f "$temp_conf" 2>/dev/null || true
+    [[ -f "${temp_conf}" ]] && rm -f "${temp_conf}" 2>/dev/null || true
   }
   trap cleanup_write_config RETURN ERR EXIT INT TERM
 
   # Create base configuration
   local base_config
-  base_config=$(create_base_config "$ipv6_supported" "${LOG_LEVEL:-warn}") || \
+  base_config=$(create_base_config "${ipv6_supported}" "${LOG_LEVEL:-warn}") || \
     die "Failed to create base configuration"
 
   # Create all inbounds (Reality + optional WS-TLS and Hysteria2)
   local inbound_result has_certs
   # shellcheck disable=SC2154  # UUID, REALITY_PORT_CHOSEN, PRIV, SID set by caller
-  inbound_result=$(_create_all_inbounds "$base_config" "$UUID" "$REALITY_PORT_CHOSEN" \
-    "$listen_addr" "${SNI_DEFAULT:-www.microsoft.com}" "$PRIV" "$SID" \
+  inbound_result=$(_create_all_inbounds "${base_config}" "${UUID}" "${REALITY_PORT_CHOSEN}" \
+    "${listen_addr}" "${SNI_DEFAULT:-www.microsoft.com}" "${PRIV}" "${SID}" \
     "${CERT_FULLCHAIN:-}" "${CERT_KEY:-}")
   has_certs="${inbound_result%%|*}"
   base_config="${inbound_result#*|}"
 
   # Add route and outbound configurations
-  base_config=$(add_route_config "$base_config" "$has_certs") || \
+  base_config=$(add_route_config "${base_config}" "${has_certs}") || \
     die "Failed to add route configuration"
-  base_config=$(add_outbound_config "$base_config")
+  base_config=$(add_outbound_config "${base_config}")
 
   # Write configuration to temporary file
-  echo "$base_config" > "$temp_conf" || \
+  echo "${base_config}" > "${temp_conf}" || \
     die "Failed to write configuration to temporary file"
 
   # Run comprehensive validation pipeline before applying
-  if ! validate_config_pipeline "$temp_conf"; then
+  if ! validate_config_pipeline "${temp_conf}"; then
     err "Configuration validation failed. See errors above."
     die "Generated configuration is invalid. This is a bug in the script."
   fi
@@ -510,15 +510,15 @@ write_config() {
   trap - RETURN ERR EXIT INT TERM
 
   # Atomic move to final location
-  if ! mv "$temp_conf" "$SB_CONF"; then
+  if ! mv "${temp_conf}" "${SB_CONF}"; then
     # Re-enable trap for cleanup on failure
     trap cleanup_write_config RETURN
-    die "Failed to move configuration to $SB_CONF"
+    die "Failed to move configuration to ${SB_CONF}"
   fi
 
-  chmod 600 "$SB_CONF"
+  chmod 600 "${SB_CONF}"
 
-  success "Configuration written and validated: $SB_CONF"
+  success "Configuration written and validated: ${SB_CONF}"
   return 0
 }
 

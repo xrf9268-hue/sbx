@@ -64,25 +64,25 @@ show_existing_installation_menu() {
 
   echo
   warn "Existing sing-box installation detected:"
-  info "Binary: $SB_BIN (version: $current_version)"
-  [[ -f "$SB_CONF" ]] && info "Config: $SB_CONF"
-  [[ -f "$SB_SVC" ]] && info "Service: $SB_SVC (status: $service_status)"
+  info "Binary: ${SB_BIN} (version: ${current_version})"
+  [[ -f "${SB_CONF}" ]] && info "Config: ${SB_CONF}"
+  [[ -f "${SB_SVC}" ]] && info "Service: ${SB_SVC} (status: ${service_status})"
 
   # Show version status if available
-  if [[ "$current_version" != "not_installed" && "$current_version" != "unknown" ]]; then
-    case "$version_status" in
+  if [[ "${current_version}" != "not_installed" && "${current_version}" != "unknown" ]]; then
+    case "${version_status}" in
       "current")
-        success "You have the latest version ($current_version)"
+        success "You have the latest version (${current_version})"
         ;;
       "outdated")
-        warn "Update available: $current_version → $latest_version"
+        warn "Update available: ${current_version} → ${latest_version}"
         ;;
       "unsupported")
-        err "Your version ($current_version) is too old and may not be compatible"
-        warn "Strongly recommend upgrading to the latest version ($latest_version)"
+        err "Your version (${current_version}) is too old and may not be compatible"
+        warn "Strongly recommend upgrading to the latest version (${latest_version})"
         ;;
       "newer")
-        info "You have a newer version than latest release ($current_version > $latest_version)"
+        info "You have a newer version than latest release (${current_version} > ${latest_version})"
         ;;
     esac
   fi
@@ -104,15 +104,15 @@ prompt_menu_choice() {
   local max="${2:-6}"
   local choice
 
-  read -rp "Enter your choice [1-$max]: " choice
+  read -rp "Enter your choice [1-${max}]: " choice
 
   # Validate choice
-  if ! validate_menu_choice "$choice" "$min" "$max"; then
-    err "Invalid choice. Please enter a number between $min and $max."
+  if ! validate_menu_choice "${choice}" "${min}" "${max}"; then
+    err "Invalid choice. Please enter a number between ${min} and ${max}."
     return 1
   fi
 
-  echo "$choice"
+  echo "${choice}"
   return 0
 }
 
@@ -126,16 +126,16 @@ prompt_yes_no() {
   local default="${2:-N}"
   local response
 
-  if [[ "$default" =~ ^[Yy]$ ]]; then
-    read -rp "$prompt [Y/n]: " response
+  if [[ "${default}" =~ ^[Yy]$ ]]; then
+    read -rp "${prompt} [Y/n]: " response
     response="${response:-Y}"
   else
-    read -rp "$prompt [y/N]: " response
+    read -rp "${prompt} [y/N]: " response
     response="${response:-N}"
   fi
 
-  if validate_yes_no "$response"; then
-    [[ "$response" =~ ^[Yy]$ ]] && return 0 || return 1
+  if validate_yes_no "${response}"; then
+    [[ "${response}" =~ ^[Yy]$ ]] && return 0 || return 1
   else
     err "Invalid input. Please enter Y or N."
     return 1
@@ -149,25 +149,25 @@ prompt_input() {
   local validator="${3:-}"  # Optional validation function
   local input
 
-  if [[ -n "$default" ]]; then
-    read -rp "$prompt [$default]: " input
-    input="${input:-$default}"
+  if [[ -n "${default}" ]]; then
+    read -rp "${prompt} [${default}]: " input
+    input="${input:-${default}}"
   else
-    read -rp "$prompt: " input
+    read -rp "${prompt}: " input
   fi
 
   # Sanitize input
-  input=$(sanitize_input "$input")
+  input=$(sanitize_input "${input}")
 
   # Validate if validator function provided
-  if [[ -n "$validator" ]] && command -v "$validator" >/dev/null 2>&1; then
-    if ! "$validator" "$input"; then
+  if [[ -n "${validator}" ]] && command -v "${validator}" >/dev/null 2>&1; then
+    if ! "${validator}" "${input}"; then
       err "Invalid input"
       return 1
     fi
   fi
 
-  echo "$input"
+  echo "${input}"
   return 0
 }
 
@@ -176,10 +176,10 @@ prompt_password() {
   local prompt="${1:-Enter password}"
   local password
 
-  read -rsp "$prompt: " password
+  read -rsp "${prompt}: " password
   echo >&2  # New line after password input
 
-  echo "$password"
+  echo "${password}"
   return 0
 }
 
@@ -194,13 +194,13 @@ show_spinner() {
   local spinstr='|/-\'
   local i=0
 
-  while kill -0 "$pid" 2>/dev/null; do
+  while kill -0 "${pid}" 2>/dev/null; do
     i=$(( (i+1) % 4 ))
-    printf "\r%s ${spinstr:$i:1}" "$message"
+    printf "\r%s ${spinstr:${i}:1}" "${message}"
     sleep 0.1
   done
 
-  printf "\r%s Done    \n" "$message"
+  printf "\r%s Done    \n" "${message}"
 }
 
 # Show progress bar
@@ -215,9 +215,9 @@ show_progress() {
   printf "\r["
   printf "%${completed}s" | tr ' ' '='
   printf "%${remaining}s" | tr ' ' ' '
-  printf "] %3d%%" "$percent"
+  printf "] %3d%%" "${percent}"
 
-  if [[ $current -eq $total ]]; then
+  if [[ ${current} -eq ${total} ]]; then
     echo
   fi
 }
@@ -236,12 +236,12 @@ show_config_summary() {
 
   echo
   echo -e "${B}=== Configuration Summary ===${N}"
-  echo "Domain/IP     : $domain"
-  echo "Reality Port  : $reality_port"
+  echo "Domain/IP     : ${domain}"
+  echo "Reality Port  : ${reality_port}"
 
-  if [[ "$has_certs" == "true" && -n "$ws_port" && -n "$hy2_port" ]]; then
-    echo "WS-TLS Port   : $ws_port"
-    echo "Hysteria2 Port: $hy2_port"
+  if [[ "${has_certs}" == "true" && -n "${ws_port}" && -n "${hy2_port}" ]]; then
+    echo "WS-TLS Port   : ${ws_port}"
+    echo "Hysteria2 Port: ${hy2_port}"
     echo "Certificates  : Configured"
   else
     echo "Mode          : Reality-only (no certificates)"
@@ -259,11 +259,11 @@ show_installation_summary() {
   echo -e "${B}${G}=== Installation Complete ===${N}"
   echo
   echo -e "${G}✓${N} sing-box installed and running"
-  echo -e "${G}✓${N} Configuration: $SB_CONF"
+  echo -e "${G}✓${N} Configuration: ${SB_CONF}"
   echo -e "${G}✓${N} Service: systemctl status sing-box"
   echo
-  echo -e "${CYAN}Enabled Protocols:${N} $protocols"
-  echo -e "${CYAN}Server:${N} $domain"
+  echo -e "${CYAN}Enabled Protocols:${N} ${protocols}"
+  echo -e "${CYAN}Server:${N} ${domain}"
   echo
   echo -e "${Y}Management Commands:${N}"
   echo "  sbx info      - Show configuration and URIs"
@@ -271,7 +271,7 @@ show_installation_summary() {
   echo "  sbx restart   - Restart service"
   echo "  sbx log       - View live logs"
 
-  if [[ "$qr_available" == "true" ]]; then
+  if [[ "${qr_available}" == "true" ]]; then
     echo "  sbx qr        - Display QR codes"
   fi
 
@@ -291,14 +291,14 @@ show_error() {
   local suggestion="${3:-}"
 
   echo
-  err "Error: $error_msg"
+  err "Error: ${error_msg}"
 
-  if [[ -n "$context" ]]; then
-    info "Context: $context"
+  if [[ -n "${context}" ]]; then
+    info "Context: ${context}"
   fi
 
-  if [[ -n "$suggestion" ]]; then
-    echo -e "${Y}Suggestion:${N} $suggestion"
+  if [[ -n "${suggestion}" ]]; then
+    echo -e "${Y}Suggestion:${N} ${suggestion}"
   fi
 
   echo

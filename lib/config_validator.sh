@@ -53,30 +53,30 @@ validate_singbox_schema() {
     local config_file="$1"
 
     # First validate JSON syntax
-    validate_json_syntax "$config_file" verbose || return 1
+    validate_json_syntax "${config_file}" verbose || return 1
 
     # Check required sections using jq
     if have jq; then
         # Check for inbounds section
-        if ! jq -e '.inbounds' "$config_file" >/dev/null 2>&1; then
+        if ! jq -e '.inbounds' "${config_file}" >/dev/null 2>&1; then
             err "Missing required section 'inbounds' in config"
             return 1
         fi
 
         # Check for outbounds section
-        if ! jq -e '.outbounds' "$config_file" >/dev/null 2>&1; then
+        if ! jq -e '.outbounds' "${config_file}" >/dev/null 2>&1; then
             err "Missing required section 'outbounds' in config"
             return 1
         fi
 
         # Validate inbounds is an array
-        if ! jq -e '.inbounds | if type == "array" then true else false end' "$config_file" >/dev/null 2>&1; then
+        if ! jq -e '.inbounds | if type == "array" then true else false end' "${config_file}" >/dev/null 2>&1; then
             err "'inbounds' must be an array"
             return 1
         fi
 
         # Validate outbounds is an array
-        if ! jq -e '.outbounds | if type == "array" then true else false end' "$config_file" >/dev/null 2>&1; then
+        if ! jq -e '.outbounds | if type == "array" then true else false end' "${config_file}" >/dev/null 2>&1; then
             err "'outbounds' must be an array"
             return 1
         fi
@@ -89,7 +89,7 @@ validate_singbox_schema() {
     if have python3; then
         if ! python3 -c "
 import json, sys
-with open('$config_file') as f:
+with open('${config_file}') as f:
     config = json.load(f)
     if 'inbounds' not in config:
         print('Missing required section: inbounds', file=sys.stderr)
@@ -131,27 +131,27 @@ validate_port_conflicts() {
     local config_file="$1"
 
     # First validate JSON syntax
-    validate_json_syntax "$config_file" verbose || return 1
+    validate_json_syntax "${config_file}" verbose || return 1
 
     if have jq; then
         # Extract all listen_port values
         local ports
-        ports=$(jq -r '.inbounds[]?.listen_port // empty' "$config_file" 2>/dev/null | sort)
+        ports=$(jq -r '.inbounds[]?.listen_port // empty' "${config_file}" 2>/dev/null | sort)
 
         # Check for empty result (no ports configured or no inbounds)
-        if [[ -z "$ports" ]]; then
+        if [[ -z "${ports}" ]]; then
             debug "No ports configured in inbounds"
             return 0
         fi
 
         # Check for duplicates
         local unique_ports
-        unique_ports=$(echo "$ports" | uniq)
+        unique_ports=$(echo "${ports}" | uniq)
 
-        if [[ "$ports" != "$unique_ports" ]]; then
+        if [[ "${ports}" != "${unique_ports}" ]]; then
             local duplicate_port
-            duplicate_port=$(echo "$ports" | uniq -d | head -1)
-            err "Port conflict detected: port $duplicate_port is used by multiple inbounds"
+            duplicate_port=$(echo "${ports}" | uniq -d | head -1)
+            err "Port conflict detected: port ${duplicate_port} is used by multiple inbounds"
             return 1
         fi
 
@@ -163,7 +163,7 @@ validate_port_conflicts() {
     if have python3; then
         if ! python3 -c "
 import json, sys
-with open('$config_file') as f:
+with open('${config_file}') as f:
     config = json.load(f)
     ports = []
     for inbound in config.get('inbounds', []):
@@ -205,15 +205,15 @@ validate_tls_config() {
     local config_file="$1"
 
     # First validate JSON syntax
-    validate_json_syntax "$config_file" verbose || return 1
+    validate_json_syntax "${config_file}" verbose || return 1
 
     if have jq; then
         # Check each inbound with TLS enabled
         local tls_inbounds
-        tls_inbounds=$(jq -c '.inbounds[]? | select(.tls.enabled == true)' "$config_file" 2>/dev/null)
+        tls_inbounds=$(jq -c '.inbounds[]? | select(.tls.enabled == true)' "${config_file}" 2>/dev/null)
 
         # If no TLS inbounds, validation passes
-        if [[ -z "$tls_inbounds" ]]; then
+        if [[ -z "${tls_inbounds}" ]]; then
             debug "No TLS-enabled inbounds found"
             return 0
         fi
@@ -222,23 +222,23 @@ validate_tls_config() {
         while IFS= read -r inbound; do
             # Check if Reality is enabled
             local reality_enabled
-            reality_enabled=$(echo "$inbound" | jq -r '.tls.reality.enabled // false' 2>/dev/null)
+            reality_enabled=$(echo "${inbound}" | jq -r '.tls.reality.enabled // false' 2>/dev/null)
 
-            if [[ "$reality_enabled" == "true" ]]; then
+            if [[ "${reality_enabled}" == "true" ]]; then
                 debug "Reality TLS configuration detected (no certificate paths required)"
                 continue
             fi
 
             # For non-Reality TLS, check certificate paths
             local cert_path key_path
-            cert_path=$(echo "$inbound" | jq -r '.tls.certificate_path // empty' 2>/dev/null)
-            key_path=$(echo "$inbound" | jq -r '.tls.key_path // empty' 2>/dev/null)
+            cert_path=$(echo "${inbound}" | jq -r '.tls.certificate_path // empty' 2>/dev/null)
+            key_path=$(echo "${inbound}" | jq -r '.tls.key_path // empty' 2>/dev/null)
 
-            if [[ -z "$cert_path" || -z "$key_path" ]]; then
+            if [[ -z "${cert_path}" || -z "${key_path}" ]]; then
                 warn "TLS enabled but certificate_path or key_path not specified"
                 # Note: Not a fatal error as files might be provided via other means
             fi
-        done <<< "$tls_inbounds"
+        done <<< "${tls_inbounds}"
 
         debug "TLS configuration check passed"
         return 0
@@ -271,52 +271,52 @@ validate_route_rules() {
     local config_file="$1"
 
     # First validate JSON syntax
-    validate_json_syntax "$config_file" verbose || return 1
+    validate_json_syntax "${config_file}" verbose || return 1
 
     local has_errors=0
 
     if have jq; then
         # Check for deprecated 'sniff' field in inbounds
         local deprecated_sniff
-        deprecated_sniff=$(jq -r '.inbounds[]? | select(.sniff != null) | .tag // .type' "$config_file" 2>/dev/null)
+        deprecated_sniff=$(jq -r '.inbounds[]? | select(.sniff != null) | .tag // .type' "${config_file}" 2>/dev/null)
 
-        if [[ -n "$deprecated_sniff" ]]; then
-            err "Deprecated field 'sniff' found in inbound: $deprecated_sniff"
+        if [[ -n "${deprecated_sniff}" ]]; then
+            err "Deprecated field 'sniff' found in inbound: ${deprecated_sniff}"
             err "Use route rules with action: 'sniff' instead (sing-box 1.12.0+)"
             has_errors=1
         fi
 
         # Check for deprecated 'sniff_override_destination' field
         local deprecated_sniff_override
-        deprecated_sniff_override=$(jq -r '.inbounds[]? | select(.sniff_override_destination != null) | .tag // .type' "$config_file" 2>/dev/null)
+        deprecated_sniff_override=$(jq -r '.inbounds[]? | select(.sniff_override_destination != null) | .tag // .type' "${config_file}" 2>/dev/null)
 
-        if [[ -n "$deprecated_sniff_override" ]]; then
-            err "Deprecated field 'sniff_override_destination' found in inbound: $deprecated_sniff_override"
+        if [[ -n "${deprecated_sniff_override}" ]]; then
+            err "Deprecated field 'sniff_override_destination' found in inbound: ${deprecated_sniff_override}"
             err "Use route rules instead (sing-box 1.12.0+)"
             has_errors=1
         fi
 
         # Check for deprecated 'domain_strategy' in inbounds
         local deprecated_ds_inbound
-        deprecated_ds_inbound=$(jq -r '.inbounds[]? | select(.domain_strategy != null) | .tag // .type' "$config_file" 2>/dev/null)
+        deprecated_ds_inbound=$(jq -r '.inbounds[]? | select(.domain_strategy != null) | .tag // .type' "${config_file}" 2>/dev/null)
 
-        if [[ -n "$deprecated_ds_inbound" ]]; then
-            err "Deprecated field 'domain_strategy' found in inbound: $deprecated_ds_inbound"
+        if [[ -n "${deprecated_ds_inbound}" ]]; then
+            err "Deprecated field 'domain_strategy' found in inbound: ${deprecated_ds_inbound}"
             err "Use global dns.strategy instead (sing-box 1.12.0+)"
             has_errors=1
         fi
 
         # Check for deprecated 'domain_strategy' in outbounds
         local deprecated_ds_outbound
-        deprecated_ds_outbound=$(jq -r '.outbounds[]? | select(.domain_strategy != null) | .tag // .type' "$config_file" 2>/dev/null)
+        deprecated_ds_outbound=$(jq -r '.outbounds[]? | select(.domain_strategy != null) | .tag // .type' "${config_file}" 2>/dev/null)
 
-        if [[ -n "$deprecated_ds_outbound" ]]; then
-            err "Deprecated field 'domain_strategy' found in outbound: $deprecated_ds_outbound"
+        if [[ -n "${deprecated_ds_outbound}" ]]; then
+            err "Deprecated field 'domain_strategy' found in outbound: ${deprecated_ds_outbound}"
             err "Use global dns.strategy instead (sing-box 1.12.0+)"
             has_errors=1
         fi
 
-        if [[ $has_errors -eq 1 ]]; then
+        if [[ ${has_errors} -eq 1 ]]; then
             return 1
         fi
 
@@ -329,7 +329,7 @@ validate_route_rules() {
         if ! python3 -c "
 import json, sys
 has_errors = False
-with open('$config_file') as f:
+with open('${config_file}') as f:
     config = json.load(f)
 
     # Check inbounds for deprecated fields
@@ -393,35 +393,35 @@ validate_config_pipeline() {
 
     # Step 1: JSON syntax
     msg "  [1/6] Validating JSON syntax..."
-    if ! validate_json_syntax "$config_file" verbose; then
+    if ! validate_json_syntax "${config_file}" verbose; then
         err "Configuration validation failed at step 1: JSON syntax"
         return 1
     fi
 
     # Step 2: sing-box schema
     msg "  [2/6] Validating sing-box schema..."
-    if ! validate_singbox_schema "$config_file"; then
+    if ! validate_singbox_schema "${config_file}"; then
         err "Configuration validation failed at step 2: sing-box schema"
         return 1
     fi
 
     # Step 3: Port conflicts
     msg "  [3/6] Checking for port conflicts..."
-    if ! validate_port_conflicts "$config_file"; then
+    if ! validate_port_conflicts "${config_file}"; then
         err "Configuration validation failed at step 3: port conflicts"
         return 1
     fi
 
     # Step 4: TLS configuration
     msg "  [4/6] Validating TLS configuration..."
-    if ! validate_tls_config "$config_file"; then
+    if ! validate_tls_config "${config_file}"; then
         warn "Configuration validation warning at step 4: TLS config (non-fatal)"
         # Note: TLS validation warnings are non-fatal
     fi
 
     # Step 5: Route rules (deprecated fields)
     msg "  [5/6] Validating route rules..."
-    if ! validate_route_rules "$config_file"; then
+    if ! validate_route_rules "${config_file}"; then
         err "Configuration validation failed at step 5: route rules (deprecated fields)"
         return 1
     fi
@@ -432,10 +432,10 @@ validate_config_pipeline() {
         local sb_bin="${SB_BIN:-/usr/local/bin/sing-box}"
         # Rely on exit code rather than output text (future-proof, localization-safe)
         local check_output
-        check_output=$("$sb_bin" check -c "$config_file" 2>&1)
+        check_output=$("${sb_bin}" check -c "${config_file}" 2>&1)
         if [[ $? -ne 0 ]]; then
             err "Configuration validation failed at step 6: sing-box check"
-            echo "$check_output" >&2
+            echo "${check_output}" >&2
             return 1
         fi
         debug "sing-box binary validation passed"

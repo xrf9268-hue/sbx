@@ -28,7 +28,7 @@ source "${_LIB_DIR}/network.sh"
 create_service_file() {
   msg "Creating systemd service ..."
 
-  cat >"$SB_SVC" <<'EOF'
+  cat >"${SB_SVC}" <<'EOF'
 [Unit]
 Description=sing-box
 After=network.target nss-lookup.target
@@ -59,7 +59,7 @@ start_service_with_retry() {
 
   msg "Starting sing-box service..."
 
-  while [[ $retry_count -lt $max_retries ]]; do
+  while [[ ${retry_count} -lt ${max_retries} ]]; do
     # Attempt to start the service
     if systemctl start sing-box 2>&1; then
       sleep "${SERVICE_WAIT_MEDIUM_SEC:-2}"
@@ -75,18 +75,18 @@ start_service_with_retry() {
     error_log=$(journalctl -u sing-box -n 20 --no-pager 2>/dev/null | \
                 grep -iE "bind|address.*in use|listen.*failed" | head -3 || true)
 
-    if [[ -n "$error_log" ]]; then
+    if [[ -n "${error_log}" ]]; then
       ((retry_count++))
-      if [[ $retry_count -lt $max_retries ]]; then
-        warn "Port binding failed, retrying ($retry_count/$max_retries) in ${wait_time}s..."
-        warn "Error: $(echo "$error_log" | head -1)"
+      if [[ ${retry_count} -lt ${max_retries} ]]; then
+        warn "Port binding failed, retrying (${retry_count}/${max_retries}) in ${wait_time}s..."
+        warn "Error: $(echo "${error_log}" | head -1)"
         systemctl stop sing-box 2>/dev/null || true
-        sleep "$wait_time"
+        sleep "${wait_time}"
         wait_time=$((wait_time * 2))  # Exponential backoff
       else
-        err "Failed to start sing-box after $max_retries attempts"
+        err "Failed to start sing-box after ${max_retries} attempts"
         err "Last error:"
-        echo "$error_log" | head -5 >&2
+        echo "${error_log}" | head -5 >&2
         return 1
       fi
     else
@@ -97,7 +97,7 @@ start_service_with_retry() {
     fi
   done
 
-  err "Failed to start sing-box service after $max_retries retries"
+  err "Failed to start sing-box service after ${max_retries} retries"
   return 1
 }
 
@@ -110,7 +110,7 @@ setup_service() {
 
   # Validate configuration before starting service
   msg "Validating configuration before starting service..."
-  if ! "$SB_BIN" check -c "$SB_CONF" 2>&1; then
+  if ! "${SB_BIN}" check -c "${SB_CONF}" 2>&1; then
     die "Configuration validation failed. Service not started."
   fi
   success "  ✓ Configuration validated"
@@ -126,7 +126,7 @@ setup_service() {
   msg "  - Waiting for service to become active..."
   local waited=0
   local max_wait="${SERVICE_STARTUP_MAX_WAIT_SEC:-10}"
-  while [[ $waited -lt "$max_wait" ]]; do
+  while [[ ${waited} -lt "${max_wait}" ]]; do
     if systemctl is-active sing-box >/dev/null 2>&1; then
       break
     fi
@@ -146,18 +146,18 @@ setup_service() {
   fi
 
   # Validate port listening (Reality-only mode check)
-  local reality_port="${REALITY_PORT_CHOSEN:-$REALITY_PORT}"
-  if validate_port_listening "$reality_port" "Reality"; then
-    success "  ✓ Reality service listening on port $reality_port"
+  local reality_port="${REALITY_PORT_CHOSEN:-${REALITY_PORT}}"
+  if validate_port_listening "${reality_port}" "Reality"; then
+    success "  ✓ Reality service listening on port ${reality_port}"
   fi
 
   # Check WS and Hysteria2 ports if certificates are configured
   if [[ -n "${CERT_FULLCHAIN:-}" && -f "${CERT_FULLCHAIN:-}" ]]; then
-    local ws_port="${WS_PORT_CHOSEN:-$WS_PORT}"
-    local hy2_port="${HY2_PORT_CHOSEN:-$HY2_PORT}"
+    local ws_port="${WS_PORT_CHOSEN:-${WS_PORT}}"
+    local hy2_port="${HY2_PORT_CHOSEN:-${HY2_PORT}}"
 
-    validate_port_listening "$ws_port" "WS-TLS" || warn "WS-TLS may not be listening properly"
-    validate_port_listening "$hy2_port" "Hysteria2" || warn "Hysteria2 may not be listening properly"
+    validate_port_listening "${ws_port}" "WS-TLS" || warn "WS-TLS may not be listening properly"
+    validate_port_listening "${hy2_port}" "Hysteria2" || warn "Hysteria2 may not be listening properly"
   fi
 
   return 0
@@ -170,19 +170,19 @@ validate_port_listening() {
   local max_attempts=5
   local attempt=0
 
-  while [[ $attempt -lt $max_attempts ]]; do
-    if ss -lntp 2>/dev/null | grep -q ":$port " || \
-       lsof -iTCP -sTCP:LISTEN -P -n 2>/dev/null | grep -q ":$port"; then
+  while [[ ${attempt} -lt ${max_attempts} ]]; do
+    if ss -lntp 2>/dev/null | grep -q ":${port} " || \
+       lsof -iTCP -sTCP:LISTEN -P -n 2>/dev/null | grep -q ":${port}"; then
       return 0
     fi
 
     ((attempt++))
-    if [[ $attempt -lt $max_attempts ]]; then
+    if [[ ${attempt} -lt ${max_attempts} ]]; then
       sleep "${SERVICE_WAIT_SHORT_SEC:-1}"
     fi
   done
 
-  warn "$service_name port $port not listening after $max_attempts attempts"
+  warn "${service_name} port ${port} not listening after ${max_attempts} attempts"
   return 1
 }
 
@@ -208,7 +208,7 @@ stop_service() {
     # Wait for service to fully stop
     local max_wait="${SERVICE_STARTUP_MAX_WAIT_SEC:-10}"
     local waited=0
-    while systemctl is-active sing-box >/dev/null 2>&1 && [[ $waited -lt $max_wait ]]; do
+    while systemctl is-active sing-box >/dev/null 2>&1 && [[ ${waited} -lt ${max_wait} ]]; do
       sleep "${SERVICE_WAIT_SHORT_SEC:-1}"
       ((waited++))
     done
@@ -228,8 +228,8 @@ restart_service() {
   msg "Restarting sing-box service..."
 
   # Validate configuration before restart
-  if [[ -f "$SB_CONF" ]]; then
-    if ! "$SB_BIN" check -c "$SB_CONF" 2>&1; then
+  if [[ -f "${SB_CONF}" ]]; then
+    if ! "${SB_BIN}" check -c "${SB_CONF}" 2>&1; then
       die "Configuration validation failed. Service not restarted."
     fi
   fi
@@ -277,8 +277,8 @@ remove_service() {
   fi
 
   # Remove service file
-  if [[ -f "$SB_SVC" ]]; then
-    rm -f "$SB_SVC"
+  if [[ -f "${SB_SVC}" ]]; then
+    rm -f "${SB_SVC}"
     success "  ✓ Service file removed"
   fi
 
@@ -297,20 +297,20 @@ remove_service() {
 show_service_logs() {
   local lines="${1:-50}"
   local follow="${2:-false}"
-  local max_lines="${3:-$LOG_VIEW_MAX_LINES}"  # Maximum lines to follow
+  local max_lines="${3:-${LOG_VIEW_MAX_LINES}}"  # Maximum lines to follow
 
   # Validate line count
-  if ! [[ "$lines" =~ ^[0-9]+$ ]] || [[ "$lines" -gt "$LOG_VIEW_MAX_LINES" ]]; then
-    err "Invalid line count (must be 1-${LOG_VIEW_MAX_LINES}): $lines"
+  if ! [[ "${lines}" =~ ^[0-9]+$ ]] || [[ "${lines}" -gt "${LOG_VIEW_MAX_LINES}" ]]; then
+    err "Invalid line count (must be 1-${LOG_VIEW_MAX_LINES}): ${lines}"
     return 1
   fi
 
-  if [[ "$follow" == "true" ]]; then
+  if [[ "${follow}" == "true" ]]; then
     # Limit output with head to prevent resource exhaustion
-    warn "Following logs (Ctrl+C to exit, limited to $max_lines lines)..."
-    journalctl -u sing-box -f --since "$LOG_VIEW_DEFAULT_HISTORY" | head -n "$max_lines"
+    warn "Following logs (Ctrl+C to exit, limited to ${max_lines} lines)..."
+    journalctl -u sing-box -f --since "${LOG_VIEW_DEFAULT_HISTORY}" | head -n "${max_lines}"
   else
-    journalctl -u sing-box -n "$lines" --no-pager
+    journalctl -u sing-box -n "${lines}" --no-pager
   fi
 }
 

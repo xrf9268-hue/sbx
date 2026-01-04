@@ -36,7 +36,7 @@ json_parse() {
 
     # Primary: Use jq if available
     if have jq; then
-        echo "$json_input" | jq -r "$jq_filter" 2>/dev/null && return 0
+        echo "${json_input}" | jq -r "${jq_filter}" 2>/dev/null && return 0
     fi
 
     # Fallback 1: Python 3
@@ -45,9 +45,9 @@ json_parse() {
 import json
 import sys
 try:
-    data = json.loads('''$json_input''')
+    data = json.loads('''${json_input}''')
     # Basic jq filter support for simple cases
-    filter = '$jq_filter'
+    filter = '${jq_filter}'
     if filter.startswith('.'):
         key = filter[1:]
         if '[' in key:
@@ -74,8 +74,8 @@ except Exception as e:
 import json
 import sys
 try:
-    data = json.loads('''$json_input''')
-    filter = '$jq_filter'
+    data = json.loads('''${json_input}''')
+    filter = '${jq_filter}'
     if filter.startswith('.'):
         key = filter[1:]
         print(data.get(key, ''))
@@ -138,58 +138,58 @@ validate_json_syntax() {
     local verbose="${2:-}"
 
     # Check file exists
-    if [[ ! -f "$json_file" ]]; then
-        [[ "$verbose" == "verbose" ]] && err "JSON file not found: $json_file"
+    if [[ ! -f "${json_file}" ]]; then
+        [[ "${verbose}" == "verbose" ]] && err "JSON file not found: ${json_file}"
         return 1
     fi
 
     # Check file is readable
-    if [[ ! -r "$json_file" ]]; then
-        [[ "$verbose" == "verbose" ]] && err "JSON file not readable: $json_file"
+    if [[ ! -r "${json_file}" ]]; then
+        [[ "${verbose}" == "verbose" ]] && err "JSON file not readable: ${json_file}"
         return 1
     fi
 
     # Check file is not empty and contains non-whitespace content
-    if [[ ! -s "$json_file" ]] || ! grep -q '[^[:space:]]' "$json_file" 2>/dev/null; then
-        [[ "$verbose" == "verbose" ]] && err "JSON file is empty: $json_file"
+    if [[ ! -s "${json_file}" ]] || ! grep -q '[^[:space:]]' "${json_file}" 2>/dev/null; then
+        [[ "${verbose}" == "verbose" ]] && err "JSON file is empty: ${json_file}"
         return 1
     fi
 
     # Primary: Validate with jq
     if have jq; then
-        if jq empty < "$json_file" 2>/dev/null; then
+        if jq empty < "${json_file}" 2>/dev/null; then
             return 0
         else
-            [[ "$verbose" == "verbose" ]] && err "Invalid JSON syntax in: $json_file"
+            [[ "${verbose}" == "verbose" ]] && err "Invalid JSON syntax in: ${json_file}"
             return 1
         fi
     fi
 
     # Fallback 1: Python 3
     if have python3; then
-        if python3 -c "import json; json.load(open('$json_file'))" 2>/dev/null; then
+        if python3 -c "import json; json.load(open('${json_file}'))" 2>/dev/null; then
             return 0
         else
-            [[ "$verbose" == "verbose" ]] && err "Invalid JSON syntax in: $json_file"
+            [[ "${verbose}" == "verbose" ]] && err "Invalid JSON syntax in: ${json_file}"
             return 1
         fi
     fi
 
     # Fallback 2: Python 2 (for legacy systems)
     if have python; then
-        if python -c "import json; json.load(open('$json_file'))" 2>/dev/null; then
+        if python -c "import json; json.load(open('${json_file}'))" 2>/dev/null; then
             return 0
         else
-            [[ "$verbose" == "verbose" ]] && err "Invalid JSON syntax in: $json_file"
+            [[ "${verbose}" == "verbose" ]] && err "Invalid JSON syntax in: ${json_file}"
             return 1
         fi
     fi
 
     # No validation tools available - warn and assume valid
     # This prevents installation failures on minimal systems
-    if [[ "$verbose" == "verbose" ]]; then
+    if [[ "${verbose}" == "verbose" ]]; then
         warn "No JSON validation tools available (jq, python3, python)"
-        warn "Skipping syntax validation for: $json_file"
+        warn "Skipping syntax validation for: ${json_file}"
     fi
     return 0
 }
@@ -210,17 +210,17 @@ crypto_random_hex() {
 
     # Primary: Use openssl
     if have openssl; then
-        openssl rand -hex "$length" 2>/dev/null && return 0
+        openssl rand -hex "${length}" 2>/dev/null && return 0
     fi
 
     # Fallback: Use /dev/urandom with xxd
     if [[ -f /dev/urandom ]] && have xxd; then
-        head -c "$length" /dev/urandom 2>/dev/null | xxd -p -c "$length" | tr -d '\n' && return 0
+        head -c "${length}" /dev/urandom 2>/dev/null | xxd -p -c "${length}" | tr -d '\n' && return 0
     fi
 
     # Fallback: Use /dev/urandom with od
     if [[ -f /dev/urandom ]] && have od; then
-        head -c "$length" /dev/urandom 2>/dev/null | od -An -tx1 | tr -d ' \n' && return 0
+        head -c "${length}" /dev/urandom 2>/dev/null | od -An -tx1 | tr -d ' \n' && return 0
     fi
 
     # No random source available
@@ -239,8 +239,8 @@ crypto_sha256() {
     local file="$1"
 
     # Validate file exists
-    [[ -f "$file" ]] || {
-        err "File not found: $file"
+    [[ -f "${file}" ]] || {
+        err "File not found: ${file}"
         return 1
     }
 
@@ -248,20 +248,20 @@ crypto_sha256() {
 
     # Primary: Use sha256sum (Linux)
     if have sha256sum; then
-        checksum=$(sha256sum "$file" 2>/dev/null | awk '{print $1}')
-        [[ -n "$checksum" ]] && echo "$checksum" && return 0
+        checksum=$(sha256sum "${file}" 2>/dev/null | awk '{print $1}')
+        [[ -n "${checksum}" ]] && echo "${checksum}" && return 0
     fi
 
     # Fallback 1: Use shasum (macOS/BSD)
     if have shasum; then
-        checksum=$(shasum -a 256 "$file" 2>/dev/null | awk '{print $1}')
-        [[ -n "$checksum" ]] && echo "$checksum" && return 0
+        checksum=$(shasum -a 256 "${file}" 2>/dev/null | awk '{print $1}')
+        [[ -n "${checksum}" ]] && echo "${checksum}" && return 0
     fi
 
     # Fallback 2: Use openssl
     if have openssl; then
-        checksum=$(openssl sha256 "$file" 2>/dev/null | awk '{print $2}')
-        [[ -n "$checksum" ]] && echo "$checksum" && return 0
+        checksum=$(openssl sha256 "${file}" 2>/dev/null | awk '{print $2}')
+        [[ -n "${checksum}" ]] && echo "${checksum}" && return 0
     fi
 
     # No SHA256 tool available
@@ -286,8 +286,8 @@ http_download() {
     local timeout="${3:-${HTTP_TIMEOUT_SEC:-30}}"
 
     # Validate URL format
-    if [[ ! "$url" =~ ^https?:// ]]; then
-        err "Invalid URL format: $url"
+    if [[ ! "${url}" =~ ^https?:// ]]; then
+        err "Invalid URL format: ${url}"
         return 1
     fi
 
@@ -295,19 +295,19 @@ http_download() {
     if have curl; then
         curl -fsSL \
             --connect-timeout 10 \
-            --max-time "$timeout" \
+            --max-time "${timeout}" \
             --retry 2 \
             --retry-delay 1 \
-            "$url" -o "$output" 2>/dev/null && return 0
+            "${url}" -o "${output}" 2>/dev/null && return 0
     fi
 
     # Fallback: Use wget
     if have wget; then
         wget -q \
-            --timeout="$timeout" \
+            --timeout="${timeout}" \
             --tries=2 \
             --waitretry=1 \
-            "$url" -O "$output" 2>/dev/null && return 0
+            "${url}" -O "${output}" 2>/dev/null && return 0
     fi
 
     # No HTTP client available
@@ -327,8 +327,8 @@ http_fetch() {
     local timeout="${2:-${HTTP_TIMEOUT_SEC:-30}}"
 
     # Validate URL format
-    if [[ ! "$url" =~ ^https?:// ]]; then
-        err "Invalid URL format: $url"
+    if [[ ! "${url}" =~ ^https?:// ]]; then
+        err "Invalid URL format: ${url}"
         return 1
     fi
 
@@ -336,15 +336,15 @@ http_fetch() {
     if have curl; then
         curl -fsSL \
             --connect-timeout 10 \
-            --max-time "$timeout" \
-            "$url" 2>/dev/null && return 0
+            --max-time "${timeout}" \
+            "${url}" 2>/dev/null && return 0
     fi
 
     # Fallback: Use wget
     if have wget; then
         wget -qO- \
-            --timeout="$timeout" \
-            "$url" 2>/dev/null && return 0
+            --timeout="${timeout}" \
+            "${url}" 2>/dev/null && return 0
     fi
 
     # No HTTP client available
@@ -368,7 +368,7 @@ base64_encode() {
     local input="${1:-}"
 
     # Read from stdin if no argument provided
-    if [[ -z "$input" ]]; then
+    if [[ -z "${input}" ]]; then
         if have base64; then
             base64 2>/dev/null && return 0
         fi
@@ -378,10 +378,10 @@ base64_encode() {
     else
         # Use argument
         if have base64; then
-            echo -n "$input" | base64 2>/dev/null && return 0
+            echo -n "${input}" | base64 2>/dev/null && return 0
         fi
         if have openssl; then
-            echo -n "$input" | openssl base64 2>/dev/null && return 0
+            echo -n "${input}" | openssl base64 2>/dev/null && return 0
         fi
     fi
 
@@ -401,7 +401,7 @@ base64_decode() {
     local input="${1:-}"
 
     # Read from stdin if no argument provided
-    if [[ -z "$input" ]]; then
+    if [[ -z "${input}" ]]; then
         if have base64; then
             base64 -d 2>/dev/null && return 0
         fi
@@ -411,10 +411,10 @@ base64_decode() {
     else
         # Use argument
         if have base64; then
-            echo -n "$input" | base64 -d 2>/dev/null && return 0
+            echo -n "${input}" | base64 -d 2>/dev/null && return 0
         fi
         if have openssl; then
-            echo -n "$input" | openssl base64 -d 2>/dev/null && return 0
+            echo -n "${input}" | openssl base64 -d 2>/dev/null && return 0
         fi
     fi
 

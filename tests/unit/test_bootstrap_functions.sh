@@ -47,7 +47,7 @@ setup_test_env
 #==============================================================================
 test_start "get_file_size function is defined"
 
-if declare -F get_file_size >/dev/null 2>&1; then
+if declare -F get_file_size > /dev/null 2>&1; then
     test_pass
 else
     test_fail "get_file_size function not found"
@@ -59,7 +59,7 @@ fi
 test_start "get_file_size returns 0 for non-existent file"
 
 # Function returns 0 and exits with status 1 for non-existent file
-result=$(get_file_size "/tmp/nonexistent-file-$$.txt" 2>/dev/null || true)
+result=$(get_file_size "/tmp/nonexistent-file-$$.txt" 2> /dev/null || true)
 
 if [[ "$result" == "0" ]]; then
     test_pass
@@ -74,7 +74,8 @@ test_start "get_file_size returns correct size for small file"
 
 test_file="/tmp/test-filesize-$$.txt"
 echo "Hello World" > "$test_file"
-expected_size=$(wc -c < "$test_file")
+# Trim whitespace from wc output for consistent comparison
+expected_size=$(wc -c < "$test_file" | tr -d ' ')
 actual_size=$(get_file_size "$test_file")
 
 if [[ "$actual_size" == "$expected_size" ]]; then
@@ -109,8 +110,9 @@ test_start "get_file_size handles larger files correctly"
 
 test_file="/tmp/test-large-$$.txt"
 # Create a 1KB file
-dd if=/dev/zero of="$test_file" bs=1024 count=1 2>/dev/null
-expected_size=$(wc -c < "$test_file")
+dd if=/dev/zero of="$test_file" bs=1024 count=1 2> /dev/null
+# Trim whitespace from wc output for consistent comparison
+expected_size=$(wc -c < "$test_file" | tr -d ' ')
 actual_size=$(get_file_size "$test_file")
 
 if [[ "$actual_size" == "$expected_size" ]]; then
