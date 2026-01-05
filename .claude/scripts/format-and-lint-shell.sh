@@ -16,8 +16,22 @@ fi
 # Read hook input from stdin ONCE (critical for parallel execution)
 INPUT=$(cat)
 
-# Extract file path from hook input
-FILE_PATH=$(echo "$INPUT" | jq -r '.tool_input.file_path // empty')
+# Extract fields from hook input (be tolerant of schema changes / invalid JSON)
+FILE_PATH=$(jq -r '.tool_input.file_path // empty' <<<"$INPUT" 2>/dev/null || true)
+SESSION_ID=$(jq -r '.session_id // empty' <<<"$INPUT" 2>/dev/null || true)
+
+# Resolve a stable tmp dir and per-session marker suffix (avoid cross-project/session collisions)
+TMP_DIR="${TMPDIR:-/tmp}"
+SAFE_SESSION_ID=""
+if [[ -n "$SESSION_ID" ]]; then
+  SAFE_SESSION_ID=$(printf '%s' "$SESSION_ID" | tr -c 'A-Za-z0-9_.-' '_' || true)
+fi
+PROJECT_ID_BASENAME=$(basename "${CLAUDE_PROJECT_DIR:-$PWD}")
+SAFE_PROJECT_ID=$(printf '%s' "$PROJECT_ID_BASENAME" | tr -c 'A-Za-z0-9_.-' '_' || true)
+MARKER_SUFFIX=""
+if [[ -n "$SAFE_SESSION_ID" ]]; then
+  MARKER_SUFFIX="-$SAFE_SESSION_ID"
+fi
 
 # Exit early if no file path
 if [[ -z "$FILE_PATH" ]]; then
@@ -40,7 +54,7 @@ fi
 
 FORMATTED=false
 SHFMT_AVAILABLE=false
-SHFMT_WARNING_FILE="/tmp/sbx-shfmt-warning-shown"
+SHFMT_WARNING_FILE="${TMP_DIR}/sbx-${SAFE_PROJECT_ID}-shfmt-warning-shown${MARKER_SUFFIX}"
 
 if command -v shfmt > /dev/null 2>&1; then
   SHFMT_AVAILABLE=true
@@ -59,7 +73,7 @@ if command -v shfmt > /dev/null 2>&1; then
 else
   # Show warning only once per session (avoid spam)
   if [[ ! -f "$SHFMT_WARNING_FILE" ]]; then
-    echo "⚠ shfmt not installed. Install: snap install shfmt (or go install mvdan.cc/sh/v3/cmd/shfmt@latest)" >&2
+    echo "⚠ shfmt not installed. Install: brew install shfmt (macOS) or snap install shfmt (Linux) or go install mvdan.cc/sh/v3/cmd/shfmt@latest" >&2
     touch "$SHFMT_WARNING_FILE"
   fi
 fi
@@ -70,13 +84,30 @@ fi
 
 SHELLCHECK_AVAILABLE=false
 LINT_PASSED=false
-SHELLCHECK_WARNING_FILE="/tmp/sbx-shellcheck-warning-shown"
+SHELLCHECK_WARNING_FILE="${TMP_DIR}/sbx-${SAFE_PROJECT_ID}-shellcheck-warning-shown${MARKER_SUFFIX}"
 
 if command -v shellcheck > /dev/null 2>&1; then
   SHELLCHECK_AVAILABLE=true
 
+  # Prefer repo config when available (hook CWD is not guaranteed)
+  SHELLCHECK_RCFILE=""
+  if [[ -n "${CLAUDE_PROJECT_DIR:-}" ]] && [[ -f "$CLAUDE_PROJECT_DIR/.shellcheckrc" ]]; then
+    SHELLCHECK_RCFILE="$CLAUDE_PROJECT_DIR/.shellcheckrc"
+  elif [[ -f ".shellcheckrc" ]]; then
+    SHELLCHECK_RCFILE=".shellcheckrc"
+  else
+    REPO_ROOT=$(git -C "$(dirname "$FILE_PATH")" rev-parse --show-toplevel 2>/dev/null || true)
+    if [[ -n "$REPO_ROOT" ]] && [[ -f "$REPO_ROOT/.shellcheckrc" ]]; then
+      SHELLCHECK_RCFILE="$REPO_ROOT/.shellcheckrc"
+    fi
+  fi
+
   # Capture ShellCheck output
-  LINT_OUTPUT=$(shellcheck -S warning -e SC2250 "$FILE_PATH" 2>&1 || true)
+  SHELLCHECK_ARGS=(--severity=warning --exclude=SC2250 --color=never)
+  if [[ -n "$SHELLCHECK_RCFILE" ]]; then
+    SHELLCHECK_ARGS=(--rcfile "$SHELLCHECK_RCFILE" "${SHELLCHECK_ARGS[@]}")
+  fi
+  LINT_OUTPUT=$(shellcheck "${SHELLCHECK_ARGS[@]}" "$FILE_PATH" 2>&1 || true)
 
   if [[ -z "$LINT_OUTPUT" ]]; then
     # File is clean

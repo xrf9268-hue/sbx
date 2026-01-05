@@ -33,7 +33,7 @@ When you start a new Claude Code session (web/iOS), automatically:
 - ✅ Non-blocking warnings (allows continued development)
 - ✅ Reduces CI/CD failures from ShellCheck errors
 
-**Why Sequential?** Prevents race conditions from parallel hook execution. See `.claude/docs/POSTTOOLUSE_HOOKS_FIX.md` for details.
+**Why Sequential?** Prevents race conditions from parallel hook execution. See `.claude/docs/POSTTOOLUSE_HOOK.md` for details.
 
 ### Files
 
@@ -41,7 +41,7 @@ When you start a new Claude Code session (web/iOS), automatically:
 - **settings.local.json** - User-specific overrides (gitignored)
 - **scripts/session-start.sh** - SessionStart hook implementation
 - **scripts/format-and-lint-shell.sh** - PostToolUse combined hook (sequential format→lint)
-- **docs/POSTTOOLUSE_HOOKS_FIX.md** - Documentation on concurrency fix
+- **docs/POSTTOOLUSE_HOOK.md** - PostToolUse hook rationale and behavior
 
 ### How It Works
 
@@ -93,7 +93,7 @@ The SessionStart hook is triggered only on **new session startup** (not resume/c
 2. **File Modification**: One hook modifies while another reads → undefined behavior
 3. **Execution Order**: No guarantee which runs first → non-deterministic results
 
-**See Also**: `.claude/docs/POSTTOOLUSE_HOOKS_FIX.md` for detailed analysis and examples.
+**See Also**: `.claude/docs/POSTTOOLUSE_HOOK.md` for details.
 
 ### What Gets Installed
 
