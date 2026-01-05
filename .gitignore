@@ -10,3 +10,6 @@
 
 # Ralph Wiggum plugin runtime state (auto-generated, session-specific)
 .claude/ralph-loop.local.md
+
+# Refactor progress notes (local-only)
+.claude/refactor-progress.md

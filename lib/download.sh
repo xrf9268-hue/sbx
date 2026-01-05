@@ -220,7 +220,7 @@ download_file() {
   fi
 
     # Create output directory if needed
-    local output_dir
+    local output_dir=''
     output_dir="$(dirname "${output}")"
     if [[ ! -d "${output_dir}" ]]; then
         mkdir -p "${output_dir}" || {
@@ -315,7 +315,7 @@ verify_downloaded_file() {
   fi
 
     # Check file size
-    local file_size
+    local file_size=0
     file_size=$(stat -c%s "${file_path}" 2> /dev/null || stat -f%z "${file_path}" 2> /dev/null || echo "0")
 
     if [[ "${file_size}" -lt "${min_size}" ]]; then
@@ -363,7 +363,7 @@ download_and_verify() {
 # Get download tool information
 # Useful for debugging and diagnostics
 get_download_info() {
-    local downloader
+    local downloader=''
     downloader="$(detect_downloader)"
 
     echo "Download configuration:"

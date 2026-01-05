@@ -34,7 +34,7 @@ caddy_systemd_file() { echo "/etc/systemd/system/caddy.service"; }
 caddy_data_dir() { echo "${HOME}/.local/share/caddy"; }
 caddy_cert_path() {
   local domain="$1"
-  local data_dir
+  local data_dir=''
   data_dir=$(caddy_data_dir)
 
   # Primary path structure (Let's Encrypt ACME v2)
@@ -70,7 +70,7 @@ caddy_cert_path() {
 #==============================================================================
 
 caddy_detect_arch() {
-  local arch
+  local arch=''
   arch="$(uname -m)"
   case "${arch}" in
     x86_64|amd64) echo "amd64" ;;
@@ -89,7 +89,7 @@ caddy_detect_arch() {
 
 # Get latest Caddy version from GitHub
 caddy_get_latest_version() {
-  local response
+  local response=''
 
   if ! response=$(safe_http_get "https://api.github.com/repos/caddyserver/caddy/releases/latest"); then
     return 1
@@ -102,14 +102,13 @@ caddy_get_latest_version() {
 
 # Install Caddy binary
 caddy_install() {
+  local version='' arch='' tmpdir='' tmpfile='' url='' archive='' checksum_file='' checksum_url='' expected='' actual=''
+
   if [[ -x "$(caddy_bin)" ]]; then
-    local version
     version=$("$(caddy_bin)" version 2>/dev/null | head -n1 | awk '{print $1}')
     info "Caddy already installed: ${version}"
     return 0
   fi
-
-  local version arch tmpdir tmpfile url archive checksum_file checksum_url expected actual
 
   msg "Installing Caddy for automatic TLS management..."
 
@@ -319,7 +318,7 @@ EOF
 caddy_wait_for_cert() {
   local domain="$1"
   local max_wait="${2:-60}"  # Wait up to 60 seconds
-  local cert_dir
+  local cert_dir=''
 
   cert_dir=$(caddy_cert_path "${domain}")
 
@@ -365,7 +364,7 @@ caddy_setup_cert_sync() {
   # Wait for initial certificate
   caddy_wait_for_cert "${domain}" || return 1
 
-  local caddy_cert_dir
+  local caddy_cert_dir=''
   caddy_cert_dir=$(caddy_cert_path "${domain}")
 
   # Create target directory
@@ -461,7 +460,7 @@ fi
 # Last resort: search with safety limits
 if [[ ! -d "$CADDY_CERT_DIR" ]]; then
     if [[ -d "${CADDY_DATA_DIR}/certificates" ]]; then
-        local found_dir=""
+        found_dir=""
         found_dir=$(find "${CADDY_DATA_DIR}/certificates" -maxdepth 3 -type d -name "${DOMAIN}" -print -quit 2>/dev/null)
         if [[ -n "$found_dir" && -d "$found_dir" ]]; then
             CADDY_CERT_DIR="$found_dir"
@@ -506,8 +505,7 @@ EOFSCRIPT
 
   # Create systemd service - pass domain and target_dir as arguments
   # Use printf %q to properly escape arguments
-  local escaped_domain
-  local escaped_target
+  local escaped_domain='' escaped_target=''
   escaped_domain=$(printf '%q' "${domain}")
   escaped_target=$(printf '%q' "${target_dir}")
 

@@ -65,7 +65,7 @@ create_base_config() {
   fi
 
   # Build configuration with conditional DNS strategy injection
-  local base_config
+  local base_config=''
   if ! base_config=$(jq -n \
     --arg log_level "${log_level}" \
     --arg dns_strategy "${dns_strategy}" \
@@ -142,7 +142,7 @@ create_reality_inbound() {
     return 1
   fi
 
-  local reality_config
+  local reality_config=''
 
   msg "  - Creating Reality inbound configuration..."
 
@@ -204,7 +204,7 @@ create_ws_inbound() {
   local cert_path="$5"
   local key_path="$6"
 
-  local ws_config
+  local ws_config=''
 
   if ! ws_config=$(jq -n \
     --arg uuid "${uuid}" \
@@ -252,7 +252,7 @@ create_hysteria2_inbound() {
   local cert_path="$4"
   local key_path="$5"
 
-  local hy2_config
+  local hy2_config=''
 
   if ! hy2_config=$(jq -n \
     --arg password "${password}" \
@@ -296,7 +296,7 @@ add_route_config() {
     route_inbounds='["in-reality", "in-ws", "in-hy2"]'
   fi
 
-  local updated_config
+  local updated_config=''
   if ! updated_config=$(echo "${config}" | jq --argjson inbounds "${route_inbounds}" '.route = {
     "rules": [
       {
@@ -330,7 +330,7 @@ add_outbound_config() {
 
   msg "  - Configuring outbound connection parameters"
 
-  local updated_config
+  local updated_config=''
   if ! updated_config=$(echo "${config}" | jq '.outbounds[0] += {
     "bind_interface": "",
     "routing_mark": 0,
@@ -390,7 +390,7 @@ _create_all_inbounds() {
   local cert_key="${9:-}"
 
   # Add Reality inbound (always present)
-  local reality_config
+  local reality_config=''
   reality_config=$(create_reality_inbound "${uuid}" "${reality_port}" "${listen_addr}" \
     "${sni}" "${priv_key}" "${short_id}") \
                                           || die "Failed to create Reality inbound"
@@ -405,13 +405,13 @@ _create_all_inbounds() {
     has_certs="true"
 
     # Add WS-TLS inbound
-    local ws_config
+    local ws_config=''
     ws_config=$(create_ws_inbound "${uuid}" "${WS_PORT_CHOSEN}" "${listen_addr}" \
       "${DOMAIN}" "${cert_fullchain}" "${cert_key}") \
                                                      || die "Failed to create WS-TLS inbound"
 
     # Add Hysteria2 inbound
-    local hy2_config
+    local hy2_config=''
     hy2_config=$(create_hysteria2_inbound "${HY2_PASS}" "${HY2_PORT_CHOSEN}" "${listen_addr}" \
       "${cert_fullchain}" "${cert_key}") \
                                          || die "Failed to create Hysteria2 inbound"
@@ -437,10 +437,10 @@ write_config() {
 
   # Detect network stack support
   msg "Detecting network stack support..."
-  local ipv6_supported
+  local ipv6_supported=''
   ipv6_supported=$(detect_ipv6_support)
 
-  local listen_addr
+  local listen_addr=''
   listen_addr=$(choose_listen_address "${ipv6_supported}")
 
   if [[ "${ipv6_supported}" == "true" ]]; then
@@ -456,7 +456,7 @@ write_config() {
   _validate_certificate_config "${CERT_FULLCHAIN:-}" "${CERT_KEY:-}"
 
   # Create temporary file for atomic write with secure permissions (600 automatic)
-  local temp_conf
+  local temp_conf=''
   temp_conf=$(create_temp_file "config") || die "Failed to create secure temporary file"
 
   # Setup automatic cleanup on function exit/error
@@ -466,12 +466,12 @@ write_config() {
   trap cleanup_write_config RETURN ERR EXIT INT TERM
 
   # Create base configuration
-  local base_config
+  local base_config=''
   base_config=$(create_base_config "${ipv6_supported}" "${LOG_LEVEL:-warn}") \
                                                                              || die "Failed to create base configuration"
 
   # Create all inbounds (Reality + optional WS-TLS and Hysteria2)
-  local inbound_result has_certs
+  local inbound_result='' has_certs=''
   # shellcheck disable=SC2154  # UUID, REALITY_PORT_CHOSEN, PRIV, SID set by caller
   inbound_result=$(_create_all_inbounds "${base_config}" "${UUID}" "${REALITY_PORT_CHOSEN}" \
     "${listen_addr}" "${SNI_DEFAULT:-www.microsoft.com}" "${PRIV}" "${SID}" \

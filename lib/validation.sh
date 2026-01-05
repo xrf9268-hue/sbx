@@ -166,7 +166,7 @@ validate_cert_files() {
 
   # Step 5: Certificate-Key matching validation
   # Extract public key hash from certificate
-  local cert_pubkey
+  local cert_pubkey=''
   cert_pubkey=$(openssl x509 -in "${fullchain}" -noout -pubkey 2> /dev/null | openssl md5 2> /dev/null | awk '{print $2}')
 
   if [[ -z "${cert_pubkey}" || "${cert_pubkey}" == "${EMPTY_MD5_HASH}" ]]; then
@@ -176,7 +176,7 @@ validate_cert_files() {
   fi
 
   # Extract public key hash from private key using generic pkey command
-  local key_pubkey
+  local key_pubkey=''
   key_pubkey=$(openssl pkey -in "${key}" -pubout 2> /dev/null | openssl md5 2> /dev/null | awk '{print $2}')
 
   if [[ -z "${key_pubkey}" || "${key_pubkey}" == "${EMPTY_MD5_HASH}" ]]; then
@@ -201,7 +201,7 @@ validate_cert_files() {
   debug "Certificate-key match confirmed (pubkey MD5: ${cert_pubkey})"
 
   # Log expiry information if available
-  local expiry_date
+  local expiry_date=''
   expiry_date=$(openssl x509 -in "${fullchain}" -noout -enddate 2> /dev/null | cut -d= -f2)
   [[ -n "${expiry_date}" ]] && debug "Certificate expires: ${expiry_date}"
 
@@ -673,7 +673,7 @@ require() {
 #   require_all UUID DOMAIN PORT || return 1
 #
 require_all() {
-  local var_name
+  local var_name=''
   local failed=0
 
   for var_name in "$@"; do
@@ -786,7 +786,7 @@ validate_file_integrity() {
     fi
 
     # Check minimum size if specified
-    local actual_size
+    local actual_size=0
     actual_size=$(get_file_size "${file_path}")
     if [[ "${actual_size}" -lt "${min_size}" ]]; then
       err "File too small: ${file_path}"
@@ -814,7 +814,7 @@ validate_file_integrity() {
 #   validate_files_integrity "$CERT" "$KEY" || return 1
 #
 validate_files_integrity() {
-  local file
+  local file=''
   local failed=0
 
   for file in "$@"; do

@@ -24,7 +24,7 @@ source "${_LIB_DIR}/common.sh"
 
 # Load client info from saved configuration with strict validation
 load_client_info() {
-  local client_info_file resolved owner perm invalid_line
+  local client_info_file='' resolved='' owner='' perm='' invalid_line=''
   local allowed_keys_regex="^(DOMAIN|UUID|PUBLIC_KEY|SHORT_ID|SNI|REALITY_PORT|WS_PORT|HY2_PORT|HY2_PASS|CERT_FULLCHAIN|CERT_KEY)$"
 
   # Support test mode with alternative client info path
@@ -43,7 +43,6 @@ load_client_info() {
   # In production mode, require root ownership for security
   # Skip this check in test mode (TEST_CLIENT_INFO set) to allow non-root CI
   if [[ -z "${TEST_CLIENT_INFO:-}" ]]; then
-    local owner
     # Cross-platform stat: Linux uses -c, BSD/macOS uses -f
     owner=$(stat -c '%u' "${resolved}" 2> /dev/null || stat -f '%u' "${resolved}" 2> /dev/null) || die "Unable to read client info ownership"
     [[ "${owner}" -eq 0 ]] || die "Client info must be owned by root (uid 0)"
@@ -57,7 +56,7 @@ load_client_info() {
   fi
 
   # Parse key-value pairs safely
-  local line key value
+  local line='' key='' value=''
   declare -A client_info_map=()
   while IFS= read -r line || [[ -n "${line}" ]]; do
     [[ -z "${line}" || "${line}" =~ ^[[:space:]]*# ]] && continue
@@ -296,6 +295,7 @@ export_uri() {
 # Generate QR codes for configuration
 export_qr_codes() {
   local output_dir="${1:-./qr-codes}"
+  local reality_uri='' ws_uri='' hy2_uri=''
   load_client_info
 
   command -v qrencode > /dev/null || die "qrencode not installed. Install with: apt install qrencode"
@@ -303,7 +303,6 @@ export_qr_codes() {
   mkdir -p "${output_dir}"
 
   # Reality QR
-  local reality_uri
   reality_uri=$(export_uri reality)
   qrencode -t PNG -o "${output_dir}/reality-qr.png" "${reality_uri}"
   qrencode -t UTF8 -o "${output_dir}/reality-qr.txt" "${reality_uri}"
@@ -311,13 +310,11 @@ export_qr_codes() {
 
   if [[ -n "${WS_PORT}" ]]; then
     # WS-TLS QR
-    local ws_uri
     ws_uri=$(export_uri ws)
     qrencode -t PNG -o "${output_dir}/ws-qr.png" "${ws_uri}"
     success "  ✓ WS-TLS QR code: ${output_dir}/ws-qr.png"
 
     # Hysteria2 QR
-    local hy2_uri
     hy2_uri=$(export_uri hy2)
     qrencode -t PNG -o "${output_dir}/hy2-qr.png" "${hy2_uri}"
     success "  ✓ Hysteria2 QR code: ${output_dir}/hy2-qr.png"
@@ -333,6 +330,7 @@ export_qr_codes() {
 # Generate subscription link (Base64 encoded URIs)
 export_subscription() {
   local output_file="${1:-/var/www/html/sub.txt}"
+  local subscription='' sub_url=''
   load_client_info
 
   local uris=""
@@ -346,7 +344,6 @@ export_subscription() {
   fi
 
   # Base64 encode
-  local subscription
   subscription=$(echo -n "${uris}" | base64 -w 0)
 
   # Save to file
@@ -358,7 +355,6 @@ export_subscription() {
 
   # Display access URL if web server detected
   if systemctl is-active nginx > /dev/null 2>&1 || systemctl is-active apache2 > /dev/null 2>&1; then
-    local sub_url
     sub_url="http://${DOMAIN}/$(basename "${output_file}")"
     info "Subscription URL: ${sub_url}"
   fi
@@ -373,18 +369,16 @@ export_config() {
   local client="${1:-}"
   local protocol="${2:-reality}"
   local output_file="${3:-}"
+  local config=''
 
   case "${client}" in
     v2rayn | v2rayng)
-      local config
       config=$(export_v2rayn_json "${protocol}")
       ;;
     clash | clash-meta)
-      local config
       config=$(export_clash_yaml)
       ;;
     uri)
-      local config
       config=$(export_uri "${protocol}")
       ;;
     subscription | sub)

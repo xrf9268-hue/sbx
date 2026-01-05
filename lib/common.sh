@@ -359,7 +359,7 @@ cleanup() {
 #   temp_dir=$(create_temp_dir "backup") || return 1
 create_temp_dir() {
   local prefix="${1:-sbx}"
-  local temp_dir
+  local temp_dir=''
 
   if ! temp_dir=$(mktemp -d -t "${prefix}.XXXXXX" 2>&1); then
     err "Failed to create temporary directory"
@@ -382,6 +382,48 @@ create_temp_dir() {
   return 0
 }
 
+# Create temporary directory inside a specific parent directory.
+#
+# Usage: temp_dir=$(create_temp_dir_in_dir "/path" "prefix") || return 1
+# Args:
+#   $1: Parent directory (must exist and be writable)
+#   $2: Optional prefix for temp directory name
+# Returns:
+#   Path to created temporary directory
+create_temp_dir_in_dir() {
+  local parent_dir="$1"
+  local prefix="${2:-sbx}"
+  local temp_dir=''
+
+  [[ -n "${parent_dir}" ]] || {
+    err "Failed to create temporary directory (missing parent directory)"
+    return 1
+  }
+  [[ -d "${parent_dir}" ]] || {
+    err "Parent directory not found: ${parent_dir}"
+    return 1
+  }
+  [[ -w "${parent_dir}" ]] || {
+    err "Parent directory not writable: ${parent_dir}"
+    return 1
+  }
+
+  if ! temp_dir=$(mktemp -d "${parent_dir%/}/${prefix}.XXXXXX" 2>&1); then
+    err "Failed to create temporary directory in: ${parent_dir}"
+    err "Details: ${temp_dir}"
+    return 1
+  fi
+
+  chmod 700 "${temp_dir}" || {
+    err "Failed to set permissions on temp directory: ${temp_dir}"
+    rm -rf "${temp_dir}" 2> /dev/null
+    return 1
+  }
+
+  echo "${temp_dir}"
+  return 0
+}
+
 # Create temporary file with consistent error handling
 #
 # Usage: tmpfile=$(create_temp_file) || return 1
@@ -393,7 +435,7 @@ create_temp_dir() {
 #   tmpfile=$(create_temp_file "config") || return 1
 create_temp_file() {
   local prefix="${1:-sbx}"
-  local tmpfile
+  local tmpfile=''
 
   if ! tmpfile=$(mktemp -t "${prefix}.XXXXXX" 2>&1); then
     err "Failed to create temporary file"
@@ -406,6 +448,48 @@ create_temp_file() {
   fi
 
   # Set secure permissions
+  chmod 600 "${tmpfile}" || {
+    err "Failed to set permissions on temp file: ${tmpfile}"
+    rm -f "${tmpfile}" 2> /dev/null
+    return 1
+  }
+
+  echo "${tmpfile}"
+  return 0
+}
+
+# Create temporary file inside a specific parent directory.
+#
+# Usage: tmpfile=$(create_temp_file_in_dir "/path" "prefix") || return 1
+# Args:
+#   $1: Parent directory (must exist and be writable)
+#   $2: Optional prefix for temp file name
+# Returns:
+#   Path to created temporary file
+create_temp_file_in_dir() {
+  local parent_dir="$1"
+  local prefix="${2:-sbx}"
+  local tmpfile=''
+
+  [[ -n "${parent_dir}" ]] || {
+    err "Failed to create temporary file (missing parent directory)"
+    return 1
+  }
+  [[ -d "${parent_dir}" ]] || {
+    err "Parent directory not found: ${parent_dir}"
+    return 1
+  }
+  [[ -w "${parent_dir}" ]] || {
+    err "Parent directory not writable: ${parent_dir}"
+    return 1
+  }
+
+  if ! tmpfile=$(mktemp "${parent_dir%/}/${prefix}.XXXXXX" 2>&1); then
+    err "Failed to create temporary file in: ${parent_dir}"
+    err "Details: ${tmpfile}"
+    return 1
+  fi
+
   chmod 600 "${tmpfile}" || {
     err "Failed to set permissions on temp file: ${tmpfile}"
     rm -f "${tmpfile}" 2> /dev/null
@@ -433,6 +517,7 @@ source "${_LIB_DIR}/generators.sh"
 trap cleanup EXIT INT TERM
 
 # Export core utility functions
-export -f need_root have safe_rm_temp get_file_size cleanup create_temp_dir create_temp_file
+export -f need_root have safe_rm_temp get_file_size cleanup \
+  create_temp_dir create_temp_dir_in_dir create_temp_file create_temp_file_in_dir
 
 # Note: Logging and generator functions are exported by their respective modules

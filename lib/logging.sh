@@ -108,7 +108,7 @@ log_json() {
   message="${message//$'\r'/\\r}"
   message="${message//$'\t'/\\t}"
 
-  local json_log
+  local json_log=''
   json_log=$(printf '{"timestamp":"%s","level":"%s","message":"%s"}' \
     "$(date -Iseconds)" "${level}" "${message}")
 
@@ -120,7 +120,7 @@ log_json() {
 _should_log() {
   local msg_level="$1"
   # Map log level to numeric value
-  local msg_level_value
+  local msg_level_value=0
   case "${msg_level}" in
     ERROR) msg_level_value=0 ;;
     WARN)  msg_level_value=1 ;;
@@ -144,12 +144,13 @@ msg() {
 
   if [[ "${LOG_FORMAT}" == "json" ]]; then
     log_json "INFO" "$@"
-  else
-    local output
-    output="$(_log_timestamp)${G}[*]${N} $*"
-    echo "${output}" >&2
-    _log_to_file "${output}"
+    return 0
   fi
+
+  local output=''
+  output="$(_log_timestamp)${G}[*]${N} $*"
+  echo "${output}" >&2
+  _log_to_file "${output}"
 }
 
 # Warning message (yellow [!])
@@ -158,12 +159,13 @@ warn() {
 
   if [[ "${LOG_FORMAT}" == "json" ]]; then
     log_json "WARN" "$@"
-  else
-    local output
-    output="$(_log_timestamp)${Y}[!]${N} $*"
-    echo "${output}" >&2
-    _log_to_file "${output}"
+    return 0
   fi
+
+  local output=''
+  output="$(_log_timestamp)${Y}[!]${N} $*"
+  echo "${output}" >&2
+  _log_to_file "${output}"
 }
 
 # Error message (red [ERR])
@@ -172,12 +174,13 @@ err() {
 
   if [[ "${LOG_FORMAT}" == "json" ]]; then
     log_json "ERROR" "$@"
-  else
-    local output
-    output="$(_log_timestamp)${R}[ERR]${N} $*"
-    echo "${output}" >&2
-    _log_to_file "${output}"
+    return 0
   fi
+
+  local output=''
+  output="$(_log_timestamp)${R}[ERR]${N} $*"
+  echo "${output}" >&2
+  _log_to_file "${output}"
 }
 
 # Info message (blue [INFO])
@@ -186,12 +189,13 @@ info() {
 
   if [[ "${LOG_FORMAT}" == "json" ]]; then
     log_json "INFO" "$@"
-  else
-    local output
-    output="$(_log_timestamp)${BLUE}[INFO]${N} $*"
-    echo "${output}" >&2
-    _log_to_file "${output}"
+    return 0
   fi
+
+  local output=''
+  output="$(_log_timestamp)${BLUE}[INFO]${N} $*"
+  echo "${output}" >&2
+  _log_to_file "${output}"
 }
 
 # Success message (green [✓])
@@ -200,12 +204,13 @@ success() {
 
   if [[ "${LOG_FORMAT}" == "json" ]]; then
     log_json "INFO" "$@"
-  else
-    local output
-    output="$(_log_timestamp)${G}[✓]${N} $*"
-    echo "${output}" >&2
-    _log_to_file "${output}"
+    return 0
   fi
+
+  local output=''
+  output="$(_log_timestamp)${G}[✓]${N} $*"
+  echo "${output}" >&2
+  _log_to_file "${output}"
 }
 
 # Debug message (cyan [DEBUG])
@@ -215,12 +220,13 @@ debug() {
 
   if [[ "${LOG_FORMAT}" == "json" ]]; then
     log_json "DEBUG" "$@"
-  else
-    local output
-    output="$(_log_timestamp)${CYAN}[DEBUG]${N} $*"
-    echo "${output}" >&2
-    _log_to_file "${output}"
+    return 0
   fi
+
+  local output=''
+  output="$(_log_timestamp)${CYAN}[DEBUG]${N} $*"
+  echo "${output}" >&2
+  _log_to_file "${output}"
 }
 
 # Error and exit
@@ -243,7 +249,7 @@ rotate_logs_if_needed() {
   [[ -z "${log_file}" || ! -f "${log_file}" ]] && return 0
 
   # Get file size in KB
-  local file_size_kb
+  local file_size_kb=0
   file_size_kb=$(du -k "${log_file}" 2>/dev/null | cut -f1) || return 0
 
   # Only rotate if file exceeds max size
@@ -256,17 +262,17 @@ rotate_logs_if_needed() {
 rotate_logs() {
   local log_file="${1:-${LOG_FILE}}"
   local max_size_kb="${2:-10240}"  # Default 10MB
+  local timestamp=''
 
   [[ -z "${log_file}" ]] && return 0
   [[ ! -f "${log_file}" ]] && return 0
 
   # Get file size in KB
-  local file_size
+  local file_size=0
   file_size=$(du -k "${log_file}" 2>/dev/null | cut -f1)
 
   # Rotate if larger than max size
   if [[ ${file_size} -gt ${max_size_kb} ]]; then
-    local timestamp
     timestamp=$(date '+%Y%m%d-%H%M%S')
     mv "${log_file}" "${log_file}.${timestamp}" 2>/dev/null || true
     touch "${log_file}" && chmod 600 "${log_file}"

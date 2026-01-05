@@ -71,12 +71,12 @@ start_service_with_retry() {
     fi
 
     # Service failed to start - check if it's a port binding issue
-    local error_log
+    local error_log=''
     error_log=$(journalctl -u sing-box -n 20 --no-pager 2>/dev/null | \
                 grep -iE "bind|address.*in use|listen.*failed" | head -3 || true)
 
     if [[ -n "${error_log}" ]]; then
-      ((retry_count++))
+      retry_count=$((retry_count + 1))
       if [[ ${retry_count} -lt ${max_retries} ]]; then
         warn "Port binding failed, retrying (${retry_count}/${max_retries}) in ${wait_time}s..."
         warn "Error: $(echo "${error_log}" | head -1)"
@@ -103,6 +103,7 @@ start_service_with_retry() {
 
 # Setup and start sing-box service
 setup_service() {
+  local ws_port='' hy2_port=''
   create_service_file || die "Failed to create service file"
 
   # Reload systemd daemon
@@ -131,7 +132,7 @@ setup_service() {
       break
     fi
     sleep "${SERVICE_WAIT_SHORT_SEC:-1}"
-    ((waited++))
+    waited=$((waited + 1))
   done
 
   # Verify service is running
@@ -153,8 +154,8 @@ setup_service() {
 
   # Check WS and Hysteria2 ports if certificates are configured
   if [[ -n "${CERT_FULLCHAIN:-}" && -f "${CERT_FULLCHAIN:-}" ]]; then
-    local ws_port="${WS_PORT_CHOSEN:-${WS_PORT}}"
-    local hy2_port="${HY2_PORT_CHOSEN:-${HY2_PORT}}"
+    ws_port="${WS_PORT_CHOSEN:-${WS_PORT}}"
+    hy2_port="${HY2_PORT_CHOSEN:-${HY2_PORT}}"
 
     validate_port_listening "${ws_port}" "WS-TLS" || warn "WS-TLS may not be listening properly"
     validate_port_listening "${hy2_port}" "Hysteria2" || warn "Hysteria2 may not be listening properly"
@@ -176,7 +177,7 @@ validate_port_listening() {
       return 0
     fi
 
-    ((attempt++))
+    attempt=$((attempt + 1))
     if [[ ${attempt} -lt ${max_attempts} ]]; then
       sleep "${SERVICE_WAIT_SHORT_SEC:-1}"
     fi
@@ -210,7 +211,7 @@ stop_service() {
     local waited=0
     while systemctl is-active sing-box >/dev/null 2>&1 && [[ ${waited} -lt ${max_wait} ]]; do
       sleep "${SERVICE_WAIT_SHORT_SEC:-1}"
-      ((waited++))
+      waited=$((waited + 1))
     done
 
     if systemctl is-active sing-box >/dev/null 2>&1; then

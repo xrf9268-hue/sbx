@@ -66,7 +66,7 @@ generate_uuid() {
   # Method 4: OpenSSL with proper UUID v4 format
   # UUID v4 format: xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx
   # where y is one of [8, 9, a, b] (variant bits: 10xx in binary)
-  local hex variant_byte variant_value
+  local hex='' variant_byte='' variant_value=0
   hex=$(openssl rand -hex 16) || return 1
 
   # Use cryptographically secure random for variant bits
@@ -96,14 +96,14 @@ generate_uuid() {
 #
 # Requires: sing-box binary at $SB_BIN
 generate_reality_keypair() {
-  local output
+  local output=''
   output=$("${SB_BIN}" generate reality-keypair 2>&1) || {
     err "Failed to generate Reality keypair: ${output}"
     return 1
   }
 
   # Extract and validate keys
-  local priv pub
+  local priv='' pub=''
   priv=$(echo "${output}" | grep "PrivateKey:" | awk '{print $2}')
   pub=$(echo "${output}" | grep "PublicKey:" | awk '{print $2}')
 
@@ -211,6 +211,7 @@ generate_all_qr_codes() {
   local public_key="$4"
   local short_id="$5"
   local sni="${6:-${SNI_DEFAULT}}"
+  local ws_uri='' hy2_uri=''
 
   # Optional parameters for WS-TLS and Hysteria2
   local ws_port="${7:-}"
@@ -223,13 +224,13 @@ generate_all_qr_codes() {
 
   # WS-TLS QR code (if configured)
   if [[ -n "${ws_port}" ]]; then
-    local ws_uri="vless://${uuid}@${domain}:${ws_port}?encryption=none&security=tls&type=ws&host=${domain}&path=/ws&sni=${domain}&fp=chrome#WS-TLS-${domain}"
+    ws_uri="vless://${uuid}@${domain}:${ws_port}?encryption=none&security=tls&type=ws&host=${domain}&path=/ws&sni=${domain}&fp=chrome#WS-TLS-${domain}"
     generate_qr_code "${ws_uri}" "WS-TLS"
   fi
 
   # Hysteria2 QR code (if configured)
   if [[ -n "${hy2_port}" && -n "${hy2_pass}" ]]; then
-    local hy2_uri="hysteria2://${hy2_pass}@${domain}:${hy2_port}/?sni=${domain}&alpn=h3&insecure=0#Hysteria2-${domain}"
+    hy2_uri="hysteria2://${hy2_pass}@${domain}:${hy2_port}/?sni=${domain}&alpn=h3&insecure=0#Hysteria2-${domain}"
     generate_qr_code "${hy2_uri}" "Hysteria2"
   fi
 }

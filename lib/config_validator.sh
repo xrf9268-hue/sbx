@@ -129,13 +129,14 @@ with open('${config_file}') as f:
 #   validate_port_conflicts "/etc/sing-box/config.json"
 validate_port_conflicts() {
   local config_file="$1"
+  local duplicate_port=''
 
   # First validate JSON syntax
   validate_json_syntax "${config_file}" verbose || return 1
 
   if have jq; then
     # Extract all listen_port values
-    local ports
+    local ports=''
     ports=$(jq -r '.inbounds[]?.listen_port // empty' "${config_file}" 2> /dev/null | sort)
 
     # Check for empty result (no ports configured or no inbounds)
@@ -145,11 +146,10 @@ validate_port_conflicts() {
     fi
 
     # Check for duplicates
-    local unique_ports
+    local unique_ports=''
     unique_ports=$(echo "${ports}" | uniq)
 
     if [[ "${ports}" != "${unique_ports}" ]]; then
-      local duplicate_port
       duplicate_port=$(echo "${ports}" | uniq -d | head -1)
       err "Port conflict detected: port ${duplicate_port} is used by multiple inbounds"
       return 1
@@ -209,7 +209,7 @@ validate_tls_config() {
 
   if have jq; then
     # Check each inbound with TLS enabled
-    local tls_inbounds
+    local tls_inbounds=''
     tls_inbounds=$(jq -c '.inbounds[]? | select(.tls.enabled == true)' "${config_file}" 2> /dev/null)
 
     # If no TLS inbounds, validation passes
@@ -221,7 +221,7 @@ validate_tls_config() {
     # Check each TLS inbound
     while IFS= read -r inbound; do
       # Check if Reality is enabled
-      local reality_enabled
+      local reality_enabled=''
       reality_enabled=$(echo "${inbound}" | jq -r '.tls.reality.enabled // false' 2> /dev/null)
 
       if [[ "${reality_enabled}" == "true" ]]; then
@@ -230,7 +230,7 @@ validate_tls_config() {
       fi
 
       # For non-Reality TLS, check certificate paths
-      local cert_path key_path
+      local cert_path='' key_path=''
       cert_path=$(echo "${inbound}" | jq -r '.tls.certificate_path // empty' 2> /dev/null)
       key_path=$(echo "${inbound}" | jq -r '.tls.key_path // empty' 2> /dev/null)
 
@@ -277,7 +277,7 @@ validate_route_rules() {
 
   if have jq; then
     # Check for deprecated 'sniff' field in inbounds
-    local deprecated_sniff
+    local deprecated_sniff=''
     deprecated_sniff=$(jq -r '.inbounds[]? | select(.sniff != null) | .tag // .type' "${config_file}" 2> /dev/null)
 
     if [[ -n "${deprecated_sniff}" ]]; then
@@ -287,7 +287,7 @@ validate_route_rules() {
     fi
 
     # Check for deprecated 'sniff_override_destination' field
-    local deprecated_sniff_override
+    local deprecated_sniff_override=''
     deprecated_sniff_override=$(jq -r '.inbounds[]? | select(.sniff_override_destination != null) | .tag // .type' "${config_file}" 2> /dev/null)
 
     if [[ -n "${deprecated_sniff_override}" ]]; then
@@ -297,7 +297,7 @@ validate_route_rules() {
     fi
 
     # Check for deprecated 'domain_strategy' in inbounds
-    local deprecated_ds_inbound
+    local deprecated_ds_inbound=''
     deprecated_ds_inbound=$(jq -r '.inbounds[]? | select(.domain_strategy != null) | .tag // .type' "${config_file}" 2> /dev/null)
 
     if [[ -n "${deprecated_ds_inbound}" ]]; then
@@ -307,7 +307,7 @@ validate_route_rules() {
     fi
 
     # Check for deprecated 'domain_strategy' in outbounds
-    local deprecated_ds_outbound
+    local deprecated_ds_outbound=''
     deprecated_ds_outbound=$(jq -r '.outbounds[]? | select(.domain_strategy != null) | .tag // .type' "${config_file}" 2> /dev/null)
 
     if [[ -n "${deprecated_ds_outbound}" ]]; then
@@ -388,6 +388,7 @@ with open('${config_file}') as f:
 #   validate_config_pipeline "/etc/sing-box/config.json"
 validate_config_pipeline() {
   local config_file="$1"
+  local sb_bin='' check_output=''
 
   info "Running configuration validation pipeline..."
 
@@ -429,9 +430,9 @@ validate_config_pipeline() {
   # Step 6: sing-box binary check (if available)
   msg "  [6/6] Running sing-box binary check..."
   if [[ -x "${SB_BIN:-/usr/local/bin/sing-box}" ]]; then
-    local sb_bin="${SB_BIN:-/usr/local/bin/sing-box}"
+    sb_bin="${SB_BIN:-/usr/local/bin/sing-box}"
     # Rely on exit code rather than output text (future-proof, localization-safe)
-    local check_output=""
+    check_output=''
     if ! check_output=$("${sb_bin}" check -c "${config_file}" 2>&1); then
       err "Configuration validation failed at step 6: sing-box check"
       echo "${check_output}" >&2

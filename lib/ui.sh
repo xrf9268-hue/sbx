@@ -105,7 +105,7 @@ show_existing_installation_menu() {
 prompt_menu_choice() {
   local min="${1:-1}"
   local max="${2:-6}"
-  local choice
+  local choice=''
 
   read -rp "Enter your choice [1-${max}]: " choice
 
@@ -127,7 +127,7 @@ prompt_menu_choice() {
 prompt_yes_no() {
   local prompt="${1:-Continue?}"
   local default="${2:-N}"
-  local response
+  local response=''
 
   if [[ "${default}" =~ ^[Yy]$ ]]; then
     read -rp "${prompt} [Y/n]: " response
@@ -150,7 +150,7 @@ prompt_input() {
   local prompt="$1"
   local default="${2:-}"
   local validator="${3:-}"  # Optional validation function
-  local input
+  local input=''
 
   if [[ -n "${default}" ]]; then
     read -rp "${prompt} [${default}]: " input
@@ -177,7 +177,7 @@ prompt_input() {
 # Secure password prompt
 prompt_password() {
   local prompt="${1:-Enter password}"
-  local password
+  local password=''
 
   read -rsp "${prompt}: " password
   echo >&2  # New line after password input

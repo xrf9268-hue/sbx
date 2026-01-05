@@ -59,7 +59,7 @@ verify_file_checksum() {
     fi
 
     # Extract expected checksum (first field of first line)
-    local expected_sum
+    local expected_sum=''
     expected_sum=$(awk '{print $1}' "${checksum_file}" | head -1)
 
     # Validate checksum format (64 hex characters for SHA256)
@@ -144,7 +144,7 @@ verify_singbox_binary() {
     msg "  Checksum URL: ${checksum_url}"
 
     # Create temporary file for checksum
-    local checksum_file
+    local checksum_file=''
     checksum_file=$(create_temp_file "checksum") || return 1
 
     # Ensure cleanup (use variable expansion at trap time to avoid unbound variable in set -u)

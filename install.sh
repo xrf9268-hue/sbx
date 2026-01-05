@@ -63,6 +63,56 @@ get_file_size() {
   stat -c%s "${file}" 2> /dev/null || stat -f%z "${file}" 2> /dev/null || echo "0"
 }
 
+# Temporary create_temp_dir implementation for bootstrapping
+# This will be overridden by lib/common.sh after module loading
+create_temp_dir() {
+  local prefix="${1:-sbx}"
+  local temp_dir=''
+
+  if ! temp_dir=$(mktemp -d -t "${prefix}.XXXXXX" 2> /dev/null); then
+    echo "ERROR: Failed to create temporary directory" >&2
+    return 1
+  fi
+
+  chmod "${SECURE_DIR_PERMISSIONS}" "${temp_dir}" 2> /dev/null || {
+    echo "ERROR: Failed to set permissions on temporary directory: ${temp_dir}" >&2
+    rm -rf "${temp_dir}" 2> /dev/null || true
+    return 1
+  }
+
+  echo "${temp_dir}"
+  return 0
+}
+
+# Print usage help (must work before module loading)
+_print_help() {
+  cat <<'EOF'
+sbx-lite sing-box installer
+
+Usage:
+  bash install.sh                  Interactive install
+  AUTO_INSTALL=1 bash install.sh   Non-interactive install
+  bash install.sh uninstall        Uninstall
+  bash install.sh --help           Show this help
+
+Environment (common):
+  DOMAIN=example.com               Configure domain/certs if supported
+  DEBUG=1                          Enable debug output
+EOF
+}
+
+# Handle --help/-h early (no root required)
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  case "${1:-}" in
+    -h|--help)
+      _print_help
+      exit 0
+      ;;
+    *)
+      ;;
+  esac
+fi
+
 #==============================================================================
 # Module Loading with Smart Download
 #==============================================================================
@@ -113,7 +163,7 @@ _download_single_module() {
   fi
 
     # Check file size
-    local file_size
+    local file_size=0
     file_size=$(get_file_size "${module_file}")
     [[ "${DEBUG:-0}" == "1" ]] && echo "DEBUG: ${module} file size: ${file_size} bytes" >&2
 
@@ -157,24 +207,25 @@ _download_modules_parallel() {
     local failed_modules=()
     local success_count=0
     local current=0
+    local mod_name='' mod_size='' error_type='' percent=0
 
     # Use xargs for parallel execution
     while IFS= read -r result; do
-        ((current++))
+        current=$((current + 1))
 
         # Parse result
         if [[ "${result}" =~ ^SUCCESS:(.+):([0-9]+)$ ]]; then
-            local mod_name="${BASH_REMATCH[1]}"
-            local mod_size="${BASH_REMATCH[2]}"
-            ((success_count++))
+            mod_name="${BASH_REMATCH[1]}"
+            mod_size="${BASH_REMATCH[2]}"
+            success_count=$((success_count + 1))
 
             # Progress indicator
-            local percent=$((current * 100 / total))
+            percent=$((current * 100 / total))
             printf "\r  [%3d%%] %d/%d modules downloaded" "${percent}" "${current}" "${total}"
 
     elif     [[ "${result}" =~ ^(DOWNLOAD_FAILED|FILE_NOT_FOUND|FILE_TOO_SMALL|SYNTAX_ERROR|NO_DOWNLOADER):(.+) ]]; then
-            local error_type="${BASH_REMATCH[1]}"
-            local mod_name="${BASH_REMATCH[2]}"
+            error_type="${BASH_REMATCH[1]}"
+            mod_name="${BASH_REMATCH[2]}"
             failed_modules+=("${mod_name}:${error_type}")
     fi
   done   < <(printf '%s\n' "${modules[@]}" | xargs -P "${parallel_jobs}" -I {} bash -c '_download_single_module "$temp_lib_dir" "$github_repo" "$@"' _ {})
@@ -210,7 +261,7 @@ _download_modules_sequential() {
     echo "  Downloading ${total} modules sequentially..."
 
     for module in "${modules[@]}"; do
-        ((current++))
+        current=$((current + 1))
         local module_file="${temp_lib_dir}/${module}.sh"
         local module_url="${github_repo}/lib/${module}.sh"
 
@@ -239,7 +290,7 @@ _download_modules_sequential() {
     fi
 
         # Verify
-        local file_size
+        local file_size=0
         file_size=$(get_file_size "${module_file}")
 
         if [[ ! -f "${module_file}" ]] || [[ "${file_size}" -lt "${MIN_MODULE_FILE_SIZE_BYTES}" ]]; then
@@ -330,6 +381,66 @@ _show_syntax_error() {
     echo ""
 }
 
+_download_and_validate_manager_script() {
+    local github_repo="$1"
+    local installer_dir="$2"
+
+    local manager_url="${github_repo}/bin/sbx-manager.sh"
+    local manager_file="${installer_dir}/bin/sbx-manager.sh"
+    local download_success=0
+
+    echo "  Downloading sbx-manager script..."
+    [[ "${DEBUG:-0}" == "1" ]] && echo "DEBUG: Creating ${installer_dir}/bin directory" >&2
+    mkdir -p "${installer_dir}/bin"
+
+    if command -v curl > /dev/null 2>&1; then
+        [[ "${DEBUG:-0}" == "1" ]] && echo "DEBUG: Downloading sbx-manager.sh via curl from ${manager_url}" >&2
+        if curl -fsSL --connect-timeout "${DOWNLOAD_CONNECT_TIMEOUT_SEC}" \
+            --max-time "${DOWNLOAD_MAX_TIMEOUT_SEC}" "${manager_url}" -o "${manager_file}" 2> /dev/null; then
+            download_success=1
+        fi
+    elif command -v wget > /dev/null 2>&1; then
+        [[ "${DEBUG:-0}" == "1" ]] && echo "DEBUG: Downloading sbx-manager.sh via wget from ${manager_url}" >&2
+        if wget -q --timeout="${DOWNLOAD_MAX_TIMEOUT_SEC}" "${manager_url}" -O "${manager_file}" 2> /dev/null; then
+            download_success=1
+        fi
+    else
+        echo "ERROR: Neither curl nor wget available for downloading sbx-manager.sh"
+        return 1
+    fi
+
+    if [[ ${download_success} -eq 0 ]]; then
+        echo "ERROR: Failed to download sbx-manager.sh from ${manager_url}"
+        echo "       Please check network connection and try again."
+        return 1
+    fi
+
+    if [[ ! -f "${manager_file}" ]]; then
+        echo "ERROR: sbx-manager.sh download completed but file not found"
+        return 1
+    fi
+
+    local mgr_size=0
+    mgr_size=$(get_file_size "${manager_file}")
+    [[ "${DEBUG:-0}" == "1" ]] && echo "DEBUG: sbx-manager.sh file size: ${mgr_size} bytes" >&2
+
+    if [[ "${mgr_size}" -lt "${MIN_MANAGER_FILE_SIZE_BYTES}" ]]; then
+        echo "ERROR: Downloaded sbx-manager.sh is too small (${mgr_size} bytes)"
+        echo "       Expected: >${MIN_MANAGER_FILE_SIZE_BYTES} bytes (full version is ~15KB)"
+        echo "       File may be corrupted or incomplete."
+        return 1
+    fi
+
+    if ! bash -n "${manager_file}" 2> /dev/null; then
+        echo "ERROR: Invalid bash syntax in downloaded sbx-manager.sh"
+        echo "       File may be corrupted."
+        return 1
+    fi
+
+    echo "  ✓ sbx-manager.sh downloaded and validated (${mgr_size} bytes)"
+    return 0
+}
+
 #==============================================================================
 # Smart Module Loader
 #==============================================================================
@@ -347,18 +458,17 @@ _load_modules() {
         [[ "${DEBUG:-0}" == "1" ]] && echo "DEBUG: SCRIPT_DIR=${SCRIPT_DIR}, lib directory not found" >&2
 
         # Create temporary directory for modules
-        temp_lib_dir="$(mktemp -d)" || {
+        temp_lib_dir=$(create_temp_dir "sbx-lib") || {
             echo "ERROR: Failed to create temporary directory"
             exit 1
-    }
-        chmod "${SECURE_DIR_PERMISSIONS}" "${temp_lib_dir}"
+        }
         [[ "${DEBUG:-0}" == "1" ]] && echo "DEBUG: Created temp directory: ${temp_lib_dir}" >&2
 
         # Determine download strategy: parallel or sequential
         local use_parallel=1
         if [[ "${ENABLE_PARALLEL_DOWNLOAD:-1}" == "0" ]]; then
             use_parallel=0
-    fi
+        fi
 
         # Download modules (parallel with fallback to sequential on failure)
         if [[ ${use_parallel} -eq 1 ]] && command -v xargs > /dev/null 2>&1; then
@@ -370,19 +480,19 @@ _load_modules() {
                     echo ""
                     echo "ERROR: Module download failed (both parallel and sequential methods)"
                     exit 1
-        fi
-      fi
-    else
+                fi
+            fi
+        else
             # Use sequential download directly
             if ! _download_modules_sequential "${temp_lib_dir}" "${github_repo}" "${modules[@]}"; then
                 echo ""
                 echo "ERROR: Module download failed"
                 exit 1
-      fi
-    fi
+            fi
+        fi
 
         # Create proper directory structure
-        local parent_dir
+        local parent_dir=''
         parent_dir="$(dirname "${temp_lib_dir}")"
         SCRIPT_DIR="${parent_dir}/sbx-install-$$"
         [[ "${DEBUG:-0}" == "1" ]] && echo "DEBUG: Creating permanent directory: ${SCRIPT_DIR}/lib" >&2
@@ -390,70 +500,14 @@ _load_modules() {
         mv "${temp_lib_dir}"/*.sh "${SCRIPT_DIR}/lib/"
         rmdir "${temp_lib_dir}"
 
-        # Download bin/sbx-manager.sh for one-liner install
-        echo "  Downloading sbx-manager script..."
-        [[ "${DEBUG:-0}" == "1" ]] && echo "DEBUG: Creating ${SCRIPT_DIR}/bin directory" >&2
-        mkdir -p "${SCRIPT_DIR}/bin"
-
-        local manager_url="${github_repo}/bin/sbx-manager.sh"
-        local manager_file="${SCRIPT_DIR}/bin/sbx-manager.sh"
-        local download_success=0
-
-        if command -v curl > /dev/null 2>&1; then
-            [[ "${DEBUG:-0}" == "1" ]] && echo "DEBUG: Downloading sbx-manager.sh via curl from ${manager_url}" >&2
-            if curl -fsSL --connect-timeout "${DOWNLOAD_CONNECT_TIMEOUT_SEC}" \
-                --max-time "${DOWNLOAD_MAX_TIMEOUT_SEC}" "${manager_url}" -o "${manager_file}" 2> /dev/null; then
-                download_success=1
-      fi
-    elif     command -v wget > /dev/null 2>&1; then
-            [[ "${DEBUG:-0}" == "1" ]] && echo "DEBUG: Downloading sbx-manager.sh via wget from ${manager_url}" >&2
-            if wget -q --timeout="${DOWNLOAD_MAX_TIMEOUT_SEC}" "${manager_url}" -O "${manager_file}" 2> /dev/null; then
-                download_success=1
-      fi
-    else
-            echo "ERROR: Neither curl nor wget available for downloading sbx-manager.sh"
-            exit 1
-    fi
-
-        # Validate downloaded manager script
-        if [[ ${download_success} -eq 0 ]]; then
-            echo "ERROR: Failed to download sbx-manager.sh from ${manager_url}"
-            echo "       Please check network connection and try again."
-            exit 1
-    fi
-
-        if [[ ! -f "${manager_file}" ]]; then
-            echo "ERROR: sbx-manager.sh download completed but file not found"
-            exit 1
-    fi
-
-        # Check file size (full version should be >5KB, typically ~15KB)
-        local mgr_size
-        mgr_size=$(get_file_size "${manager_file}")
-        [[ "${DEBUG:-0}" == "1" ]] && echo "DEBUG: sbx-manager.sh file size: ${mgr_size} bytes" >&2
-
-        if [[ "${mgr_size}" -lt "${MIN_MANAGER_FILE_SIZE_BYTES}" ]]; then
-            echo "ERROR: Downloaded sbx-manager.sh is too small (${mgr_size} bytes)"
-            echo "       Expected: >${MIN_MANAGER_FILE_SIZE_BYTES} bytes (full version is ~15KB)"
-            echo "       File may be corrupted or incomplete."
-            exit 1
-    fi
-
-        # Validate bash syntax
-        if ! bash -n "${manager_file}" 2> /dev/null; then
-            echo "ERROR: Invalid bash syntax in downloaded sbx-manager.sh"
-            echo "       File may be corrupted."
-            exit 1
-    fi
-
-        echo "  ✓ sbx-manager.sh downloaded and validated (${mgr_size} bytes)"
+        _download_and_validate_manager_script "${github_repo}" "${SCRIPT_DIR}" || exit 1
 
         # Remember the generated directory so shared cleanup can purge it later
         INSTALLER_TEMP_DIR="${SCRIPT_DIR}"
 
         # Register cleanup for temporary files
         trap 'rm -rf "${SCRIPT_DIR}" 2>/dev/null || true' EXIT INT TERM
-  fi
+    fi
 
     # Load all library modules
     # Save SCRIPT_DIR to prevent pollution from sourced modules
@@ -467,9 +521,9 @@ _load_modules() {
             # Use debug() after common.sh is loaded, echo before
             if [[ "${module}" == "common" ]]; then
                 [[ "${DEBUG:-0}" == "1" ]] && echo "DEBUG: Loading module: ${module}.sh" >&2
-      else
+            else
                 [[ "${DEBUG:-0}" == "1" ]] && debug "Loading module: ${module}.sh"
-      fi
+            fi
 
             # shellcheck source=/dev/null
             source "${module_path}"
@@ -480,15 +534,15 @@ _load_modules() {
             # Use debug() after common.sh is loaded
             if [[ "${module}" == "common" ]]; then
                 [[ "${DEBUG:-0}" == "1" ]] && echo "DEBUG: Module ${module}.sh loaded, SCRIPT_DIR restored" >&2
-      else
+            else
                 [[ "${DEBUG:-0}" == "1" ]] && debug "Module ${module}.sh loaded, SCRIPT_DIR restored"
-      fi
-    else
+            fi
+        else
             echo "ERROR: Required module not found: ${module_path}"
             echo "Please ensure all lib/*.sh files are present."
             exit 1
-    fi
-  done
+        fi
+    done
 
     # Verify API contracts after loading all modules
     _verify_module_apis
@@ -576,7 +630,7 @@ _load_modules
 
 # Detect system architecture
 detect_arch() {
-    local arch detected_arch
+    local arch='' detected_arch=''
     arch="$(uname -m)"
     case "${arch}" in
         x86_64 | amd64) detected_arch="amd64" ;;
@@ -631,8 +685,8 @@ detect_libc() {
 
 # Get installed sing-box version
 get_installed_version() {
+    local version=''
     if [[ -x "${SB_BIN}" ]]; then
-        local version=""
         # Match version with or without 'v' prefix (e.g., "v1.12.12" or "1.12.12")
         version=$("${SB_BIN}" version 2> /dev/null | head -1 | grep -oE 'v?[0-9]+\.[0-9]+\.[0-9]+' || echo "unknown")
 
@@ -650,14 +704,14 @@ get_installed_version() {
 # Get latest version from GitHub
 get_latest_version() {
     local api="https://api.github.com/repos/SagerNet/sing-box/releases/latest"
-    local response
+    local response=''
     response=$(safe_http_get "${api}") || {
         warn "Failed to fetch latest version from GitHub"
         echo "unknown"
         return 1
   }
 
-    local version
+    local version=''
     version=$(echo "${response}" | grep -oE '"tag_name":\s*"v[0-9]+\.[0-9]+\.[0-9]+"' | head -1 | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+')
     echo "${version:-unknown}"
 }
@@ -715,7 +769,8 @@ compare_versions() {
 
 # Check for existing installation
 check_existing_installation() {
-    local current_version service_status latest_version version_status
+    local current_version='' service_status='' latest_version='' version_status=''
+    local backup_file=''
     current_version="$(get_installed_version)"
     service_status="$(check_service_status && echo "running" || echo "stopped")"
 
@@ -724,7 +779,6 @@ check_existing_installation() {
         if [[ "${AUTO_INSTALL:-0}" == "1" ]]; then
             msg "Auto-install mode: performing fresh install..."
             if [[ -f "${SB_CONF}" ]]; then
-                local backup_file
                 backup_file="${SB_CONF}.backup.$(date +%Y%m%d_%H%M%S)"
                 cp "${SB_CONF}" "${backup_file}"
                 success "  ✓ Backed up existing config to: ${backup_file}"
@@ -741,7 +795,7 @@ check_existing_installation() {
         show_existing_installation_menu "${current_version}" "${service_status}" "${latest_version}" "${version_status}"
 
         # Get user choice
-        local choice
+        local choice=''
         set +e
         choice=$(prompt_menu_choice 1 6)
         local prompt_result=$?
@@ -755,7 +809,6 @@ check_existing_installation() {
             1)  # Fresh install
                 msg "Performing fresh install..."
                 if [[ -f "${SB_CONF}" ]]; then
-                    local backup_file
                     backup_file="${SB_CONF}.backup.$(date +%Y%m%d_%H%M%S)"
                     cp "${SB_CONF}" "${backup_file}"
                     success "  ✓ Backed up existing config to: ${backup_file}"
@@ -929,7 +982,7 @@ download_singbox() {
   }
 
     # Find and install binary
-    local extracted_bin
+    local extracted_bin=''
     extracted_bin=$(find "${tmp}" -name "sing-box" -type f | head -1)
 
     if [[ -z "${extracted_bin}" ]]; then
@@ -985,7 +1038,7 @@ gen_materials() {
             echo "Note: Domain must be 'DNS only' (gray cloud) in Cloudflare"
             echo
 
-            local input
+            local input=''
             read -rp "Domain or IP (press Enter to auto-detect): " input
             input=$(sanitize_input "${input}")
 
@@ -1021,7 +1074,7 @@ gen_materials() {
     success "  ✓ UUID generated"
 
     # Generate Reality keypair
-    local keypair
+    local keypair=''
     keypair=$(generate_reality_keypair) || die "Failed to generate Reality keypair"
     export PRIV PUB
     read -r PRIV PUB <<< "${keypair}"
@@ -1087,12 +1140,13 @@ install_manager_script() {
     msg "Installing management script..."
 
     local manager_template="${SCRIPT_DIR}/bin/sbx-manager.sh"
+    local manager_path="/usr/local/bin/sbx-manager"
+    local symlink_path="/usr/local/bin/sbx"
+    local lib_path="/usr/local/lib/sbx"
+    local backup_path=''
+    local temp_manager=''
 
     if [[ -f "${manager_template}" ]]; then
-        local manager_path="/usr/local/bin/sbx-manager"
-        local symlink_path="/usr/local/bin/sbx"
-        local lib_path="/usr/local/lib/sbx"
-
         # Safely handle existing manager binary
         if [[ -e "${manager_path}" && ! -f "${manager_path}" ]]; then
             die "${manager_path} exists but is not a regular file"
@@ -1104,7 +1158,6 @@ install_manager_script() {
             rm "${symlink_path}"
     elif     [[ -e "${symlink_path}" ]]; then
             # File exists but is not a symlink - backup and warn
-            local backup_path
             backup_path="${symlink_path}.backup.$(date +%s)"
             warn "File exists at ${symlink_path} (not a symlink)"
             mv "${symlink_path}" "${backup_path}"
@@ -1112,7 +1165,6 @@ install_manager_script() {
     fi
 
         # Install manager using temporary file + atomic move
-        local temp_manager
         temp_manager=$(create_temp_file "manager") || die "Failed to create temporary file"
         chmod 755 "${temp_manager}"  # Manager needs executable permission
         cp "${manager_template}" "${temp_manager}" || {

@@ -36,9 +36,9 @@ BACKUP_DIR="${BACKUP_DIR:-/var/backups/sbx}"
 # Create comprehensive backup of sing-box configuration
 backup_create() {
   local encrypt="${1:-false}"
-  local backup_name
+  local backup_name=''
   backup_name="sbx-backup-$(date +%Y%m%d-%H%M%S)"
-  local temp_dir
+  local temp_dir=''
   temp_dir=$(create_temp_dir "backup") || return 1
   local backup_root="${temp_dir}/${backup_name}"
 
@@ -75,7 +75,7 @@ EOF
   if [[ -d "${CERT_DIR_BASE}" ]]; then
     for domain_dir in "${CERT_DIR_BASE}"/*; do
       [[ -d "${domain_dir}" ]] || continue
-      local domain_name
+      local domain_name=''
       domain_name=$(basename "${domain_dir}")
 
       if [[ -f "${domain_dir}/fullchain.pem" && -f "${domain_dir}/privkey.pem" ]]; then
@@ -190,7 +190,7 @@ _decrypt_backup() {
   # Try to get password from various sources
   if [[ -z "${password}" ]]; then
     # Try to find corresponding key file
-    local backup_basename
+    local backup_basename=''
     backup_basename=$(basename "${backup_file}" .enc)
     local key_file="${BACKUP_DIR}/backup-keys/${backup_basename}.key"
 
@@ -241,7 +241,7 @@ _validate_backup_archive() {
   tar -xzf "${archive_to_extract}" -C "${temp_dir}" || die "Failed to extract archive"
 
   # Find backup root directory (securely)
-  local backup_dirname
+  local backup_dirname=''
   # Use -printf %f to get only the basename, preventing path traversal
   backup_dirname=$(find "${temp_dir}" -maxdepth 1 -mindepth 1 -type d -name "sbx-backup-*" -printf "%f\n" | head -1)
 
@@ -303,23 +303,20 @@ _prepare_rollback() {
 _apply_restored_config() {
   local stage_dir="$1"
   local -n cert_domains_ref="$2"
+  local config_tmp='' client_tmp='' service_dir='' service_tmp=''
 
   mkdir -p "${SB_CONF_DIR}"
 
   # Restore configuration atomically
-  local config_tmp
-  config_tmp=$(mktemp "${SB_CONF_DIR}/config.json.XXXX")
+  config_tmp=$(create_temp_file_in_dir "${SB_CONF_DIR}" "config.json") || die "Failed to create temp config file"
   cp "${stage_dir}/config/config.json" "${config_tmp}"
-  chmod 600 "${config_tmp}"
   mv -f "${config_tmp}" "${SB_CONF}"
   success "  ✓ Restored configuration"
 
   # Restore client info if present
   if [[ -f "${stage_dir}/config/client-info.txt" ]]; then
-    local client_tmp
-    client_tmp=$(mktemp "${SB_CONF_DIR}/client-info.txt.XXXX")
+    client_tmp=$(create_temp_file_in_dir "${SB_CONF_DIR}" "client-info.txt") || die "Failed to create temp client info file"
     cp "${stage_dir}/config/client-info.txt" "${client_tmp}"
-    chmod 600 "${client_tmp}"
     mv -f "${client_tmp}" "${CLIENT_INFO}"
     success "  ✓ Restored client info"
   fi
@@ -329,8 +326,8 @@ _apply_restored_config() {
     mkdir -p "${CERT_DIR_BASE}"
     for domain in "${cert_domains_ref[@]}"; do
       local domain_target="${CERT_DIR_BASE}/${domain}"
-      local domain_tmp
-      domain_tmp=$(mktemp -d "${CERT_DIR_BASE}/${domain}.XXXX")
+      local domain_tmp=''
+      domain_tmp=$(create_temp_dir_in_dir "${CERT_DIR_BASE}" "${domain}") || die "Failed to create temp certificate directory for ${domain}"
       cp "${stage_dir}/certificates/${domain}"/*.pem "${domain_tmp}/"
       chmod 600 "${domain_tmp}"/*.pem
       rm -rf "${domain_target}"
@@ -341,8 +338,9 @@ _apply_restored_config() {
 
   # Restore systemd service file
   if [[ -f "${stage_dir}/service/sing-box.service" ]]; then
-    local service_tmp
-    service_tmp=$(mktemp "$(dirname "${SB_SVC}")/sing-box.service.XXXX")
+    service_dir="$(dirname "${SB_SVC}")"
+    mkdir -p "${service_dir}"
+    service_tmp=$(create_temp_file_in_dir "${service_dir}" "sing-box.service") || die "Failed to create temp service file"
     cp "${stage_dir}/service/sing-box.service" "${service_tmp}"
     chmod 644 "${service_tmp}"
     mv -f "${service_tmp}" "${SB_SVC}"
@@ -393,9 +391,9 @@ backup_restore() {
   fi
 
   # Setup temporary directories
-  local temp_dir
+  local temp_dir=''
   temp_dir=$(create_temp_dir "restore") || return 1
-  local rollback_dir
+  local rollback_dir=''
   rollback_dir=$(create_temp_dir "restore-rollback") || {
     rm -rf "${temp_dir}"
     return 1
@@ -428,7 +426,7 @@ backup_restore() {
         mkdir -p "${CERT_DIR_BASE}"
         for domain_dir in "${rollback_dir}/certificates"/*; do
           [[ -d "${domain_dir}" ]] || continue
-          local domain_name
+          local domain_name=''
           domain_name=$(basename "${domain_dir}")
           rm -rf "${CERT_DIR_BASE:?}/${domain_name:?}"
           cp -a "${domain_dir}" "${CERT_DIR_BASE}/" 2>/dev/null || warn "Failed to restore certificates for ${domain_name}"
@@ -465,7 +463,7 @@ backup_restore() {
   fi
 
   # Validate and extract archive
-  local backup_root
+  local backup_root=''
   backup_root=$(_validate_backup_archive "${archive_to_extract}" "${temp_dir}")
 
   # Verify and stage backup contents
@@ -476,7 +474,7 @@ backup_restore() {
   if [[ -d "${backup_root}/certificates" ]]; then
     while IFS= read -r domain_dir; do
       [[ -d "${domain_dir}" ]] || continue
-      local domain_name
+      local domain_name=''
       domain_name=$(basename "${domain_dir}")
 
       if [[ ! -f "${domain_dir}/fullchain.pem" || ! -f "${domain_dir}/privkey.pem" ]]; then
@@ -555,18 +553,18 @@ backup_list() {
 
   local count=0
   while IFS= read -r backup_file; do
-    local filename
+    local filename=''
     filename=$(basename "${backup_file}")
-    local size
+    local size=''
     size=$(du -h "${backup_file}" | cut -f1)
-    local date
+    local date=''
     date=$(get_file_mtime "${backup_file}")
     local encrypted=""
     [[ "${filename}" =~ \.enc$ ]] && encrypted=" ${Y}[encrypted]${N}"
 
     echo -e "  ${G}●${N} ${filename}"
     echo -e "    Size: ${size} | Date: ${date}${encrypted}"
-    ((count++))
+    count=$((count + 1))
   done < <(find "${BACKUP_DIR}" -name "sbx-backup-*.tar.gz*" -type f 2>/dev/null | sort -r)
 
   [[ ${count} -eq 0 ]] && info "No backups found"
@@ -583,7 +581,7 @@ backup_cleanup() {
   local deleted=0
   while IFS= read -r old_backup; do
     rm -f "${old_backup}"
-    ((deleted++))
+    deleted=$((deleted + 1))
   done < <(find "${BACKUP_DIR}" -name "sbx-backup-*.tar.gz*" -type f -mtime +"${retention_days}" 2>/dev/null)
 
   [[ ${deleted} -gt 0 ]] && success "  ✓ Deleted ${deleted} old backup(s)" || info "  ℹ No old backups to clean"

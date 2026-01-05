@@ -52,7 +52,7 @@ calculate_backoff() {
     local max="${RETRY_BACKOFF_MAX}"
 
     # Exponential backoff: min((base^attempt), max)
-    local backoff
+    local backoff=0
     if command -v bc >/dev/null 2>&1; then
         # Use bc for precise calculation
         backoff=$(echo "scale=0; e=2^${attempt}; if (e > ${max}) ${max} else e" | bc)
@@ -165,7 +165,7 @@ retry_with_backoff() {
     local exit_code=0
 
     while [[ ${attempt} -lt ${max_attempts} ]]; do
-        ((attempt++))
+        attempt=$((attempt + 1))
 
         # Check global retry budget before attempting
         if ! check_retry_budget; then
@@ -192,7 +192,7 @@ retry_with_backoff() {
         fi
 
         # Increment global retry counter
-        ((GLOBAL_RETRY_COUNT++))
+        GLOBAL_RETRY_COUNT=$((GLOBAL_RETRY_COUNT + 1))
 
         # Check if this was the last attempt
         if [[ ${attempt} -ge ${max_attempts} ]]; then
@@ -201,11 +201,11 @@ retry_with_backoff() {
         fi
 
         # Calculate backoff time
-        local backoff_ms
+        local backoff_ms=0
         backoff_ms="$(calculate_backoff "${attempt}")"
 
         # Calculate backoff in seconds for display (use bc if available)
-        local backoff_sec
+        local backoff_sec=''
         if command -v bc >/dev/null 2>&1; then
             backoff_sec=$(echo "scale=1; ${backoff_ms} / 1000" | bc 2>/dev/null || echo "$((backoff_ms / 1000))")
         else

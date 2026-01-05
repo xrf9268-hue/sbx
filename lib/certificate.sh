@@ -74,17 +74,15 @@ maybe_issue_cert() {
 # Check certificate expiration
 check_cert_expiry() {
   local cert_file="${1:-${CERT_FULLCHAIN}}"
+  local expiry_date='' expiry_epoch='' now_epoch='' days_left=0
   [[ -f "${cert_file}" ]] || return 1
 
-  local expiry_date
   expiry_date=$(openssl x509 -in "${cert_file}" -noout -enddate 2>/dev/null | cut -d= -f2)
 
   if [[ -n "${expiry_date}" ]]; then
-    local expiry_epoch
     expiry_epoch=$(date -d "${expiry_date}" +%s 2>/dev/null || date -j -f "%b %d %T %Y %Z" "${expiry_date}" +%s 2>/dev/null)
-    local now_epoch
     now_epoch=$(date +%s)
-    local days_left=$(( (expiry_epoch - now_epoch) / 86400 ))
+    days_left=$(( (expiry_epoch - now_epoch) / 86400 ))
 
     if [[ ${days_left} -lt 30 ]]; then
       warn "Certificate expires in ${days_left} days: ${cert_file}"

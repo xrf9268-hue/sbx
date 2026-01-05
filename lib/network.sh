@@ -226,7 +226,7 @@ allocate_port() {
       msg "${name} port ${port} in use, retrying in 2 seconds..." >&2
     fi
     sleep 2
-    ((retry_count++))
+    retry_count=$((retry_count + 1))
   done
 
   # Try fallback port with same atomic check
@@ -392,7 +392,7 @@ safe_http_get() {
       return 1
     fi
 
-    ((retry_count++))
+    retry_count=$((retry_count + 1))
     if [[ ${retry_count} -lt ${max_retries} ]]; then
       warn "Download failed, retrying (${retry_count}/${max_retries})..."
       sleep 2

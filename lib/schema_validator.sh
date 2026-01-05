@@ -112,7 +112,7 @@ validate_config_schema() {
   fi
 
   # Detect available validation tool
-  local tool
+  local tool=''
   tool=$(check_schema_tool)
 
   case "${tool}" in
@@ -175,7 +175,7 @@ _validate_reality_enabled() {
   local validation_failed=0
 
   # Check Reality enabled flag
-  local reality_enabled
+  local reality_enabled=''
   reality_enabled=$(jq -r '.inbounds[] | select(.tls.reality) | .tls.reality.enabled' "${config_file}" 2>/dev/null | head -1)
   if [[ "${reality_enabled}" != "true" ]]; then
     err "  ✗ Reality enabled flag not set to true"
@@ -185,7 +185,7 @@ _validate_reality_enabled() {
   fi
 
   # Check TLS enabled when Reality is present
-  local tls_enabled
+  local tls_enabled=''
   tls_enabled=$(jq -r '.inbounds[] | select(.tls.reality) | .tls.enabled' "${config_file}" 2>/dev/null | head -1)
   if [[ "${tls_enabled}" != "true" ]]; then
     err "  ✗ TLS must be enabled when using Reality"
@@ -233,7 +233,7 @@ _validate_reality_field_types() {
   local validation_failed=0
 
   # Check Short ID is array format
-  local sid_type
+  local sid_type=''
   sid_type=$(jq -r '.inbounds[] | select(.tls.reality) | .tls.reality.short_id | type' "${config_file}" 2>/dev/null | head -1)
   if [[ "${sid_type}" != "array" ]]; then
     err "  ✗ Short ID must be array format, got: ${sid_type}"
@@ -249,12 +249,14 @@ _validate_reality_field_types() {
 _validate_reality_field_values() {
   local config_file="$1"
   local validation_failed=0
+  local sid_ok=0
+  local handshake_server='' handshake_port=''
 
   # Check Short ID length (1-8 hex characters)
-  local short_ids
+  local short_ids=''
   short_ids=$(jq -r '.inbounds[] | select(.tls.reality) | .tls.reality.short_id[]?' "${config_file}" 2>/dev/null)
   if [[ -n "${short_ids}" ]]; then
-    local sid_ok=1
+    sid_ok=1
     while IFS= read -r sid; do
       if [[ ! "${sid}" =~ ^[0-9a-fA-F]{1,8}$ ]]; then
         err "  ✗ Invalid short ID format: ${sid} (must be 1-8 hex chars)"
@@ -268,7 +270,7 @@ _validate_reality_field_values() {
   fi
 
   # Check Flow field in users array
-  local flow
+  local flow=''
   flow=$(jq -r '.inbounds[] | select(.tls.reality) | .users[]?.flow?' "${config_file}" 2>/dev/null | head -1)
   if [[ "${flow}" == "xtls-rprx-vision" ]]; then
     msg "  ✓ Flow field set to xtls-rprx-vision"
@@ -281,7 +283,6 @@ _validate_reality_field_values() {
 
   # Check Handshake configuration
   if jq -e '.inbounds[] | select(.tls.reality) | .tls.reality.handshake' "${config_file}" >/dev/null 2>&1; then
-    local handshake_server
     handshake_server=$(jq -r '.inbounds[] | select(.tls.reality) | .tls.reality.handshake.server' "${config_file}" 2>/dev/null | head -1)
     if [[ -z "${handshake_server}" || "${handshake_server}" == "null" ]]; then
       err "  ✗ Handshake server not configured"
@@ -290,7 +291,6 @@ _validate_reality_field_values() {
       msg "  ✓ Handshake server configured: ${handshake_server}"
     fi
 
-    local handshake_port
     handshake_port=$(jq -r '.inbounds[] | select(.tls.reality) | .tls.reality.handshake.server_port' "${config_file}" 2>/dev/null | head -1)
     if [[ -z "${handshake_port}" || "${handshake_port}" == "null" ]]; then
       err "  ✗ Handshake server_port not configured"

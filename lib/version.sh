@@ -233,7 +233,7 @@ resolve_singbox_version() {
   fi
 
   # Determine version type for logging
-  local version_type
+  local version_type=''
   case "${version_lower}" in
     stable | "") version_type="stable" ;;
     latest) version_type="latest" ;;
@@ -272,14 +272,14 @@ get_singbox_version() {
     return 1
   fi
 
-  local version_output
+  local version_output=''
   version_output=$("${sb_bin}" version 2>&1) || {
     debug "Failed to get sing-box version"
     return 1
   }
 
   # Extract version number (e.g., "1.12.0" or "1.11.0-beta.1")
-  local version
+  local version=''
   version=$(echo "${version_output}" | grep -oP 'sing-box version \K[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?') || {
     debug "Failed to parse version from: ${version_output}"
     return 1
@@ -345,7 +345,7 @@ version_meets_minimum() {
   minimum="${minimum#v}"
 
   # Get lowest version
-  local lowest
+  local lowest=''
   lowest=$(compare_versions "${current}" "${minimum}")
 
   # If lowest is minimum, current >= minimum
@@ -378,7 +378,7 @@ validate_singbox_version() {
 
   msg "Checking sing-box version compatibility..."
 
-  local current_version
+  local current_version=''
   current_version=$(get_singbox_version) || {
     warn "Could not detect sing-box version"
     warn "Reality protocol requires sing-box ${min_version} or later"
@@ -428,7 +428,7 @@ validate_singbox_version() {
 #   show_version_info
 #
 show_version_info() {
-  local current_version
+  local current_version=''
   current_version=$(get_singbox_version 2> /dev/null) || current_version="unknown"
 
   echo ""
