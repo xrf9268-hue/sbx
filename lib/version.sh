@@ -21,6 +21,62 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/common.sh"
 source "${SCRIPT_DIR}/network.sh"
 
+# Fetch GitHub API response, using auth when possible.
+_github_api_fetch_json() {
+  local api_url="$1"
+  local token="${GITHUB_TOKEN:-}"
+  local tmpfile="" api_response="" err_output=""
+
+  if [[ -z "${token}" ]]; then
+    safe_http_get "${api_url}"
+    return $?
+  fi
+
+  tmpfile=$(create_temp_file "sbx-gh-api") || return 1
+
+  if have curl; then
+    if ! err_output=$(curl -fsSL --max-time 30 \
+      -H "Authorization: token ${token}" \
+      -o "${tmpfile}" \
+      "${api_url}" 2>&1); then
+      err "Failed to fetch release information from GitHub API"
+      err "Details: ${err_output}"
+      rm -f "${tmpfile}" 2> /dev/null || true
+      return 1
+    fi
+  elif have wget; then
+    if ! err_output=$(wget -q --timeout=30 \
+      --header="Authorization: token ${token}" \
+      -O "${tmpfile}" \
+      "${api_url}" 2>&1); then
+      err "Failed to fetch release information from GitHub API"
+      err "Details: ${err_output}"
+      rm -f "${tmpfile}" 2> /dev/null || true
+      return 1
+    fi
+  else
+    debug "GITHUB_TOKEN set but neither curl nor wget available for authenticated GitHub API request; falling back to unauthenticated request"
+    rm -f "${tmpfile}" 2> /dev/null || true
+    safe_http_get "${api_url}"
+    return $?
+  fi
+
+  api_response=$(cat "${tmpfile}") || {
+    err "Failed to read GitHub API response from temp file: ${tmpfile}"
+    rm -f "${tmpfile}" 2> /dev/null || true
+    return 1
+  }
+  rm -f "${tmpfile}" 2> /dev/null || true
+
+  if [[ -z "${api_response}" ]]; then
+    err "GitHub API response was empty: ${api_url}"
+    return 1
+  fi
+
+  printf '%s' "${api_response}"
+  return 0
+}
+
 #==============================================================================
 # Version Resolution Functions
 #==============================================================================
@@ -60,160 +116,134 @@ source "${SCRIPT_DIR}/network.sh"
 #   # Output: v1.10.7
 #
 resolve_singbox_version() {
-    local version_input="${SINGBOX_VERSION:-stable}"
-    local resolved_version=""
+  local version_input="${SINGBOX_VERSION:-stable}"
+  local resolved_version=""
 
-    # Normalize to lowercase for comparison
-    local version_lower="${version_input,,}"
+  # Normalize to lowercase for comparison
+  local version_lower="${version_input,,}"
 
-    msg "Resolving version: ${version_input}"
+  msg "Resolving version: ${version_input}"
 
-    case "${version_lower}" in
-        stable | "")
-            # Fetch latest stable release (non-prerelease)
-            msg "  Fetching latest stable release from GitHub..."
+  case "${version_lower}" in
+    stable | "")
+      # Fetch latest stable release (non-prerelease)
+      msg "  Fetching latest stable release from GitHub..."
 
-            local github_api_base="${CUSTOM_GITHUB_API:-https://api.github.com}"
-            local api_url="${github_api_base}/repos/SagerNet/sing-box/releases/latest"
-            local api_response
+      local github_api_base="${CUSTOM_GITHUB_API:-https://api.github.com}"
+      local api_url="${github_api_base}/repos/SagerNet/sing-box/releases/latest"
+      local api_response=""
 
-            debug "Using GitHub API: ${github_api_base}"
+      debug "Using GitHub API: ${github_api_base}"
 
-            # Use GitHub API with optional token
-            if [[ -n "${GITHUB_TOKEN:-}" ]]; then
-                # Note: safe_http_get doesn't support headers yet, use curl directly
-                if have curl; then
-                    api_response=$(curl -fsSL --max-time 30 \
-                        -H "Authorization: token ${GITHUB_TOKEN}" \
-                        "${api_url}" 2> /dev/null)
-        else
-                    api_response=$(wget -q --timeout=30 -O - "${api_url}" 2> /dev/null)
-        fi
+      api_response=$(_github_api_fetch_json "${api_url}") || return 1
+
+      # Extract tag_name from JSON response
+      if have jq; then
+        resolved_version=$(echo "${api_response}" | jq -r '.tag_name // empty' 2> /dev/null)
       else
-                api_response=$(safe_http_get "${api_url}")
+        resolved_version=$(echo "${api_response}" \
+          | grep '"tag_name":' \
+          | head -1 \
+          | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+')
       fi
 
-            if [[ $? -ne 0 ]] || [[ -z "${api_response}" ]]; then
-                err "Failed to fetch release information from GitHub API"
-                return 1
+      if [[ -z "${resolved_version}" ]]; then
+        err "Failed to parse version from API response"
+        return 1
       fi
+      ;;
 
-            # Extract tag_name from JSON response
-            resolved_version=$(echo "${api_response}" \
-                                                      | grep '"tag_name":' \
-                                   | head -1 \
-                        | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+')
+    latest)
+      # Fetch absolute latest release (including pre-releases)
+      msg "  Fetching latest release (including pre-releases) from GitHub..."
 
-            if [[ -z "${resolved_version}" ]]; then
-                err "Failed to parse version from API response"
-                return 1
-      fi
-            ;;
+      local github_api_base="${CUSTOM_GITHUB_API:-https://api.github.com}"
+      local api_url="${github_api_base}/repos/SagerNet/sing-box/releases"
+      local api_response=""
 
-        latest)
-            # Fetch absolute latest release (including pre-releases)
-            msg "  Fetching latest release (including pre-releases) from GitHub..."
+      debug "Using GitHub API: ${github_api_base}"
 
-            local github_api_base="${CUSTOM_GITHUB_API:-https://api.github.com}"
-            local api_url="${github_api_base}/repos/SagerNet/sing-box/releases"
-            local api_response
+      api_response=$(_github_api_fetch_json "${api_url}") || return 1
 
-            debug "Using GitHub API: ${github_api_base}"
-
-            # Use GitHub API with optional token
-            if [[ -n "${GITHUB_TOKEN:-}" ]]; then
-                # Note: safe_http_get doesn't support headers yet, use curl directly
-                if have curl; then
-                    api_response=$(curl -fsSL --max-time 30 \
-                        -H "Authorization: token ${GITHUB_TOKEN}" \
-                        "${api_url}" 2> /dev/null)
-        else
-                    api_response=$(wget -q --timeout=30 -O - "${api_url}" 2> /dev/null)
-        fi
+      # Extract first tag_name from releases array
+      if have jq; then
+        resolved_version=$(echo "${api_response}" | jq -r '.[0].tag_name // empty' 2> /dev/null)
       else
-                api_response=$(safe_http_get "${api_url}")
+        resolved_version=$(echo "${api_response}" \
+          | grep '"tag_name":' \
+          | head -1 \
+          | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?')
       fi
 
-            if [[ $? -ne 0 ]] || [[ -z "${api_response}" ]]; then
-                err "Failed to fetch release information from GitHub API"
-                return 1
+      if [[ -z "${resolved_version}" ]]; then
+        err "Failed to parse version from API response"
+        return 1
       fi
+      ;;
 
-            # Extract first tag_name from releases array
-            resolved_version=$(echo "${api_response}" \
-                                                      | grep '"tag_name":' \
-                                   | head -1 \
-                        | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?')
-
-            if [[ -z "${resolved_version}" ]]; then
-                err "Failed to parse version from API response"
-                return 1
-      fi
-            ;;
-
-        v[0-9]*)
-            # Already a version tag with 'v' prefix
-            # Validate format: vX.Y.Z or vX.Y.Z-pre-release
-            if [[ "${version_input}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
-                resolved_version="${version_input}"
-                msg "  Using specified version: ${resolved_version}"
+    v[0-9]*)
+      # Already a version tag with 'v' prefix
+      # Validate format: vX.Y.Z or vX.Y.Z-pre-release
+      if [[ "${version_input}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
+        resolved_version="${version_input}"
+        msg "  Using specified version: ${resolved_version}"
       else
-                err "Invalid version format: ${version_input}"
-                err "Expected: vX.Y.Z or vX.Y.Z-pre-release"
-                return 1
+        err "Invalid version format: ${version_input}"
+        err "Expected: vX.Y.Z or vX.Y.Z-pre-release"
+        return 1
       fi
-            ;;
+      ;;
 
-        [0-9]*)
-            # Version without 'v' prefix - add it
-            # Validate format: X.Y.Z or X.Y.Z-pre-release
-            if [[ "${version_input}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
-                resolved_version="v${version_input}"
-                msg "  Auto-prefixed version: ${resolved_version}"
+    [0-9]*)
+      # Version without 'v' prefix - add it
+      # Validate format: X.Y.Z or X.Y.Z-pre-release
+      if [[ "${version_input}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
+        resolved_version="v${version_input}"
+        msg "  Auto-prefixed version: ${resolved_version}"
       else
-                err "Invalid version format: ${version_input}"
-                err "Expected: X.Y.Z or X.Y.Z-pre-release"
-                return 1
+        err "Invalid version format: ${version_input}"
+        err "Expected: X.Y.Z or X.Y.Z-pre-release"
+        return 1
       fi
-            ;;
+      ;;
 
-        *)
-            # Invalid format
-            err "Invalid version specifier: ${version_input}"
-            err "Supported formats:"
-            err "  - stable           : Latest stable release"
-            err "  - latest           : Latest release (including pre-releases)"
-            err "  - vX.Y.Z           : Specific version with 'v' prefix"
-            err "  - X.Y.Z            : Specific version without 'v' prefix"
-            err "  - vX.Y.Z-beta.N    : Pre-release version"
-            return 1
-            ;;
+    *)
+      # Invalid format
+      err "Invalid version specifier: ${version_input}"
+      err "Supported formats:"
+      err "  - stable           : Latest stable release"
+      err "  - latest           : Latest release (including pre-releases)"
+      err "  - vX.Y.Z           : Specific version with 'v' prefix"
+      err "  - X.Y.Z            : Specific version without 'v' prefix"
+      err "  - vX.Y.Z-beta.N    : Pre-release version"
+      return 1
+      ;;
   esac
 
-    # Final validation
-    if [[ -z "${resolved_version}" ]]; then
-        err "Failed to resolve version: ${version_input}"
-        return 1
+  # Final validation
+  if [[ -z "${resolved_version}" ]]; then
+    err "Failed to resolve version: ${version_input}"
+    return 1
   fi
 
-    # Validate resolved version format
-    if [[ ! "${resolved_version}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
-        err "Resolved version has invalid format: ${resolved_version}"
-        return 1
+  # Validate resolved version format
+  if [[ ! "${resolved_version}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
+    err "Resolved version has invalid format: ${resolved_version}"
+    return 1
   fi
 
-    # Determine version type for logging
-    local version_type
-    case "${version_lower}" in
-        stable | "") version_type="stable" ;;
-        latest) version_type="latest" ;;
-        v* | [0-9]*) version_type="specific" ;;
-        *) version_type="unknown" ;;
+  # Determine version type for logging
+  local version_type
+  case "${version_lower}" in
+    stable | "") version_type="stable" ;;
+    latest) version_type="latest" ;;
+    v* | [0-9]*) version_type="specific" ;;
+    *) version_type="unknown" ;;
   esac
 
-    success "Resolved sing-box version: ${resolved_version} (type: ${version_type})"
-    echo "${resolved_version}"
-    return 0
+  success "Resolved sing-box version: ${resolved_version} (type: ${version_type})"
+  echo "${resolved_version}"
+  return 0
 }
 
 #==============================================================================
@@ -343,8 +373,8 @@ version_meets_minimum() {
 #   validate_singbox_version || die "sing-box version too old"
 #
 validate_singbox_version() {
-  local min_version="1.8.0"  # Reality requires 1.8.0+
-  local recommended_version="1.12.0"  # Modern config format
+  local min_version="1.8.0"          # Reality requires 1.8.0+
+  local recommended_version="1.12.0" # Modern config format
 
   msg "Checking sing-box version compatibility..."
 
@@ -352,7 +382,7 @@ validate_singbox_version() {
   current_version=$(get_singbox_version) || {
     warn "Could not detect sing-box version"
     warn "Reality protocol requires sing-box ${min_version} or later"
-    return 0  # Don't fail on detection failure
+    return 0 # Don't fail on detection failure
   }
 
   debug "Detected sing-box version: ${current_version}"
