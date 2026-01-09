@@ -5,12 +5,14 @@
 #
 # CONTEXT: This codebase has repeatedly suffered from constants being defined in
 # lib/common.sh but used during bootstrap before modules are loaded. This has
-# caused 3+ production bugs:
+# caused 6+ production bugs:
 # - url variable (install.sh:836)
 # - HTTP_DOWNLOAD_TIMEOUT_SEC
 # - get_file_size()
 # - REALITY_SHORT_ID_MIN_LENGTH (this fix)
 # - REALITY_FLOW_VISION (this fix)
+# - IPV6_TEST_TIMEOUT_SEC (this fix)
+# - IPV6_PING_WAIT_SEC (this fix)
 #
 # SOLUTION: This test validates:
 # 1. All bootstrap constants are defined in install.sh early section
@@ -63,6 +65,8 @@ DOWNLOAD_CONSTANTS=(
 # Network configuration constants
 NETWORK_CONSTANTS=(
     "NETWORK_TIMEOUT_SEC"
+    "IPV6_TEST_TIMEOUT_SEC"
+    "IPV6_PING_WAIT_SEC"
 )
 
 # Reality validation constants (used by lib/validation.sh during bootstrap)
