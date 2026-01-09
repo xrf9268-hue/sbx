@@ -68,14 +68,26 @@ echo "=== Version Resolver Tests ==="
 NETWORK_TESTS_AVAILABLE=false
 if command -v timeout > /dev/null 2>&1 || command -v gtimeout > /dev/null 2>&1; then
     if command -v curl > /dev/null 2>&1 || command -v wget > /dev/null 2>&1; then
-        NETWORK_TESTS_AVAILABLE=true
-  fi
+        # Also verify actual GitHub API connectivity (use GITHUB_TOKEN if available)
+        _gh_api_url="https://api.github.com/repos/SagerNet/sing-box/releases/latest"
+        if [[ -n "${GITHUB_TOKEN:-}" ]]; then
+            _connectivity_check=$(curl -fsSL --max-time 5 -H "Authorization: token ${GITHUB_TOKEN}" "${_gh_api_url}" 2>&1)
+        else
+            _connectivity_check=$(curl -fsSL --max-time 5 "${_gh_api_url}" 2>&1)
+        fi
+        if [[ $? -eq 0 ]]; then
+            NETWORK_TESTS_AVAILABLE=true
+        else
+            echo "Note: GitHub API not reachable (rate limit or network issue), network tests will be skipped"
+        fi
+        unset _gh_api_url _connectivity_check
+    fi
 fi
 
 # Test 1: Resolve 'stable' to latest stable release
 test_resolve_stable() {
     if [[ "${NETWORK_TESTS_AVAILABLE}" != "true" ]]; then
-        echo "  Skipped (timeout or curl/wget not available)"
+        echo "  Skipped (network unavailable)"
         return 0
   fi
 
@@ -104,7 +116,7 @@ test_resolve_stable() {
 # Test 2: Resolve 'latest' to absolute latest release
 test_resolve_latest() {
     if [[ "${NETWORK_TESTS_AVAILABLE}" != "true" ]]; then
-        echo "  Skipped (timeout or curl/wget not available)"
+        echo "  Skipped (network unavailable)"
         return 0
   fi
 
@@ -195,7 +207,7 @@ test_invalid_version() {
 # Test 6: Default to stable when unset
 test_default_stable() {
     if [[ "${NETWORK_TESTS_AVAILABLE}" != "true" ]]; then
-        echo "  Skipped (timeout or curl/wget not available)"
+        echo "  Skipped (network unavailable)"
         return 0
   fi
 
@@ -245,7 +257,7 @@ test_prerelease_version() {
 # Test 8: Case insensitivity for aliases
 test_case_insensitive_stable() {
     if [[ "${NETWORK_TESTS_AVAILABLE}" != "true" ]]; then
-        echo "  Skipped (timeout or curl/wget not available)"
+        echo "  Skipped (network unavailable)"
         return 0
   fi
 
