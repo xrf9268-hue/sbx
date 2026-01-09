@@ -26,6 +26,8 @@ readonly MIN_MANAGER_FILE_SIZE_BYTES=5000  # Manager script validation (~15KB ex
 
 # Network configuration
 readonly NETWORK_TIMEOUT_SEC=5  # Used by get_public_ip() during bootstrap
+readonly IPV6_TEST_TIMEOUT_SEC=3  # Used by detect_ipv6_support() during bootstrap
+readonly IPV6_PING_WAIT_SEC=2  # Used by detect_ipv6_support() during bootstrap
 
 # Reality validation constraints (used by lib/validation.sh during bootstrap)
 readonly REALITY_SHORT_ID_MIN_LENGTH=1
