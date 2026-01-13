@@ -33,18 +33,18 @@ echo "=== Bootstrap Constants Validation Test ==="
 echo ""
 
 test_start() {
-    TESTS_RUN=$((TESTS_RUN + 1))
-    echo -n "  Test $TESTS_RUN: $1 ... "
+  TESTS_RUN=$((TESTS_RUN + 1))
+  echo -n "  Test $TESTS_RUN: $1 ... "
 }
 
 test_pass() {
-    TESTS_PASSED=$((TESTS_PASSED + 1))
-    echo "✓ PASS"
+  TESTS_PASSED=$((TESTS_PASSED + 1))
+  echo "✓ PASS"
 }
 
 test_fail() {
-    TESTS_FAILED=$((TESTS_FAILED + 1))
-    echo "✗ FAIL: $1"
+  TESTS_FAILED=$((TESTS_FAILED + 1))
+  echo "✗ FAIL: $1"
 }
 
 #==============================================================================
@@ -55,48 +55,56 @@ test_fail() {
 
 # Download configuration constants
 DOWNLOAD_CONSTANTS=(
-    "DOWNLOAD_CONNECT_TIMEOUT_SEC"
-    "DOWNLOAD_MAX_TIMEOUT_SEC"
-    "HTTP_DOWNLOAD_TIMEOUT_SEC"
-    "MIN_MODULE_FILE_SIZE_BYTES"
-    "MIN_MANAGER_FILE_SIZE_BYTES"
+  "DOWNLOAD_CONNECT_TIMEOUT_SEC"
+  "DOWNLOAD_MAX_TIMEOUT_SEC"
+  "HTTP_DOWNLOAD_TIMEOUT_SEC"
+  "MIN_MODULE_FILE_SIZE_BYTES"
+  "MIN_MANAGER_FILE_SIZE_BYTES"
 )
 
 # Network configuration constants
 NETWORK_CONSTANTS=(
-    "NETWORK_TIMEOUT_SEC"
-    "IPV6_TEST_TIMEOUT_SEC"
-    "IPV6_PING_WAIT_SEC"
+  "NETWORK_TIMEOUT_SEC"
+  "IPV6_TEST_TIMEOUT_SEC"
+  "IPV6_PING_WAIT_SEC"
 )
 
 # Reality validation constants (used by lib/validation.sh during bootstrap)
 REALITY_VALIDATION_CONSTANTS=(
-    "REALITY_SHORT_ID_MIN_LENGTH"
-    "REALITY_SHORT_ID_MAX_LENGTH"
+  "REALITY_SHORT_ID_MIN_LENGTH"
+  "REALITY_SHORT_ID_MAX_LENGTH"
+)
+
+# Port default constants (used by lib/validation.sh during bootstrap)
+PORT_DEFAULT_CONSTANTS=(
+  "REALITY_PORT_DEFAULT"
+  "WS_PORT_DEFAULT"
+  "HY2_PORT_DEFAULT"
 )
 
 # Reality configuration constants (used by lib/config.sh during bootstrap)
 REALITY_CONFIG_CONSTANTS=(
-    "REALITY_FLOW_VISION"
-    "REALITY_DEFAULT_HANDSHAKE_PORT"
-    "REALITY_MAX_TIME_DIFF"
-    "REALITY_ALPN_H2"
-    "REALITY_ALPN_HTTP11"
+  "REALITY_FLOW_VISION"
+  "REALITY_DEFAULT_HANDSHAKE_PORT"
+  "REALITY_MAX_TIME_DIFF"
+  "REALITY_ALPN_H2"
+  "REALITY_ALPN_HTTP11"
 )
 
 # File permission constants
 PERMISSION_CONSTANTS=(
-    "SECURE_DIR_PERMISSIONS"
-    "SECURE_FILE_PERMISSIONS"
+  "SECURE_DIR_PERMISSIONS"
+  "SECURE_FILE_PERMISSIONS"
 )
 
 # Combine all into master list
 REQUIRED_BOOTSTRAP_CONSTANTS=(
-    "${DOWNLOAD_CONSTANTS[@]}"
-    "${NETWORK_CONSTANTS[@]}"
-    "${REALITY_VALIDATION_CONSTANTS[@]}"
-    "${REALITY_CONFIG_CONSTANTS[@]}"
-    "${PERMISSION_CONSTANTS[@]}"
+  "${DOWNLOAD_CONSTANTS[@]}"
+  "${NETWORK_CONSTANTS[@]}"
+  "${REALITY_VALIDATION_CONSTANTS[@]}"
+  "${PORT_DEFAULT_CONSTANTS[@]}"
+  "${REALITY_CONFIG_CONSTANTS[@]}"
+  "${PERMISSION_CONSTANTS[@]}"
 )
 
 #==============================================================================
@@ -106,16 +114,16 @@ test_start "All bootstrap constants defined in install.sh"
 
 missing_constants=()
 for const in "${REQUIRED_BOOTSTRAP_CONSTANTS[@]}"; do
-    if ! grep -q "^readonly ${const}=" "$SCRIPT_DIR/install.sh"; then
-        missing_constants+=("$const")
-    fi
+  if ! grep -q "^readonly ${const}=" "$SCRIPT_DIR/install.sh"; then
+    missing_constants+=("$const")
+  fi
 done
 
 if [[ ${#missing_constants[@]} -eq 0 ]]; then
-    test_pass
+  test_pass
 else
-    test_fail "Missing constants: ${missing_constants[*]}"
-    echo "       Add to install.sh early constants section (lines 16-44)"
+  test_fail "Missing constants: ${missing_constants[*]}"
+  echo "       Add to install.sh early constants section (lines 16-44)"
 fi
 
 #==============================================================================
@@ -125,46 +133,47 @@ test_start "Bootstrap constants defined before module loading"
 
 late_constants=()
 for const in "${REQUIRED_BOOTSTRAP_CONSTANTS[@]}"; do
-    line_num=$(grep -n "^readonly ${const}=" "$SCRIPT_DIR/install.sh" | cut -d: -f1 || echo "999999")
-    if [[ $line_num -gt 100 ]]; then
-        late_constants+=("${const}:line${line_num}")
-    fi
+  line_num=$(grep -n "^readonly ${const}=" "$SCRIPT_DIR/install.sh" | cut -d: -f1 || echo "999999")
+  if [[ $line_num -gt 100 ]]; then
+    late_constants+=("${const}:line${line_num}")
+  fi
 done
 
 if [[ ${#late_constants[@]} -eq 0 ]]; then
-    test_pass
+  test_pass
 else
-    test_fail "Constants defined too late: ${late_constants[*]}"
-    echo "       Move to early constants section (lines 16-44)"
+  test_fail "Constants defined too late: ${late_constants[*]}"
+  echo "       Move to early constants section (lines 16-44)"
 fi
 
 #==============================================================================
 # Test 3: Reality constants have conditional declarations in lib/common.sh
 #==============================================================================
-test_start "Reality constants conditionally declared in lib/common.sh"
+test_start "Reality and port constants conditionally declared in lib/common.sh"
 
 # These constants should have conditional declarations since they're in bootstrap
 CONDITIONALLY_DECLARED=(
-    "${REALITY_VALIDATION_CONSTANTS[@]}"
-    "${REALITY_CONFIG_CONSTANTS[@]}"
+  "${REALITY_VALIDATION_CONSTANTS[@]}"
+  "${PORT_DEFAULT_CONSTANTS[@]}"
+  "${REALITY_CONFIG_CONSTANTS[@]}"
 )
 
 missing_conditional=()
 for const in "${CONDITIONALLY_DECLARED[@]}"; do
-    # Check for pattern: if [[ -z "${CONST:-}" ]]; then
-    if ! grep -q "if \[\[ -z \"\${${const}:-}\" \]\]; then" "$SCRIPT_DIR/lib/common.sh"; then
-        missing_conditional+=("$const")
-    fi
+  # Check for pattern: if [[ -z "${CONST:-}" ]]; then
+  if ! grep -q "if \[\[ -z \"\${${const}:-}\" \]\]; then" "$SCRIPT_DIR/lib/common.sh"; then
+    missing_conditional+=("$const")
+  fi
 done
 
 if [[ ${#missing_conditional[@]} -eq 0 ]]; then
-    test_pass
+  test_pass
 else
-    test_fail "Missing conditional declarations: ${missing_conditional[*]}"
-    echo "       Add to lib/common.sh with pattern:"
-    echo "       if [[ -z \"\${CONST_NAME:-}\" ]]; then"
-    echo "         declare -r CONST_NAME=value"
-    echo "       fi"
+  test_fail "Missing conditional declarations: ${missing_conditional[*]}"
+  echo "       Add to lib/common.sh with pattern:"
+  echo "       if [[ -z \"\${CONST_NAME:-}\" ]]; then"
+  echo "         declare -r CONST_NAME=value"
+  echo "       fi"
 fi
 
 #==============================================================================
@@ -174,23 +183,23 @@ test_start "No duplicate constant declarations between files"
 
 duplicate_found=0
 for const in "${REQUIRED_BOOTSTRAP_CONSTANTS[@]}"; do
-    # Count unconditional declarations in lib/common.sh
-    # Pattern: declare -r CONST= (not inside if statement)
-    # Note: grep -c exits 1 when no match, so use || true to avoid exit, then check count
-    unconditional_count=$(grep -c "^declare -r ${const}=" "$SCRIPT_DIR/lib/common.sh" 2>/dev/null) || unconditional_count=0
+  # Count unconditional declarations in lib/common.sh
+  # Pattern: declare -r CONST= (not inside if statement)
+  # Note: grep -c exits 1 when no match, so use || true to avoid exit, then check count
+  unconditional_count=$(grep -c "^declare -r ${const}=" "$SCRIPT_DIR/lib/common.sh" 2> /dev/null) || unconditional_count=0
 
-    if [[ $unconditional_count -gt 0 ]]; then
-        echo ""
-        echo "       WARNING: ${const} has unconditional declaration in lib/common.sh"
-        echo "       This will conflict with bootstrap definition in install.sh"
-        duplicate_found=1
-    fi
+  if [[ $unconditional_count -gt 0 ]]; then
+    echo ""
+    echo "       WARNING: ${const} has unconditional declaration in lib/common.sh"
+    echo "       This will conflict with bootstrap definition in install.sh"
+    duplicate_found=1
+  fi
 done
 
 if [[ $duplicate_found -eq 0 ]]; then
-    test_pass
+  test_pass
 else
-    test_fail "Found unconditional declarations (see warnings above)"
+  test_fail "Found unconditional declarations (see warnings above)"
 fi
 
 #==============================================================================
@@ -212,10 +221,10 @@ test_output=$(bash -euo pipefail -c "
 " 2>&1)
 
 if echo "$test_output" | grep -q "SUCCESS"; then
-    test_pass
+  test_pass
 else
-    test_fail "Constants not accessible"
-    echo "       Error: $test_output"
+  test_fail "Constants not accessible"
+  echo "       Error: $test_output"
 fi
 
 #==============================================================================
@@ -242,10 +251,10 @@ test_output=$(bash -euo pipefail -c "
 " 2>&1)
 
 if echo "$test_output" | grep -q "SUCCESS" && ! echo "$test_output" | grep -q "FAILED_TO_SOURCE"; then
-    test_pass
+  test_pass
 else
-    test_fail "lib/common.sh conflicts with bootstrap constants"
-    echo "       Error: $test_output"
+  test_fail "lib/common.sh conflicts with bootstrap constants"
+  echo "       Error: $test_output"
 fi
 
 #==============================================================================
@@ -268,10 +277,10 @@ unbound_errors=$(bash -uo pipefail -c "
 " 2>&1)
 
 if echo "$unbound_errors" | grep -q "SUCCESS"; then
-    test_pass
+  test_pass
 else
-    test_fail "Bootstrap functions use unbound variables"
-    echo "       Error: $unbound_errors"
+  test_fail "Bootstrap functions use unbound variables"
+  echo "       Error: $unbound_errors"
 fi
 
 #==============================================================================
@@ -280,10 +289,10 @@ fi
 test_start "Early constants section has documentation header"
 
 if grep -q "# Early Constants (used before module loading)" "$SCRIPT_DIR/install.sh"; then
-    test_pass
+  test_pass
 else
-    test_fail "Missing documentation header for early constants section"
-    echo "       Add comment: # Early Constants (used before module loading)"
+  test_fail "Missing documentation header for early constants section"
+  echo "       Add comment: # Early Constants (used before module loading)"
 fi
 
 #==============================================================================
@@ -294,18 +303,18 @@ test_start "CLAUDE.md documents bootstrap constant pattern"
 claude_md_checks=0
 
 if grep -q "Bootstrap" "$SCRIPT_DIR/CLAUDE.md"; then
-    claude_md_checks=$((claude_md_checks + 1))
+  claude_md_checks=$((claude_md_checks + 1))
 fi
 
 if grep -q "unbound variable" "$SCRIPT_DIR/CLAUDE.md"; then
-    claude_md_checks=$((claude_md_checks + 1))
+  claude_md_checks=$((claude_md_checks + 1))
 fi
 
 if [[ $claude_md_checks -eq 2 ]]; then
-    test_pass
+  test_pass
 else
-    test_fail "CLAUDE.md missing bootstrap documentation"
-    echo "       Document the bootstrap constant pattern"
+  test_fail "CLAUDE.md missing bootstrap documentation"
+  echo "       Document the bootstrap constant pattern"
 fi
 
 #==============================================================================
@@ -318,10 +327,10 @@ test_start "install.sh help works with bash -u (no unbound vars)"
 help_output=$(timeout 5 bash -uo pipefail "$SCRIPT_DIR/install.sh" --help 2>&1 || true)
 
 if echo "$help_output" | grep -q "unbound variable"; then
-    unbound_var=$(echo "$help_output" | grep "unbound variable" | head -1)
-    test_fail "Found unbound variable: $unbound_var"
+  unbound_var=$(echo "$help_output" | grep "unbound variable" | head -1)
+  test_fail "Found unbound variable: $unbound_var"
 else
-    test_pass
+  test_pass
 fi
 
 #==============================================================================
@@ -333,6 +342,7 @@ echo "Total constants tracked: ${#REQUIRED_BOOTSTRAP_CONSTANTS[@]}"
 echo "  - Download: ${#DOWNLOAD_CONSTANTS[@]}"
 echo "  - Network: ${#NETWORK_CONSTANTS[@]}"
 echo "  - Reality validation: ${#REALITY_VALIDATION_CONSTANTS[@]}"
+echo "  - Port defaults: ${#PORT_DEFAULT_CONSTANTS[@]}"
 echo "  - Reality config: ${#REALITY_CONFIG_CONSTANTS[@]}"
 echo "  - Permissions: ${#PERMISSION_CONSTANTS[@]}"
 echo ""
@@ -342,22 +352,22 @@ echo "Tests failed: $TESTS_FAILED"
 echo ""
 
 if [[ $TESTS_FAILED -eq 0 ]]; then
-    echo "✓ All bootstrap constant validation tests passed!"
-    echo ""
-    echo "This test suite prevents recurring 'unbound variable' errors by ensuring:"
-    echo "  1. All bootstrap constants defined in install.sh early section"
-    echo "  2. lib/common.sh uses conditional declarations to avoid conflicts"
-    echo "  3. Script executes with bash -u without errors"
-    echo ""
-    exit 0
+  echo "✓ All bootstrap constant validation tests passed!"
+  echo ""
+  echo "This test suite prevents recurring 'unbound variable' errors by ensuring:"
+  echo "  1. All bootstrap constants defined in install.sh early section"
+  echo "  2. lib/common.sh uses conditional declarations to avoid conflicts"
+  echo "  3. Script executes with bash -u without errors"
+  echo ""
+  exit 0
 else
-    echo "✗ Some tests failed - bootstrap constants not properly configured"
-    echo ""
-    echo "REMEDIATION STEPS:"
-    echo "  1. Review failed tests above"
-    echo "  2. Add missing constants to install.sh (lines 16-44)"
-    echo "  3. Update lib/common.sh to use conditional declarations"
-    echo "  4. Re-run this test: bash tests/unit/test_bootstrap_constants.sh"
-    echo ""
-    exit 1
+  echo "✗ Some tests failed - bootstrap constants not properly configured"
+  echo ""
+  echo "REMEDIATION STEPS:"
+  echo "  1. Review failed tests above"
+  echo "  2. Add missing constants to install.sh (lines 16-44)"
+  echo "  3. Update lib/common.sh to use conditional declarations"
+  echo "  4. Re-run this test: bash tests/unit/test_bootstrap_constants.sh"
+  echo ""
+  exit 1
 fi

@@ -28,10 +28,16 @@ declare -r SB_CONF="${SB_CONF_DIR}/config.json"
 declare -r SB_SVC="/etc/systemd/system/sing-box.service"
 declare -r CLIENT_INFO="${SB_CONF_DIR}/client-info.txt"
 
-# Default ports
-declare -r REALITY_PORT_DEFAULT=443
-declare -r WS_PORT_DEFAULT=8444
-declare -r HY2_PORT_DEFAULT=8443
+# Default ports (may be defined in install.sh bootstrap for early use)
+if [[ -z "${REALITY_PORT_DEFAULT:-}" ]]; then
+  declare -r REALITY_PORT_DEFAULT=443
+fi
+if [[ -z "${WS_PORT_DEFAULT:-}" ]]; then
+  declare -r WS_PORT_DEFAULT=8444
+fi
+if [[ -z "${HY2_PORT_DEFAULT:-}" ]]; then
+  declare -r HY2_PORT_DEFAULT=8443
+fi
 
 # Fallback ports
 declare -r REALITY_PORT_FALLBACK=24443
@@ -135,7 +141,7 @@ declare -r X25519_KEY_BYTES=32
 
 # Certificate expiration warning threshold
 declare -r CERT_EXPIRY_WARNING_DAYS=30
-declare -r CERT_EXPIRY_WARNING_SEC=$((CERT_EXPIRY_WARNING_DAYS * 86400))  # 2592000 seconds
+declare -r CERT_EXPIRY_WARNING_SEC=$((CERT_EXPIRY_WARNING_DAYS * 86400)) # 2592000 seconds
 
 #==============================================================================
 # Backup Configuration Constants
@@ -279,8 +285,8 @@ get_file_mtime() {
   # Linux: stat -c %y (returns: YYYY-MM-DD HH:MM:SS.nanoseconds +timezone)
   # BSD/macOS: stat -f %Sm (returns: format depends on -t option)
   stat -c %y "${file}" 2> /dev/null | cut -d' ' -f1,2 | cut -d'.' -f1 \
-                                                                     || stat -f %Sm "${file}" 2> /dev/null \
-                                    || echo ""
+    || stat -f %Sm "${file}" 2> /dev/null \
+    || echo ""
 }
 
 #==============================================================================
