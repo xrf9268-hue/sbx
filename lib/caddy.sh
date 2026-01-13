@@ -53,7 +53,7 @@ caddy_cert_path() {
 
   # Last resort: Search for domain directory (with safety limits)
   if [[ -d "${data_dir}/certificates" ]]; then
-    cert_dir=$(find "${data_dir}/certificates" -maxdepth 3 -type d -name "${domain}" -print -quit 2>/dev/null)
+    cert_dir=$(find "${data_dir}/certificates" -maxdepth 3 -type d -name "${domain}" -print -quit 2> /dev/null)
     if [[ -n "${cert_dir}" && -d "${cert_dir}" ]]; then
       echo "${cert_dir}"
       return 0
@@ -73,8 +73,8 @@ caddy_detect_arch() {
   local arch=''
   arch="$(uname -m)"
   case "${arch}" in
-    x86_64|amd64) echo "amd64" ;;
-    aarch64|arm64) echo "arm64" ;;
+    x86_64 | amd64) echo "amd64" ;;
+    aarch64 | arm64) echo "arm64" ;;
     armv7l) echo "armv7" ;;
     *)
       err "Unsupported architecture for Caddy: ${arch}"
@@ -105,7 +105,7 @@ caddy_install() {
   local version='' arch='' tmpdir='' tmpfile='' url='' archive='' checksum_file='' checksum_url='' expected='' actual=''
 
   if [[ -x "$(caddy_bin)" ]]; then
-    version=$("$(caddy_bin)" version 2>/dev/null | head -n1 | awk '{print $1}')
+    version=$("$(caddy_bin)" version 2> /dev/null | head -n1 | awk '{print $1}')
     info "Caddy already installed: ${version}"
     return 0
   fi
@@ -158,7 +158,8 @@ caddy_install() {
     return 1
   fi
 
-  actual=$(sha256sum "${tmpfile}" | awk '{print $1}')
+  # Caddy uses SHA-512 checksums (not SHA-256)
+  actual=$(sha512sum "${tmpfile}" | awk '{print $1}')
   if [[ "${expected}" != "${actual}" ]]; then
     rm -rf "${tmpdir}"
     err "Checksum mismatch for downloaded Caddy archive"
@@ -193,7 +194,7 @@ caddy_install() {
 caddy_create_service() {
   msg "  - Creating Caddy systemd service..."
 
-  cat > "$(caddy_systemd_file)" <<'EOF'
+  cat > "$(caddy_systemd_file)" << 'EOF'
 [Unit]
 Description=Caddy HTTP/2 web server
 Documentation=https://caddyserver.com/docs/
@@ -264,7 +265,7 @@ caddy_setup_auto_tls() {
 
   # Create Caddyfile - Caddy on dedicated port for certificate management
   msg "  - Writing Caddyfile configuration..."
-  cat > "$(caddy_config_file)" <<EOF
+  cat > "$(caddy_config_file)" << EOF
 {
   admin off
   http_port ${caddy_http_port}
@@ -291,7 +292,7 @@ EOF
 
   # Enable and start Caddy
   msg "  - Starting Caddy service..."
-  systemctl enable caddy >/dev/null 2>&1
+  systemctl enable caddy > /dev/null 2>&1
   systemctl start caddy || {
     err "Failed to start Caddy service"
     return 1
@@ -300,7 +301,7 @@ EOF
   # Wait for Caddy to be ready
   sleep "${CADDY_STARTUP_WAIT_SEC}"
 
-  if ! systemctl is-active caddy >/dev/null 2>&1; then
+  if ! systemctl is-active caddy > /dev/null 2>&1; then
     err "Caddy service failed to start"
     journalctl -u caddy --no-pager -n 20 >&2
     return 1
@@ -317,7 +318,7 @@ EOF
 # Wait for Caddy to obtain certificate
 caddy_wait_for_cert() {
   local domain="$1"
-  local max_wait="${2:-60}"  # Wait up to 60 seconds
+  local max_wait="${2:-60}" # Wait up to 60 seconds
   local cert_dir=''
 
   cert_dir=$(caddy_cert_path "${domain}")
@@ -423,7 +424,7 @@ caddy_create_renewal_hook() {
 
   # Create hook script with single-quoted HEREDOC to prevent variable expansion
   # Domain is passed as argument for security (prevents command injection)
-  cat > "${hook_script}" <<'EOFSCRIPT'
+  cat > "${hook_script}" << 'EOFSCRIPT'
 #!/usr/bin/env bash
 # Caddy certificate sync hook
 # Syncs certificates from Caddy to sing-box and restarts service
@@ -500,8 +501,8 @@ else
 fi
 EOFSCRIPT
 
-  chmod 750 "${hook_script}"  # More restrictive: owner+group execute only
-  chown root:root "${hook_script}" 2>/dev/null || true
+  chmod 750 "${hook_script}" # More restrictive: owner+group execute only
+  chown root:root "${hook_script}" 2> /dev/null || true
 
   # Create systemd service - pass domain and target_dir as arguments
   # Use printf %q to properly escape arguments
@@ -509,7 +510,7 @@ EOFSCRIPT
   escaped_domain=$(printf '%q' "${domain}")
   escaped_target=$(printf '%q' "${target_dir}")
 
-  cat > /etc/systemd/system/caddy-cert-sync.service <<EOF
+  cat > /etc/systemd/system/caddy-cert-sync.service << EOF
 [Unit]
 Description=Sync Caddy certificates to sing-box for ${domain}
 After=caddy.service
@@ -519,7 +520,7 @@ Type=oneshot
 ExecStart=${hook_script} ${escaped_domain} ${escaped_target}
 EOF
 
-  cat > /etc/systemd/system/caddy-cert-sync.timer <<EOF
+  cat > /etc/systemd/system/caddy-cert-sync.timer << EOF
 [Unit]
 Description=Daily certificate sync check
 
@@ -532,7 +533,7 @@ WantedBy=timers.target
 EOF
 
   systemctl daemon-reload
-  systemctl enable caddy-cert-sync.timer >/dev/null 2>&1
+  systemctl enable caddy-cert-sync.timer > /dev/null 2>&1
   systemctl start caddy-cert-sync.timer
 
   success "  ✓ Certificate renewal hook created"
@@ -548,10 +549,10 @@ caddy_uninstall() {
   msg "Removing Caddy..."
 
   # Stop and disable services
-  systemctl stop caddy 2>/dev/null || true
-  systemctl disable caddy 2>/dev/null || true
-  systemctl stop caddy-cert-sync.timer 2>/dev/null || true
-  systemctl disable caddy-cert-sync.timer 2>/dev/null || true
+  systemctl stop caddy 2> /dev/null || true
+  systemctl disable caddy 2> /dev/null || true
+  systemctl stop caddy-cert-sync.timer 2> /dev/null || true
+  systemctl disable caddy-cert-sync.timer 2> /dev/null || true
 
   # Remove files
   rm -f "$(caddy_bin)"
