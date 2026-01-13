@@ -20,6 +20,8 @@ source "${_LIB_DIR}/network.sh"
 # Declare external variables from common.sh
 # shellcheck disable=SC2154
 : "${CADDY_STARTUP_WAIT_SEC:?}" "${CADDY_CERT_POLL_INTERVAL_SEC:?}" "${CERT_DIR_BASE:?}"
+# shellcheck disable=SC2154
+: "${CADDY_HTTP_PORT_DEFAULT:?}" "${CADDY_HTTPS_PORT_DEFAULT:?}" "${CADDY_FALLBACK_PORT_DEFAULT:?}"
 
 #==============================================================================
 # Caddy File Paths
