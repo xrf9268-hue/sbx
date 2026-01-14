@@ -22,135 +22,135 @@ source "${_LIB_DIR}/colors.sh"
 # Global Constants
 #==============================================================================
 
-declare -r SB_BIN="/usr/local/bin/sing-box"
-declare -r SB_CONF_DIR="/etc/sing-box"
-declare -r SB_CONF="${SB_CONF_DIR}/config.json"
-declare -r SB_SVC="/etc/systemd/system/sing-box.service"
-declare -r CLIENT_INFO="${SB_CONF_DIR}/client-info.txt"
+declare -gr SB_BIN="/usr/local/bin/sing-box"
+declare -gr SB_CONF_DIR="/etc/sing-box"
+declare -gr SB_CONF="${SB_CONF_DIR}/config.json"
+declare -gr SB_SVC="/etc/systemd/system/sing-box.service"
+declare -gr CLIENT_INFO="${SB_CONF_DIR}/client-info.txt"
 
 # Default ports (may be defined in install.sh bootstrap for early use)
 if [[ -z "${REALITY_PORT_DEFAULT:-}" ]]; then
-  declare -r REALITY_PORT_DEFAULT=443
+  declare -gr REALITY_PORT_DEFAULT=443
 fi
 if [[ -z "${WS_PORT_DEFAULT:-}" ]]; then
-  declare -r WS_PORT_DEFAULT=8444
+  declare -gr WS_PORT_DEFAULT=8444
 fi
 if [[ -z "${HY2_PORT_DEFAULT:-}" ]]; then
-  declare -r HY2_PORT_DEFAULT=8443
+  declare -gr HY2_PORT_DEFAULT=8443
 fi
 
 # Fallback ports
-declare -r REALITY_PORT_FALLBACK=24443
-declare -r WS_PORT_FALLBACK=24444
-declare -r HY2_PORT_FALLBACK=24445
+declare -gr REALITY_PORT_FALLBACK=24443
+declare -gr WS_PORT_FALLBACK=24444
+declare -gr HY2_PORT_FALLBACK=24445
 
 # Default values
-declare -r SNI_DEFAULT="${SNI_DEFAULT:-www.microsoft.com}"
-declare -r CERT_DIR_BASE="${CERT_DIR_BASE:-/etc/ssl/sbx}"
-declare -r LOG_LEVEL="${LOG_LEVEL:-warn}"
+declare -gr SNI_DEFAULT="${SNI_DEFAULT:-www.microsoft.com}"
+declare -gr CERT_DIR_BASE="${CERT_DIR_BASE:-/etc/ssl/sbx}"
+declare -gr LOG_LEVEL="${LOG_LEVEL:-warn}"
 
 # Operation timeouts and retry limits
 # NETWORK_TIMEOUT_SEC defined in install.sh early constants for bootstrap
-[[ -z "${NETWORK_TIMEOUT_SEC:-}" ]] && declare -r NETWORK_TIMEOUT_SEC=5
-declare -r SERVICE_STARTUP_MAX_WAIT_SEC=10
-declare -r SERVICE_PORT_VALIDATION_MAX_RETRIES=5
-declare -r PORT_ALLOCATION_MAX_RETRIES=3
-declare -r PORT_ALLOCATION_RETRY_DELAY_SEC=2
-declare -r CLEANUP_OLD_FILES_MIN=60
-declare -r BACKUP_RETENTION_DAYS=30
-declare -r CADDY_CERT_WAIT_TIMEOUT_SEC=60
+[[ -z "${NETWORK_TIMEOUT_SEC:-}" ]] && declare -gr NETWORK_TIMEOUT_SEC=5
+declare -gr SERVICE_STARTUP_MAX_WAIT_SEC=10
+declare -gr SERVICE_PORT_VALIDATION_MAX_RETRIES=5
+declare -gr PORT_ALLOCATION_MAX_RETRIES=3
+declare -gr PORT_ALLOCATION_RETRY_DELAY_SEC=2
+declare -gr CLEANUP_OLD_FILES_MIN=60
+declare -gr BACKUP_RETENTION_DAYS=30
+declare -gr CADDY_CERT_WAIT_TIMEOUT_SEC=60
 
 # Download configuration (some constants defined in install.sh early boot)
 # DOWNLOAD_CONNECT_TIMEOUT_SEC, DOWNLOAD_MAX_TIMEOUT_SEC, MIN_MODULE_FILE_SIZE_BYTES
 # are defined in install.sh before module loading
-[[ -z "${HTTP_TIMEOUT_SEC:-}" ]] && declare -r HTTP_TIMEOUT_SEC=30
-[[ -z "${DEFAULT_PARALLEL_JOBS:-}" ]] && declare -r DEFAULT_PARALLEL_JOBS=5
+[[ -z "${HTTP_TIMEOUT_SEC:-}" ]] && declare -gr HTTP_TIMEOUT_SEC=30
+[[ -z "${DEFAULT_PARALLEL_JOBS:-}" ]] && declare -gr DEFAULT_PARALLEL_JOBS=5
 
 # File permissions (octal) - defined in install.sh for early use
 # SECURE_DIR_PERMISSIONS and SECURE_FILE_PERMISSIONS are already readonly
 
 # Input validation limits
-[[ -z "${MAX_INPUT_LENGTH:-}" ]] && declare -r MAX_INPUT_LENGTH=256
-[[ -z "${MAX_DOMAIN_LENGTH:-}" ]] && declare -r MAX_DOMAIN_LENGTH=253
-[[ -z "${MAX_URL_LENGTH:-}" ]] && declare -r MAX_URL_LENGTH=2048
-[[ -z "${MAX_QR_URI_LENGTH:-}" ]] && declare -r MAX_QR_URI_LENGTH=1500
+[[ -z "${MAX_INPUT_LENGTH:-}" ]] && declare -gr MAX_INPUT_LENGTH=256
+[[ -z "${MAX_DOMAIN_LENGTH:-}" ]] && declare -gr MAX_DOMAIN_LENGTH=253
+[[ -z "${MAX_URL_LENGTH:-}" ]] && declare -gr MAX_URL_LENGTH=2048
+[[ -z "${MAX_QR_URI_LENGTH:-}" ]] && declare -gr MAX_QR_URI_LENGTH=1500
 
 # Service operation wait times
-[[ -z "${SERVICE_WAIT_SHORT_SEC:-}" ]] && declare -r SERVICE_WAIT_SHORT_SEC=1
-[[ -z "${SERVICE_WAIT_MEDIUM_SEC:-}" ]] && declare -r SERVICE_WAIT_MEDIUM_SEC=2
+[[ -z "${SERVICE_WAIT_SHORT_SEC:-}" ]] && declare -gr SERVICE_WAIT_SHORT_SEC=1
+[[ -z "${SERVICE_WAIT_MEDIUM_SEC:-}" ]] && declare -gr SERVICE_WAIT_MEDIUM_SEC=2
 
 # Network connectivity test timeouts
-[[ -z "${IPV6_TEST_TIMEOUT_SEC:-}" ]] && declare -r IPV6_TEST_TIMEOUT_SEC=3
-[[ -z "${IPV6_PING_WAIT_SEC:-}" ]] && declare -r IPV6_PING_WAIT_SEC=2
+[[ -z "${IPV6_TEST_TIMEOUT_SEC:-}" ]] && declare -gr IPV6_TEST_TIMEOUT_SEC=3
+[[ -z "${IPV6_PING_WAIT_SEC:-}" ]] && declare -gr IPV6_PING_WAIT_SEC=2
 
 # Logging configuration
 # Check for log rotation every 100 writes (1% overhead - negligible performance impact)
-declare -r LOG_ROTATION_CHECK_INTERVAL=100
+declare -gr LOG_ROTATION_CHECK_INTERVAL=100
 
 # Log viewing limits
-declare -r LOG_VIEW_MAX_LINES=10000
-declare -r LOG_VIEW_DEFAULT_HISTORY="5 minutes ago"
+declare -gr LOG_VIEW_MAX_LINES=10000
+declare -gr LOG_VIEW_DEFAULT_HISTORY="5 minutes ago"
 
 #==============================================================================
 # Reality Protocol Constants
 #==============================================================================
 
 # Reality configuration defaults (conditionally set if not already defined in install.sh)
-declare -r REALITY_DEFAULT_SNI="www.microsoft.com"
+declare -gr REALITY_DEFAULT_SNI="www.microsoft.com"
 
 if [[ -z "${REALITY_MAX_TIME_DIFF:-}" ]]; then
-  declare -r REALITY_MAX_TIME_DIFF="1m"
+  declare -gr REALITY_MAX_TIME_DIFF="1m"
 fi
 if [[ -z "${REALITY_DEFAULT_HANDSHAKE_PORT:-}" ]]; then
-  declare -r REALITY_DEFAULT_HANDSHAKE_PORT=443
+  declare -gr REALITY_DEFAULT_HANDSHAKE_PORT=443
 fi
 if [[ -z "${REALITY_FLOW_VISION:-}" ]]; then
-  declare -r REALITY_FLOW_VISION="xtls-rprx-vision"
+  declare -gr REALITY_FLOW_VISION="xtls-rprx-vision"
 fi
 
 # Reality validation constraints (conditionally set if not already defined in install.sh)
 if [[ -z "${REALITY_SHORT_ID_MIN_LENGTH:-}" ]]; then
-  declare -r REALITY_SHORT_ID_MIN_LENGTH=1
+  declare -gr REALITY_SHORT_ID_MIN_LENGTH=1
 fi
 if [[ -z "${REALITY_SHORT_ID_MAX_LENGTH:-}" ]]; then
-  declare -r REALITY_SHORT_ID_MAX_LENGTH=8
+  declare -gr REALITY_SHORT_ID_MAX_LENGTH=8
 fi
 
 # ALPN protocols for Reality (conditionally set if not already defined in install.sh)
 if [[ -z "${REALITY_ALPN_H2:-}" ]]; then
-  declare -r REALITY_ALPN_H2="h2"
+  declare -gr REALITY_ALPN_H2="h2"
 fi
 if [[ -z "${REALITY_ALPN_HTTP11:-}" ]]; then
-  declare -r REALITY_ALPN_HTTP11="http/1.1"
+  declare -gr REALITY_ALPN_HTTP11="http/1.1"
 fi
 
 # Reality fingerprint options
-declare -r REALITY_FINGERPRINT_CHROME="chrome"
-declare -r REALITY_FINGERPRINT_FIREFOX="firefox"
-declare -r REALITY_FINGERPRINT_SAFARI="safari"
-declare -r REALITY_FINGERPRINT_DEFAULT="${REALITY_FINGERPRINT_CHROME}"
+declare -gr REALITY_FINGERPRINT_CHROME="chrome"
+declare -gr REALITY_FINGERPRINT_FIREFOX="firefox"
+declare -gr REALITY_FINGERPRINT_SAFARI="safari"
+declare -gr REALITY_FINGERPRINT_DEFAULT="${REALITY_FINGERPRINT_CHROME}"
 
 # X25519 key validation (base64url-encoded 32-byte keys)
-declare -r X25519_KEY_MIN_LENGTH=42
-declare -r X25519_KEY_MAX_LENGTH=44
-declare -r X25519_KEY_BYTES=32
+declare -gr X25519_KEY_MIN_LENGTH=42
+declare -gr X25519_KEY_MAX_LENGTH=44
+declare -gr X25519_KEY_BYTES=32
 
 #==============================================================================
 # Certificate Management Constants
 #==============================================================================
 
 # Certificate expiration warning threshold
-declare -r CERT_EXPIRY_WARNING_DAYS=30
-declare -r CERT_EXPIRY_WARNING_SEC=$((CERT_EXPIRY_WARNING_DAYS * 86400)) # 2592000 seconds
+declare -gr CERT_EXPIRY_WARNING_DAYS=30
+declare -gr CERT_EXPIRY_WARNING_SEC=$((CERT_EXPIRY_WARNING_DAYS * 86400)) # 2592000 seconds
 
 #==============================================================================
 # Backup Configuration Constants
 #==============================================================================
 
 # Backup encryption password generation
-declare -r BACKUP_PASSWORD_RANDOM_BYTES=48
-declare -r BACKUP_PASSWORD_LENGTH=64
-declare -r BACKUP_PASSWORD_MIN_LENGTH=32
+declare -gr BACKUP_PASSWORD_RANDOM_BYTES=48
+declare -gr BACKUP_PASSWORD_LENGTH=64
+declare -gr BACKUP_PASSWORD_MIN_LENGTH=32
 
 #==============================================================================
 # Caddy Configuration Constants
@@ -158,18 +158,18 @@ declare -r BACKUP_PASSWORD_MIN_LENGTH=32
 
 # Caddy default ports (may be defined in install.sh bootstrap for early use)
 if [[ -z "${CADDY_HTTP_PORT_DEFAULT:-}" ]]; then
-  declare -r CADDY_HTTP_PORT_DEFAULT=80
+  declare -gr CADDY_HTTP_PORT_DEFAULT=80
 fi
 if [[ -z "${CADDY_HTTPS_PORT_DEFAULT:-}" ]]; then
-  declare -r CADDY_HTTPS_PORT_DEFAULT=8445
+  declare -gr CADDY_HTTPS_PORT_DEFAULT=8445
 fi
 if [[ -z "${CADDY_FALLBACK_PORT_DEFAULT:-}" ]]; then
-  declare -r CADDY_FALLBACK_PORT_DEFAULT=8080
+  declare -gr CADDY_FALLBACK_PORT_DEFAULT=8080
 fi
 
 # Caddy service wait times
-declare -r CADDY_STARTUP_WAIT_SEC=2
-declare -r CADDY_CERT_POLL_INTERVAL_SEC=3
+declare -gr CADDY_STARTUP_WAIT_SEC=2
+declare -gr CADDY_CERT_POLL_INTERVAL_SEC=3
 
 #==============================================================================
 # Network and Download Constants
@@ -178,7 +178,7 @@ declare -r CADDY_CERT_POLL_INTERVAL_SEC=3
 # HTTP download timeout (for large file downloads)
 # May be defined early in install.sh for bootstrap phase
 if [[ -z "${HTTP_DOWNLOAD_TIMEOUT_SEC:-}" ]]; then
-  declare -r HTTP_DOWNLOAD_TIMEOUT_SEC=30
+  declare -gr HTTP_DOWNLOAD_TIMEOUT_SEC=30
 fi
 
 #==============================================================================

@@ -37,7 +37,7 @@ if [[ -z "${LOG_ROTATION_CHECK_INTERVAL:-}" ]]; then
 fi
 
 # Log level values (lower number = higher priority)
-declare -r -A LOG_LEVELS=( [ERROR]=0 [WARN]=1 [INFO]=2 [DEBUG]=3 )
+declare -gr -A LOG_LEVELS=( [ERROR]=0 [WARN]=1 [INFO]=2 [DEBUG]=3 )
 
 # Normalize and validate LOG_LEVEL_FILTER
 if [[ -n "${LOG_LEVEL_FILTER}" ]]; then
@@ -59,11 +59,11 @@ fi
 
 # Set current log level
 case "${LOG_LEVEL_FILTER:-INFO}" in
-  ERROR) declare -r LOG_LEVEL_CURRENT=0 ;;
-  WARN)  declare -r LOG_LEVEL_CURRENT=1 ;;
-  INFO)  declare -r LOG_LEVEL_CURRENT=2 ;;
-  DEBUG) declare -r LOG_LEVEL_CURRENT=3 ;;
-  *)     declare -r LOG_LEVEL_CURRENT=2 ;;  # Default to INFO
+  ERROR) declare -gr LOG_LEVEL_CURRENT=0 ;;
+  WARN)  declare -gr LOG_LEVEL_CURRENT=1 ;;
+  INFO)  declare -gr LOG_LEVEL_CURRENT=2 ;;
+  DEBUG) declare -gr LOG_LEVEL_CURRENT=3 ;;
+  *)     declare -gr LOG_LEVEL_CURRENT=2 ;;  # Default to INFO
 esac
 
 #==============================================================================
