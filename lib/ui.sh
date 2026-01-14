@@ -28,7 +28,8 @@ source "${_LIB_DIR}/common.sh"
 
 # Display application logo
 show_logo() {
-  clear
+  # Only clear screen if terminal supports it
+  clear 2> /dev/null || true
   echo
   echo -e "${BLUE}███████╗${CYAN}██████╗ ${PURPLE}██╗  ██╗    ${G}██╗     ${Y}██╗${R}████████╗${G}███████╗${N}"
   echo -e "${BLUE}██╔════╝${CYAN}██╔══██╗${PURPLE}╚██╗██╔╝    ${G}██║     ${Y}██║${R}╚══██╔══╝${G}██╔════╝${N}"
