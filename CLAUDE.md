@@ -84,6 +84,10 @@ Setup: `bash hooks/install-hooks.sh`
 
 ```bash
 DOMAIN=x.com          # Enable multi-protocol (WS-TLS + Hysteria2)
+CF_MODE=1             # Cloudflare proxy mode (WS-TLS on 443 only)
+ENABLE_REALITY=1      # Enable/disable Reality protocol
+ENABLE_WS=1           # Enable/disable WS-TLS protocol
+ENABLE_HY2=1          # Enable/disable Hysteria2 protocol
 SINGBOX_VERSION=v1.12.0  # Specific version
 DEBUG=1               # Debug output
 ```
