@@ -604,7 +604,7 @@ sudo ufw status  # ufw
 sudo firewall-cmd --permanent --add-port=443/tcp
 
 # If using additional protocols
-sudo firewall-cmd --permanent --add-port=8443/tcp  # Hysteria2
+sudo firewall-cmd --permanent --add-port=8443/udp  # Hysteria2 (UDP!)
 sudo firewall-cmd --permanent --add-port=8444/tcp  # WS-TLS
 
 # Reload firewall
@@ -620,7 +620,7 @@ sudo firewall-cmd --list-ports
 sudo ufw allow 443/tcp
 
 # If using additional protocols
-sudo ufw allow 8443/tcp  # Hysteria2
+sudo ufw allow 8443/udp  # Hysteria2 (UDP!)
 sudo ufw allow 8444/tcp  # WS-TLS
 
 # Enable firewall if not already

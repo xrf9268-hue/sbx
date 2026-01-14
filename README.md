@@ -63,7 +63,10 @@ See [REALITY_TROUBLESHOOTING.md](docs/REALITY_TROUBLESHOOTING.md) for more solut
 
 - Linux (Debian, Ubuntu, CentOS, Fedora, RHEL)
 - Root access
-- Port 443 available
+- Ports available:
+  - **443/tcp** - VLESS-Reality
+  - **8444/tcp** - VLESS-WS-TLS (with domain)
+  - **8443/udp** - Hysteria2 (with domain)
 
 ## Documentation
 
