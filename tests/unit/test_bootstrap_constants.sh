@@ -82,6 +82,13 @@ PORT_DEFAULT_CONSTANTS=(
   "HY2_PORT_DEFAULT"
 )
 
+# Caddy port default constants (used by lib/caddy.sh during bootstrap)
+CADDY_PORT_CONSTANTS=(
+  "CADDY_HTTP_PORT_DEFAULT"
+  "CADDY_HTTPS_PORT_DEFAULT"
+  "CADDY_FALLBACK_PORT_DEFAULT"
+)
+
 # Reality configuration constants (used by lib/config.sh during bootstrap)
 REALITY_CONFIG_CONSTANTS=(
   "REALITY_FLOW_VISION"
@@ -103,6 +110,7 @@ REQUIRED_BOOTSTRAP_CONSTANTS=(
   "${NETWORK_CONSTANTS[@]}"
   "${REALITY_VALIDATION_CONSTANTS[@]}"
   "${PORT_DEFAULT_CONSTANTS[@]}"
+  "${CADDY_PORT_CONSTANTS[@]}"
   "${REALITY_CONFIG_CONSTANTS[@]}"
   "${PERMISSION_CONSTANTS[@]}"
 )
@@ -149,12 +157,13 @@ fi
 #==============================================================================
 # Test 3: Reality constants have conditional declarations in lib/common.sh
 #==============================================================================
-test_start "Reality and port constants conditionally declared in lib/common.sh"
+test_start "Reality, port, and Caddy constants conditionally declared in lib/common.sh"
 
 # These constants should have conditional declarations since they're in bootstrap
 CONDITIONALLY_DECLARED=(
   "${REALITY_VALIDATION_CONSTANTS[@]}"
   "${PORT_DEFAULT_CONSTANTS[@]}"
+  "${CADDY_PORT_CONSTANTS[@]}"
   "${REALITY_CONFIG_CONSTANTS[@]}"
 )
 
@@ -343,6 +352,7 @@ echo "  - Download: ${#DOWNLOAD_CONSTANTS[@]}"
 echo "  - Network: ${#NETWORK_CONSTANTS[@]}"
 echo "  - Reality validation: ${#REALITY_VALIDATION_CONSTANTS[@]}"
 echo "  - Port defaults: ${#PORT_DEFAULT_CONSTANTS[@]}"
+echo "  - Caddy ports: ${#CADDY_PORT_CONSTANTS[@]}"
 echo "  - Reality config: ${#REALITY_CONFIG_CONSTANTS[@]}"
 echo "  - Permissions: ${#PERMISSION_CONSTANTS[@]}"
 echo ""

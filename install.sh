@@ -38,6 +38,11 @@ readonly REALITY_PORT_DEFAULT=443
 readonly WS_PORT_DEFAULT=8444
 readonly HY2_PORT_DEFAULT=8443
 
+# Caddy port defaults (used by lib/caddy.sh during bootstrap)
+readonly CADDY_HTTP_PORT_DEFAULT=80
+readonly CADDY_HTTPS_PORT_DEFAULT=8445
+readonly CADDY_FALLBACK_PORT_DEFAULT=8080
+
 # Reality configuration defaults (used by lib/config.sh during bootstrap)
 readonly REALITY_FLOW_VISION="xtls-rprx-vision"
 readonly REALITY_DEFAULT_HANDSHAKE_PORT=443

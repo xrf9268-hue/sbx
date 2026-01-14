@@ -156,10 +156,16 @@ declare -r BACKUP_PASSWORD_MIN_LENGTH=32
 # Caddy Configuration Constants
 #==============================================================================
 
-# Caddy default ports
-declare -r CADDY_HTTP_PORT_DEFAULT=80
-declare -r CADDY_HTTPS_PORT_DEFAULT=8445
-declare -r CADDY_FALLBACK_PORT_DEFAULT=8080
+# Caddy default ports (may be defined in install.sh bootstrap for early use)
+if [[ -z "${CADDY_HTTP_PORT_DEFAULT:-}" ]]; then
+  declare -r CADDY_HTTP_PORT_DEFAULT=80
+fi
+if [[ -z "${CADDY_HTTPS_PORT_DEFAULT:-}" ]]; then
+  declare -r CADDY_HTTPS_PORT_DEFAULT=8445
+fi
+if [[ -z "${CADDY_FALLBACK_PORT_DEFAULT:-}" ]]; then
+  declare -r CADDY_FALLBACK_PORT_DEFAULT=8080
+fi
 
 # Caddy service wait times
 declare -r CADDY_STARTUP_WAIT_SEC=2
