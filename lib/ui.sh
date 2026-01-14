@@ -15,8 +15,10 @@ _LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${_LIB_DIR}/common.sh"
 
 # Declare external variables from common.sh and colors.sh
+# Note: Color variables may be empty strings if terminal doesn't support colors
+# Use ${var+x} pattern to check if defined (works with empty values)
 # shellcheck disable=SC2154
-: "${B:?}" "${N:?}" "${R:?}" "${G:?}" "${Y:?}" "${BLUE:?}" "${PURPLE:?}" "${CYAN:?}"
+[[ -n "${B+x}" ]] || die "Color variable B not defined - colors.sh not loaded"
 # shellcheck disable=SC2154
 : "${SB_BIN:?}" "${SB_CONF:?}" "${SB_SVC:?}"
 
@@ -149,7 +151,7 @@ prompt_yes_no() {
 prompt_input() {
   local prompt="$1"
   local default="${2:-}"
-  local validator="${3:-}"  # Optional validation function
+  local validator="${3:-}" # Optional validation function
   local input=''
 
   if [[ -n "${default}" ]]; then
@@ -180,7 +182,7 @@ prompt_password() {
   local password=''
 
   read -rsp "${prompt}: " password
-  echo >&2  # New line after password input
+  echo >&2 # New line after password input
 
   echo "${password}"
   return 0
