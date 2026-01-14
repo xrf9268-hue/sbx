@@ -27,13 +27,26 @@ source "${_LIB_DIR}/network.sh"
 # Caddy File Paths
 #==============================================================================
 
+# Caddy service user - must match User= in systemd service file
+# If you change this, also update create_caddy_service()
+declare -gr CADDY_SERVICE_USER="root"
+
 caddy_bin() { echo "/usr/local/bin/caddy"; }
 caddy_config_dir() { echo "/usr/local/etc/caddy"; }
 caddy_config_file() { echo "$(caddy_config_dir)/Caddyfile"; }
 caddy_systemd_file() { echo "/etc/systemd/system/caddy.service"; }
 
 # Caddy stores certificates in data directory
-caddy_data_dir() { echo "${HOME}/.local/share/caddy"; }
+# Data directory depends on which user runs the Caddy service
+caddy_data_dir() {
+  local user_home=""
+  if [[ "$CADDY_SERVICE_USER" == "root" ]]; then
+    user_home="/root"
+  else
+    user_home=$(getent passwd "$CADDY_SERVICE_USER" | cut -d: -f6) || user_home="/home/$CADDY_SERVICE_USER"
+  fi
+  echo "${user_home}/.local/share/caddy"
+}
 caddy_cert_path() {
   local domain="$1"
   local data_dir=''
@@ -196,7 +209,7 @@ caddy_install() {
 caddy_create_service() {
   msg "  - Creating Caddy systemd service..."
 
-  cat > "$(caddy_systemd_file)" << 'EOF'
+  cat > "$(caddy_systemd_file)" << EOF
 [Unit]
 Description=Caddy HTTP/2 web server
 Documentation=https://caddyserver.com/docs/
@@ -205,8 +218,8 @@ Requires=network-online.target
 
 [Service]
 Type=notify
-User=root
-Group=root
+User=${CADDY_SERVICE_USER}
+Group=${CADDY_SERVICE_USER}
 ExecStart=/usr/local/bin/caddy run --environ --config /usr/local/etc/caddy/Caddyfile
 ExecReload=/usr/local/bin/caddy reload --config /usr/local/etc/caddy/Caddyfile --force
 TimeoutStopSec=5s
@@ -450,7 +463,14 @@ if [[ ${#DOMAIN} -gt 253 ]]; then
 fi
 
 # Determine Caddy data directory
-CADDY_DATA_DIR="${HOME:-/root}/.local/share/caddy"
+# Get Caddy service user from systemd, fallback to root
+CADDY_USER=$(systemctl show caddy.service -P User 2>/dev/null || echo "root")
+if [[ "$CADDY_USER" == "root" || -z "$CADDY_USER" ]]; then
+    CADDY_DATA_DIR="/root/.local/share/caddy"
+else
+    CADDY_DATA_DIR=$(getent passwd "$CADDY_USER" | cut -d: -f6)/.local/share/caddy
+    [[ -z "$CADDY_DATA_DIR" || "$CADDY_DATA_DIR" == "/.local/share/caddy" ]] && CADDY_DATA_DIR="/home/$CADDY_USER/.local/share/caddy"
+fi
 
 # Try primary path structure (Let's Encrypt ACME v2)
 CADDY_CERT_DIR="${CADDY_DATA_DIR}/certificates/acme-v02.api.letsencrypt.org-directory/${DOMAIN}"

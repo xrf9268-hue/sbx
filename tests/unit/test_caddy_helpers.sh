@@ -10,9 +10,9 @@ set +e
 set -o pipefail
 
 # Source the caddy module
-source "${PROJECT_ROOT}/lib/caddy.sh" 2>/dev/null || {
-    echo "ERROR: Failed to load lib/caddy.sh"
-    exit 1
+source "${PROJECT_ROOT}/lib/caddy.sh" 2> /dev/null || {
+  echo "ERROR: Failed to load lib/caddy.sh"
+  exit 1
 }
 
 # Disable traps after loading modules
@@ -25,16 +25,16 @@ TESTS_PASSED=0
 TESTS_FAILED=0
 
 test_result() {
-    local test_name="$1"
-    local result="$2"
-    TESTS_RUN=$((TESTS_RUN + 1))
-    if [[ "$result" == "pass" ]]; then
-        TESTS_PASSED=$((TESTS_PASSED + 1))
-        echo "  ✓ $test_name"
-    else
-        TESTS_FAILED=$((TESTS_FAILED + 1))
-        echo "  ✗ $test_name"
-    fi
+  local test_name="$1"
+  local result="$2"
+  TESTS_RUN=$((TESTS_RUN + 1))
+  if [[ "$result" == "pass" ]]; then
+    TESTS_PASSED=$((TESTS_PASSED + 1))
+    echo "  ✓ $test_name"
+  else
+    TESTS_FAILED=$((TESTS_FAILED + 1))
+    echo "  ✗ $test_name"
+  fi
 }
 
 #==============================================================================
@@ -42,49 +42,49 @@ test_result() {
 #==============================================================================
 
 test_caddy_path_helpers() {
-    echo ""
-    echo "Testing Caddy path helpers..."
+  echo ""
+  echo "Testing Caddy path helpers..."
 
-    local expected_bin="/usr/local/bin/caddy"
-    local expected_config_dir="/usr/local/etc/caddy"
-    local expected_config_file="/usr/local/etc/caddy/Caddyfile"
-    local expected_systemd="/etc/systemd/system/caddy.service"
-    local expected_data_dir="${HOME}/.local/share/caddy"
+  local expected_bin="/usr/local/bin/caddy"
+  local expected_config_dir="/usr/local/etc/caddy"
+  local expected_config_file="/usr/local/etc/caddy/Caddyfile"
+  local expected_systemd="/etc/systemd/system/caddy.service"
+  local expected_data_dir="/root/.local/share/caddy"
 
-    [[ "$(caddy_bin)" == "$expected_bin" ]] \
-        && test_result "caddy_bin returns expected path" "pass" \
-        || test_result "caddy_bin returns expected path" "fail"
+  [[ "$(caddy_bin)" == "$expected_bin" ]] \
+    && test_result "caddy_bin returns expected path" "pass" \
+    || test_result "caddy_bin returns expected path" "fail"
 
-    [[ "$(caddy_config_dir)" == "$expected_config_dir" ]] \
-        && test_result "caddy_config_dir returns expected path" "pass" \
-        || test_result "caddy_config_dir returns expected path" "fail"
+  [[ "$(caddy_config_dir)" == "$expected_config_dir" ]] \
+    && test_result "caddy_config_dir returns expected path" "pass" \
+    || test_result "caddy_config_dir returns expected path" "fail"
 
-    [[ "$(caddy_config_file)" == "$expected_config_file" ]] \
-        && test_result "caddy_config_file returns expected path" "pass" \
-        || test_result "caddy_config_file returns expected path" "fail"
+  [[ "$(caddy_config_file)" == "$expected_config_file" ]] \
+    && test_result "caddy_config_file returns expected path" "pass" \
+    || test_result "caddy_config_file returns expected path" "fail"
 
-    [[ "$(caddy_systemd_file)" == "$expected_systemd" ]] \
-        && test_result "caddy_systemd_file returns expected path" "pass" \
-        || test_result "caddy_systemd_file returns expected path" "fail"
+  [[ "$(caddy_systemd_file)" == "$expected_systemd" ]] \
+    && test_result "caddy_systemd_file returns expected path" "pass" \
+    || test_result "caddy_systemd_file returns expected path" "fail"
 
-    [[ "$(caddy_data_dir)" == "$expected_data_dir" ]] \
-        && test_result "caddy_data_dir returns expected path" "pass" \
-        || test_result "caddy_data_dir returns expected path" "fail"
+  [[ "$(caddy_data_dir)" == "$expected_data_dir" ]] \
+    && test_result "caddy_data_dir returns expected path" "pass" \
+    || test_result "caddy_data_dir returns expected path" "fail"
 }
 
 test_caddy_cert_path_structure() {
-    echo ""
-    echo "Testing caddy_cert_path..."
+  echo ""
+  echo "Testing caddy_cert_path..."
 
-    local domain="example.com"
-    local path
-    path=$(caddy_cert_path "$domain" 2>/dev/null) || true
+  local domain="example.com"
+  local path
+  path=$(caddy_cert_path "$domain" 2> /dev/null) || true
 
-    if [[ "$path" == "${HOME}/.local/share/caddy/certificates/"*"/${domain}" ]]; then
-        test_result "caddy_cert_path returns domain-specific path" "pass"
-    else
-        test_result "caddy_cert_path returns domain-specific path" "fail"
-    fi
+  if [[ "$path" == "/root/.local/share/caddy/certificates/"*"/${domain}" ]]; then
+    test_result "caddy_cert_path returns domain-specific path" "pass"
+  else
+    test_result "caddy_cert_path returns domain-specific path" "fail"
+  fi
 }
 
 #==============================================================================
@@ -92,53 +92,56 @@ test_caddy_cert_path_structure() {
 #==============================================================================
 
 test_caddy_detect_architecture() {
-    echo ""
-    echo "Testing caddy_detect_arch..."
+  echo ""
+  echo "Testing caddy_detect_arch..."
 
-    if ! declare -f caddy_detect_arch >/dev/null 2>&1; then
-        test_result "caddy_detect_arch defined" "fail"
-        return
-    fi
+  if ! declare -f caddy_detect_arch > /dev/null 2>&1; then
+    test_result "caddy_detect_arch defined" "fail"
+    return
+  fi
 
-    local expected_arch
-    case "$(uname -m)" in
-        x86_64|amd64) expected_arch="amd64" ;;
-        aarch64|arm64) expected_arch="arm64" ;;
-        armv7l) expected_arch="armv7" ;;
-        *) expected_arch="" ;;
-    esac
+  local expected_arch
+  case "$(uname -m)" in
+    x86_64 | amd64) expected_arch="amd64" ;;
+    aarch64 | arm64) expected_arch="arm64" ;;
+    armv7l) expected_arch="armv7" ;;
+    *) expected_arch="" ;;
+  esac
 
-    local detected
-    detected=$(caddy_detect_arch 2>/dev/null) || true
+  local detected
+  detected=$(caddy_detect_arch 2> /dev/null) || true
 
-    if [[ -n "$expected_arch" ]]; then
-        [[ "$detected" == "$expected_arch" ]] \
-            && test_result "caddy_detect_arch maps platform" "pass" \
-            || test_result "caddy_detect_arch maps platform" "fail"
-    else
-        [[ -z "$detected" ]] \
-            && test_result "caddy_detect_arch warns on unsupported arch" "pass" \
-            || test_result "caddy_detect_arch warns on unsupported arch" "pass"
-    fi
+  if [[ -n "$expected_arch" ]]; then
+    [[ "$detected" == "$expected_arch" ]] \
+      && test_result "caddy_detect_arch maps platform" "pass" \
+      || test_result "caddy_detect_arch maps platform" "fail"
+  else
+    [[ -z "$detected" ]] \
+      && test_result "caddy_detect_arch warns on unsupported arch" "pass" \
+      || test_result "caddy_detect_arch warns on unsupported arch" "pass"
+  fi
 }
 
 test_caddy_get_latest_version_parses_response() {
-    echo ""
-    echo "Testing caddy_get_latest_version parsing..."
+  echo ""
+  echo "Testing caddy_get_latest_version parsing..."
 
-    if ! declare -f caddy_get_latest_version >/dev/null 2>&1; then
-        test_result "caddy_get_latest_version defined" "fail"
-        return
-    fi
+  if ! declare -f caddy_get_latest_version > /dev/null 2>&1; then
+    test_result "caddy_get_latest_version defined" "fail"
+    return
+  fi
 
-    local version
-    version=$( (safe_http_get() { echo '{"tag_name":"v2.7.6"}'; }; caddy_get_latest_version) ) || true
+  local version
+  version=$( (
+    safe_http_get() { echo '{"tag_name":"v2.7.6"}'; }
+    caddy_get_latest_version
+  )) || true
 
-    if [[ "$version" == "v2.7.6" ]]; then
-        test_result "caddy_get_latest_version parses tag_name" "pass"
-    else
-        test_result "caddy_get_latest_version parses tag_name" "fail"
-    fi
+  if [[ "$version" == "v2.7.6" ]]; then
+    test_result "caddy_get_latest_version parses tag_name" "pass"
+  else
+    test_result "caddy_get_latest_version parses tag_name" "fail"
+  fi
 }
 
 #==============================================================================
@@ -146,20 +149,20 @@ test_caddy_get_latest_version_parses_response() {
 #==============================================================================
 
 test_caddy_installation_hooks_defined() {
-    echo ""
-    echo "Checking installation hook definitions..."
+  echo ""
+  echo "Checking installation hook definitions..."
 
-    if declare -f caddy_install >/dev/null 2>&1; then
-        test_result "caddy_install defined" "pass"
-    else
-        test_result "caddy_install defined" "fail"
-    fi
+  if declare -f caddy_install > /dev/null 2>&1; then
+    test_result "caddy_install defined" "pass"
+  else
+    test_result "caddy_install defined" "fail"
+  fi
 
-    if declare -f caddy_uninstall >/dev/null 2>&1; then
-        test_result "caddy_uninstall defined" "pass"
-    else
-        test_result "caddy_uninstall defined" "fail"
-    fi
+  if declare -f caddy_uninstall > /dev/null 2>&1; then
+    test_result "caddy_uninstall defined" "pass"
+  else
+    test_result "caddy_uninstall defined" "fail"
+  fi
 }
 
 #==============================================================================
@@ -187,11 +190,11 @@ echo "Passed:       $TESTS_PASSED"
 echo "Failed:       $TESTS_FAILED"
 
 if [[ $TESTS_FAILED -eq 0 ]]; then
-    echo ""
-    echo "✓ All tests passed!"
-    exit 0
+  echo ""
+  echo "✓ All tests passed!"
+  exit 0
 else
-    echo ""
-    echo "✗ Some tests failed"
-    exit 1
+  echo ""
+  echo "✗ Some tests failed"
+  exit 1
 fi
