@@ -57,12 +57,20 @@ test_cf_mode_enables_ws_only() {
   (
     export CF_MODE=1
     export DOMAIN="example.com"
+    # Simulate lib/common.sh defaults being applied before CF_MODE logic.
+    # In the real installer, WS_PORT is often already set to the default (8444).
+    export WS_PORT=8444
+    export WS_PORT_USER_SPECIFIED=0
 
     # Simulate the CF_MODE logic
     if [[ "${CF_MODE:-0}" == "1" ]]; then
       ENABLE_REALITY=${ENABLE_REALITY:-0}
       ENABLE_HY2=${ENABLE_HY2:-0}
-      WS_PORT=${WS_PORT:-443}
+      if [[ "${WS_PORT_USER_SPECIFIED:-0}" == "1" ]]; then
+        WS_PORT=${WS_PORT:-443}
+      else
+        WS_PORT=443
+      fi
     fi
 
     if [[ "$ENABLE_REALITY" == "0" && "$ENABLE_HY2" == "0" && "$WS_PORT" == "443" ]]; then
@@ -72,6 +80,24 @@ test_cf_mode_enables_ws_only() {
     fi
   ) | grep -q "pass" && test_result "CF_MODE disables Reality and Hysteria2" "pass" \
     || test_result "CF_MODE disables Reality and Hysteria2" "fail"
+}
+
+test_cf_mode_installer_overrides_default_ws_port() {
+  echo ""
+  echo "Testing install.sh CF_MODE WS port override logic..."
+
+  local install_sh="${PROJECT_ROOT}/install.sh"
+
+  # We expect install.sh to track if WS_PORT was user-specified, so it can
+  # override the default 8444 to 443 in CF_MODE=1.
+  local ws_port_user_specified_refs
+  ws_port_user_specified_refs=$(grep -c "WS_PORT_USER_SPECIFIED" "${install_sh}" 2>/dev/null || echo "0")
+
+  if [[ "${ws_port_user_specified_refs}" -ge 2 ]]; then
+    test_result "install.sh has WS_PORT_USER_SPECIFIED logic for CF_MODE" "pass"
+  else
+    test_result "install.sh has WS_PORT_USER_SPECIFIED logic for CF_MODE" "fail"
+  fi
 }
 
 test_cf_mode_requires_domain() {
@@ -102,12 +128,17 @@ test_cf_mode_ws_port_override() {
     export CF_MODE=1
     export DOMAIN="example.com"
     export WS_PORT=2053 # Another CF-supported port
+    export WS_PORT_USER_SPECIFIED=1
 
     if [[ "${CF_MODE:-0}" == "1" ]]; then
       # WS_PORT should keep user-specified value
       ENABLE_REALITY=${ENABLE_REALITY:-0}
       ENABLE_HY2=${ENABLE_HY2:-0}
-      WS_PORT=${WS_PORT:-443}
+      if [[ "${WS_PORT_USER_SPECIFIED:-0}" == "1" ]]; then
+        WS_PORT=${WS_PORT:-443}
+      else
+        WS_PORT=443
+      fi
     fi
 
     if [[ "$WS_PORT" == "2053" ]]; then
@@ -176,6 +207,7 @@ test_cf_mode_enables_ws_only
 test_cf_mode_requires_domain
 test_cf_mode_ws_port_override
 test_cf_mode_reality_fallback_port
+test_cf_mode_installer_overrides_default_ws_port
 test_cf_supported_ports
 
 echo ""

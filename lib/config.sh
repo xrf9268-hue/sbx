@@ -37,9 +37,18 @@ validate_config_vars() {
 
   # Required variables for all installations
   # Using require_all helper for cleaner validation
-  if ! require_all UUID REALITY_PORT_CHOSEN PRIV SID; then
+  if ! require_all UUID; then
     err "Configuration validation failed - see errors above"
     return 1
+  fi
+
+  # Reality is optional (e.g. CF_MODE WS-only), so only validate Reality vars when enabled.
+  local enable_reality="${ENABLE_REALITY:-1}"
+  if [[ "${enable_reality}" == "1" ]]; then
+    if ! require_all REALITY_PORT_CHOSEN PRIV SID; then
+      err "Configuration validation failed - see errors above"
+      return 1
+    fi
   fi
 
   success "  ✓ All required configuration parameters validated"

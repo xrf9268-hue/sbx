@@ -57,6 +57,7 @@ test_validate_config_vars() {
     echo "Testing validate_config_vars function..."
 
     # Test 1: Accepts valid configuration
+    ENABLE_REALITY=1
     UUID="a1b2c3d4-e5f6-7890-1234-567890abcdef"
     PRIV="test-private-key-12345678901234567890123456"
     SID="a1b2c3d4"
@@ -69,6 +70,7 @@ test_validate_config_vars() {
     fi
 
     # Test 2: Rejects empty UUID
+    ENABLE_REALITY=1
     UUID=""
     PRIV="test-private-key"
     SID="a1b2c3d4"
@@ -81,6 +83,7 @@ test_validate_config_vars() {
     fi
 
     # Test 3: Rejects empty private key
+    ENABLE_REALITY=1
     UUID="a1b2c3d4-e5f6-7890-1234-567890abcdef"
     PRIV=""
     SID="a1b2c3d4"
@@ -93,6 +96,7 @@ test_validate_config_vars() {
     fi
 
     # Test 4: Rejects empty short ID
+    ENABLE_REALITY=1
     UUID="a1b2c3d4-e5f6-7890-1234-567890abcdef"
     PRIV="test-private-key"
     SID=""
@@ -104,16 +108,30 @@ test_validate_config_vars() {
         test_result "validate_config_vars rejects empty SID" "pass"
     fi
 
-    # Test 5: Rejects empty port
+    # Test 5: Allows empty Reality vars when ENABLE_REALITY=0 (e.g. CF_MODE WS-only)
+    ENABLE_REALITY=0
+    UUID="a1b2c3d4-e5f6-7890-1234-567890abcdef"
+    PRIV=""
+    SID=""
+    REALITY_PORT_CHOSEN=""
+
+    if validate_config_vars 2>/dev/null; then
+        test_result "validate_config_vars allows Reality disabled without vars" "pass"
+    else
+        test_result "validate_config_vars allows Reality disabled without vars" "fail"
+    fi
+
+    # Test 6: Rejects empty port when Reality enabled
+    ENABLE_REALITY=1
     UUID="a1b2c3d4-e5f6-7890-1234-567890abcdef"
     PRIV="test-private-key"
     SID="a1b2c3d4"
     REALITY_PORT_CHOSEN=""
 
     if validate_config_vars 2>/dev/null; then
-        test_result "validate_config_vars rejects empty port" "fail"
+        test_result "validate_config_vars rejects empty port (Reality enabled)" "fail"
     else
-        test_result "validate_config_vars rejects empty port" "pass"
+        test_result "validate_config_vars rejects empty port (Reality enabled)" "pass"
     fi
 }
 

@@ -13,6 +13,14 @@
 
 set -euo pipefail
 
+# Track whether the user explicitly set WS_PORT (before lib/common.sh applies defaults).
+# This lets CF_MODE reliably switch the default WS port to 443 while still respecting overrides.
+WS_PORT_USER_SPECIFIED=0
+if [[ -n "${WS_PORT+x}" ]]; then
+  WS_PORT_USER_SPECIFIED=1
+fi
+readonly WS_PORT_USER_SPECIFIED
+
 #==============================================================================
 # Early Constants (used before module loading)
 #==============================================================================
@@ -1095,7 +1103,11 @@ gen_materials() {
     ENABLE_WS="${ENABLE_WS:-1}"
     ENABLE_HY2="${ENABLE_HY2:-0}"
     # Use 443 for WS-TLS in CF mode (CF-compatible port)
-    WS_PORT="${WS_PORT:-443}"
+    if [[ "${WS_PORT_USER_SPECIFIED}" == "1" ]]; then
+      WS_PORT="${WS_PORT:-443}"
+    else
+      WS_PORT="443"
+    fi
 
     echo
     info "Cloudflare proxy mode enabled (CF_MODE=1)"
