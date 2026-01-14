@@ -30,7 +30,12 @@ readonly _SBX_COLORS_LOADED=1
 #
 # If terminal doesn't support colors, variables are set to empty strings
 _init_colors() {
-  if command -v tput >/dev/null 2>&1 && tput colors >/dev/null 2>&1; then
+  # Check if tput is available and terminal supports colors
+  # Also handle cases where TERM is unset or set to 'unknown'
+  local term_type="${TERM:-dumb}"
+  if [[ "${term_type}" != "dumb" && "${term_type}" != "unknown" ]] \
+    && command -v tput > /dev/null 2>&1 \
+    && tput colors > /dev/null 2>&1; then
     # Terminal supports colors
     B="$(tput bold)"
     N="$(tput sgr0)"
