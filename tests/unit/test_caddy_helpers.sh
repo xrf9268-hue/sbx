@@ -49,7 +49,12 @@ test_caddy_path_helpers() {
   local expected_config_dir="/usr/local/etc/caddy"
   local expected_config_file="/usr/local/etc/caddy/Caddyfile"
   local expected_systemd="/etc/systemd/system/caddy.service"
-  local expected_data_dir="/root/.local/share/caddy"
+  # Data dir is dynamically determined based on CADDY_SERVICE_USER's home directory
+  # Get expected path using same logic as caddy_data_dir()
+  local expected_user_home=""
+  expected_user_home=$(getent passwd "$CADDY_SERVICE_USER" | cut -d: -f6)
+  [[ -z "$expected_user_home" ]] && eval "expected_user_home=~${CADDY_SERVICE_USER}"
+  local expected_data_dir="${expected_user_home}/.local/share/caddy"
 
   [[ "$(caddy_bin)" == "$expected_bin" ]] \
     && test_result "caddy_bin returns expected path" "pass" \
@@ -80,7 +85,13 @@ test_caddy_cert_path_structure() {
   local path
   path=$(caddy_cert_path "$domain" 2> /dev/null) || true
 
-  if [[ "$path" == "/root/.local/share/caddy/certificates/"*"/${domain}" ]]; then
+  # Get expected data dir prefix (dynamically determined)
+  local expected_user_home=""
+  expected_user_home=$(getent passwd "$CADDY_SERVICE_USER" | cut -d: -f6)
+  [[ -z "$expected_user_home" ]] && eval "expected_user_home=~${CADDY_SERVICE_USER}"
+  local expected_data_dir="${expected_user_home}/.local/share/caddy"
+
+  if [[ "$path" == "${expected_data_dir}/certificates/"*"/${domain}" ]]; then
     test_result "caddy_cert_path returns domain-specific path" "pass"
   else
     test_result "caddy_cert_path returns domain-specific path" "fail"

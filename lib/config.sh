@@ -353,31 +353,43 @@ add_outbound_config() {
 #==============================================================================
 
 # Validate certificate-based configuration requirements
+# Respects ENABLE_WS and ENABLE_HY2 environment variables
 _validate_certificate_config() {
   local cert_fullchain="$1"
   local cert_key="$2"
 
   if [[ -z "${cert_fullchain}" || -z "${cert_key}" ]]; then
-    return 0  # No certificates provided, skip validation
+    return 0 # No certificates provided, skip validation
   fi
 
   if [[ ! -f "${cert_fullchain}" || ! -f "${cert_key}" ]]; then
-    return 0  # Files don't exist, skip (handled elsewhere)
+    return 0 # Files don't exist, skip (handled elsewhere)
   fi
 
   # Validate certificate files
   validate_cert_files "${cert_fullchain}" "${cert_key}" || die "Certificate validation failed"
 
-  # Validate required variables for certificate-based configurations
-  [[ -n "${WS_PORT_CHOSEN}" ]] || die "WebSocket port is not set for certificate configuration."
-  [[ -n "${HY2_PORT_CHOSEN}" ]] || die "Hysteria2 port is not set for certificate configuration."
+  # Validate domain is set
   [[ -n "${DOMAIN}" ]] || die "Domain is not set for certificate configuration."
-  [[ -n "${HY2_PASS}" ]] || die "Hysteria2 password is not set for certificate configuration."
+
+  # Validate required variables based on enabled protocols
+  local enable_ws="${ENABLE_WS:-1}"
+  local enable_hy2="${ENABLE_HY2:-1}"
+
+  if [[ "${enable_ws}" == "1" ]]; then
+    [[ -n "${WS_PORT_CHOSEN:-}" ]] || die "WebSocket port is not set but ENABLE_WS=1."
+  fi
+
+  if [[ "${enable_hy2}" == "1" ]]; then
+    [[ -n "${HY2_PORT_CHOSEN:-}" ]] || die "Hysteria2 port is not set but ENABLE_HY2=1."
+    [[ -n "${HY2_PASS:-}" ]] || die "Hysteria2 password is not set but ENABLE_HY2=1."
+  fi
 
   return 0
 }
 
 # Create all inbound configurations
+# Respects ENABLE_REALITY, ENABLE_WS, ENABLE_HY2 environment variables
 _create_all_inbounds() {
   local base_config="$1"
   local uuid="$2"
@@ -389,37 +401,51 @@ _create_all_inbounds() {
   local cert_fullchain="${8:-}"
   local cert_key="${9:-}"
 
-  # Add Reality inbound (always present)
-  local reality_config=''
-  reality_config=$(create_reality_inbound "${uuid}" "${reality_port}" "${listen_addr}" \
-    "${sni}" "${priv_key}" "${short_id}") \
-                                          || die "Failed to create Reality inbound"
+  # Check which protocols are enabled (default to 1 if not set)
+  local enable_reality="${ENABLE_REALITY:-1}"
+  local enable_ws="${ENABLE_WS:-1}"
+  local enable_hy2="${ENABLE_HY2:-1}"
 
-  base_config=$(echo "${base_config}" | jq --argjson reality "${reality_config}" \
-    '.inbounds += [$reality]' 2> /dev/null) \
-                                           || die "Failed to add Reality configuration to base config"
+  # Add Reality inbound (if enabled and port is set)
+  if [[ "${enable_reality}" == "1" && -n "${reality_port}" ]]; then
+    local reality_config=''
+    reality_config=$(create_reality_inbound "${uuid}" "${reality_port}" "${listen_addr}" \
+      "${sni}" "${priv_key}" "${short_id}") \
+      || die "Failed to create Reality inbound"
+
+    base_config=$(echo "${base_config}" | jq --argjson reality "${reality_config}" \
+      '.inbounds += [$reality]' 2> /dev/null) \
+      || die "Failed to add Reality configuration to base config"
+  fi
 
   # Add WS-TLS and Hysteria2 inbounds if certificates are available
   local has_certs="false"
   if [[ -n "${cert_fullchain}" && -n "${cert_key}" && -f "${cert_fullchain}" && -f "${cert_key}" ]]; then
     has_certs="true"
 
-    # Add WS-TLS inbound
-    local ws_config=''
-    ws_config=$(create_ws_inbound "${uuid}" "${WS_PORT_CHOSEN}" "${listen_addr}" \
-      "${DOMAIN}" "${cert_fullchain}" "${cert_key}") \
-                                                     || die "Failed to create WS-TLS inbound"
+    # Add WS-TLS inbound (if enabled and port is set)
+    if [[ "${enable_ws}" == "1" && -n "${WS_PORT_CHOSEN:-}" ]]; then
+      local ws_config=''
+      ws_config=$(create_ws_inbound "${uuid}" "${WS_PORT_CHOSEN}" "${listen_addr}" \
+        "${DOMAIN}" "${cert_fullchain}" "${cert_key}") \
+        || die "Failed to create WS-TLS inbound"
 
-    # Add Hysteria2 inbound
-    local hy2_config=''
-    hy2_config=$(create_hysteria2_inbound "${HY2_PASS}" "${HY2_PORT_CHOSEN}" "${listen_addr}" \
-      "${cert_fullchain}" "${cert_key}") \
-                                         || die "Failed to create Hysteria2 inbound"
+      base_config=$(echo "${base_config}" | jq --argjson ws "${ws_config}" \
+        '.inbounds += [$ws]' 2> /dev/null) \
+        || die "Failed to add WS-TLS configuration"
+    fi
 
-    # Add both WS and Hysteria2 inbounds
-    base_config=$(echo "${base_config}" | jq --argjson ws "${ws_config}" \
-      --argjson hy2 "${hy2_config}" '.inbounds += [$ws, $hy2]' 2> /dev/null) \
-                                                                            || die "Failed to add WS-TLS and Hysteria2 configurations"
+    # Add Hysteria2 inbound (if enabled and port is set)
+    if [[ "${enable_hy2}" == "1" && -n "${HY2_PORT_CHOSEN:-}" ]]; then
+      local hy2_config=''
+      hy2_config=$(create_hysteria2_inbound "${HY2_PASS}" "${HY2_PORT_CHOSEN}" "${listen_addr}" \
+        "${cert_fullchain}" "${cert_key}") \
+        || die "Failed to create Hysteria2 inbound"
+
+      base_config=$(echo "${base_config}" | jq --argjson hy2 "${hy2_config}" \
+        '.inbounds += [$hy2]' 2> /dev/null) \
+        || die "Failed to add Hysteria2 configuration"
+    fi
   fi
 
   # Return updated config and has_certs flag
@@ -468,7 +494,7 @@ write_config() {
   # Create base configuration
   local base_config=''
   base_config=$(create_base_config "${ipv6_supported}" "${LOG_LEVEL:-warn}") \
-                                                                             || die "Failed to create base configuration"
+    || die "Failed to create base configuration"
 
   # Create all inbounds (Reality + optional WS-TLS and Hysteria2)
   local inbound_result='' has_certs=''
@@ -481,12 +507,12 @@ write_config() {
 
   # Add route and outbound configurations
   base_config=$(add_route_config "${base_config}" "${has_certs}") \
-                                                                  || die "Failed to add route configuration"
+    || die "Failed to add route configuration"
   base_config=$(add_outbound_config "${base_config}")
 
   # Write configuration to temporary file
   echo "${base_config}" > "${temp_conf}" \
-                                         || die "Failed to write configuration to temporary file"
+    || die "Failed to write configuration to temporary file"
 
   # Run comprehensive validation pipeline before applying
   if ! validate_config_pipeline "${temp_conf}"; then

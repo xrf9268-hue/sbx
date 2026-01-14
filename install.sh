@@ -1079,6 +1079,61 @@ gen_materials() {
     fi
   fi
 
+  # Handle Cloudflare proxy mode (CF_MODE)
+  # When CF_MODE=1, only WS-TLS on port 443 is enabled (for CF CDN compatibility)
+  export CF_MODE="${CF_MODE:-0}"
+
+  if [[ "${CF_MODE}" == "1" ]]; then
+    # CF_MODE requires a domain (not IP)
+    if [[ "${REALITY_ONLY_MODE}" == "1" ]]; then
+      die "CF_MODE requires a domain name, not an IP address"
+    fi
+
+    # Set CF_MODE defaults: disable Reality and Hysteria2 (not CF-compatible)
+    # User can override with explicit ENABLE_*=1 environment variables
+    ENABLE_REALITY="${ENABLE_REALITY:-0}"
+    ENABLE_WS="${ENABLE_WS:-1}"
+    ENABLE_HY2="${ENABLE_HY2:-0}"
+    # Use 443 for WS-TLS in CF mode (CF-compatible port)
+    WS_PORT="${WS_PORT:-443}"
+
+    echo
+    info "Cloudflare proxy mode enabled (CF_MODE=1)"
+    info "  - VLESS-WS-TLS will use port ${WS_PORT}"
+    if [[ "${ENABLE_REALITY}" == "0" ]]; then
+      info "  - Reality protocol: disabled (not compatible with CF proxy)"
+    else
+      info "  - Reality protocol: enabled on fallback port (direct connection only)"
+    fi
+    if [[ "${ENABLE_HY2}" == "0" ]]; then
+      info "  - Hysteria2 protocol: disabled (CF doesn't proxy UDP)"
+    fi
+    echo
+    warn "Cloudflare settings required:"
+    warn "  - DNS proxy status: Proxied (orange cloud)"
+    warn "  - SSL/TLS mode: Full or Full (strict)"
+    echo
+  else
+    # Normal mode defaults: all protocols enabled
+    ENABLE_REALITY="${ENABLE_REALITY:-1}"
+    ENABLE_WS="${ENABLE_WS:-1}"
+    ENABLE_HY2="${ENABLE_HY2:-1}"
+  fi
+  export ENABLE_REALITY ENABLE_WS ENABLE_HY2
+
+  # Validate at least one protocol is enabled
+  if [[ "${REALITY_ONLY_MODE:-0}" == "1" ]]; then
+    # In Reality-only mode (IP address), only Reality is available
+    if [[ "${ENABLE_REALITY}" != "1" ]]; then
+      die "Reality protocol must be enabled in IP-only mode (no domain provided)"
+    fi
+  else
+    # In domain mode, at least one protocol must be enabled
+    if [[ "${ENABLE_REALITY}" != "1" && "${ENABLE_WS}" != "1" && "${ENABLE_HY2}" != "1" ]]; then
+      die "At least one protocol must be enabled. Set ENABLE_REALITY=1, ENABLE_WS=1, or ENABLE_HY2=1"
+    fi
+  fi
+
   # Generate UUID
   export UUID
   UUID=$(generate_uuid)
@@ -1097,20 +1152,32 @@ gen_materials() {
   validate_short_id "${SID}" || die "Generated invalid short ID: ${SID}"
   success "  ✓ Short ID generated: ${SID}"
 
-  # Allocate ports
+  # Allocate ports based on enabled protocols
   msg "Allocating ports..."
-  export REALITY_PORT_CHOSEN
-  REALITY_PORT_CHOSEN=$(allocate_port "${REALITY_PORT}" "${REALITY_PORT_FALLBACK}" "Reality") || die "Failed to allocate Reality port"
-  success "  ✓ Reality port: ${REALITY_PORT_CHOSEN}"
 
-  # Allocate additional ports if not Reality-only mode
+  # Reality port (if enabled)
+  if [[ "${ENABLE_REALITY}" == "1" ]]; then
+    export REALITY_PORT_CHOSEN
+    REALITY_PORT_CHOSEN=$(allocate_port "${REALITY_PORT}" "${REALITY_PORT_FALLBACK}" "Reality") || die "Failed to allocate Reality port"
+    success "  ✓ Reality port: ${REALITY_PORT_CHOSEN}"
+  else
+    export REALITY_PORT_CHOSEN=""
+  fi
+
+  # WS-TLS and Hysteria2 ports (if not Reality-only mode and enabled)
   if [[ "${REALITY_ONLY_MODE:-0}" != "1" ]]; then
-    export WS_PORT_CHOSEN HY2_PORT_CHOSEN HY2_PASS
-    WS_PORT_CHOSEN=$(allocate_port "${WS_PORT}" "${WS_PORT_FALLBACK}" "WS-TLS") || die "Failed to allocate WS port"
-    HY2_PORT_CHOSEN=$(allocate_port "${HY2_PORT}" "${HY2_PORT_FALLBACK}" "Hysteria2") || die "Failed to allocate Hysteria2 port"
-    HY2_PASS=$(generate_hex_string 16)
-    success "  ✓ WS-TLS port: ${WS_PORT_CHOSEN}"
-    success "  ✓ Hysteria2 port: ${HY2_PORT_CHOSEN}"
+    export WS_PORT_CHOSEN="" HY2_PORT_CHOSEN="" HY2_PASS=""
+
+    if [[ "${ENABLE_WS}" == "1" ]]; then
+      WS_PORT_CHOSEN=$(allocate_port "${WS_PORT}" "${WS_PORT_FALLBACK}" "WS-TLS") || die "Failed to allocate WS port"
+      success "  ✓ WS-TLS port: ${WS_PORT_CHOSEN}"
+    fi
+
+    if [[ "${ENABLE_HY2}" == "1" ]]; then
+      HY2_PORT_CHOSEN=$(allocate_port "${HY2_PORT}" "${HY2_PORT_FALLBACK}" "Hysteria2") || die "Failed to allocate Hysteria2 port"
+      HY2_PASS=$(generate_hex_string 16)
+      success "  ✓ Hysteria2 port: ${HY2_PORT_CHOSEN}"
+    fi
   fi
 
   success "Configuration materials generated successfully"
@@ -1274,11 +1341,33 @@ print_summary() {
   echo
   echo -e "${CYAN}Server:${N} ${DOMAIN}"
   echo -e "${CYAN}Protocols:${N}"
-  echo "  • VLESS-REALITY (port ${REALITY_PORT_CHOSEN})"
+
+  # Show protocols based on ENABLE_* variables
+  local enable_reality="${ENABLE_REALITY:-1}"
+  local enable_ws="${ENABLE_WS:-1}"
+  local enable_hy2="${ENABLE_HY2:-1}"
+
+  if [[ "${enable_reality}" == "1" && -n "${REALITY_PORT_CHOSEN:-}" ]]; then
+    echo "  • VLESS-REALITY (port ${REALITY_PORT_CHOSEN})"
+  fi
 
   if [[ "${REALITY_ONLY_MODE:-0}" != "1" ]]; then
-    echo "  • VLESS-WS-TLS (port ${WS_PORT_CHOSEN})"
-    echo "  • Hysteria2 (port ${HY2_PORT_CHOSEN})"
+    if [[ "${enable_ws}" == "1" && -n "${WS_PORT_CHOSEN:-}" ]]; then
+      echo "  • VLESS-WS-TLS (port ${WS_PORT_CHOSEN})"
+    fi
+    if [[ "${enable_hy2}" == "1" && -n "${HY2_PORT_CHOSEN:-}" ]]; then
+      echo "  • Hysteria2 (port ${HY2_PORT_CHOSEN})"
+    fi
+  fi
+
+  # Show Cloudflare mode instructions
+  if [[ "${CF_MODE:-0}" == "1" ]]; then
+    echo
+    echo -e "${Y}⚠ Cloudflare Proxy Mode Enabled${N}"
+    echo -e "${CYAN}Cloudflare Settings Required:${N}"
+    echo "  • DNS Proxy Status: Orange cloud (Proxied)"
+    echo "  • SSL/TLS Mode: Full"
+    echo "  • Only VLESS-WS-TLS works through CF proxy"
   fi
 
   # Display connection URIs
@@ -1286,22 +1375,28 @@ print_summary() {
   echo -e "${CYAN}=== Client Connection URIs ===${N}"
   echo
 
-  # Reality URI (always present)
-  local uri_real="vless://${UUID}@${DOMAIN}:${REALITY_PORT_CHOSEN}?encryption=none&security=reality&flow=xtls-rprx-vision&sni=${SNI_DEFAULT}&pbk=${PUB}&sid=${SID}&type=tcp&fp=chrome#Reality-${DOMAIN}"
-  echo -e "${G}VLESS-Reality:${N}"
-  echo "  ${uri_real}"
+  # Reality URI (if enabled)
+  if [[ "${enable_reality}" == "1" && -n "${REALITY_PORT_CHOSEN:-}" ]]; then
+    local uri_real="vless://${UUID}@${DOMAIN}:${REALITY_PORT_CHOSEN}?encryption=none&security=reality&flow=xtls-rprx-vision&sni=${SNI_DEFAULT}&pbk=${PUB}&sid=${SID}&type=tcp&fp=chrome#Reality-${DOMAIN}"
+    echo -e "${G}VLESS-Reality:${N}"
+    echo "  ${uri_real}"
+  fi
 
-  # WS-TLS and Hysteria2 URIs (if not Reality-only mode)
+  # WS-TLS and Hysteria2 URIs (if not Reality-only mode and enabled)
   if [[ "${REALITY_ONLY_MODE:-0}" != "1" && -n "${CERT_FULLCHAIN:-}" ]]; then
-    echo
-    local uri_ws="vless://${UUID}@${DOMAIN}:${WS_PORT_CHOSEN}?encryption=none&security=tls&type=ws&host=${DOMAIN}&path=/ws&sni=${DOMAIN}&fp=chrome#WS-TLS-${DOMAIN}"
-    echo -e "${G}VLESS-WS-TLS:${N}"
-    echo "  ${uri_ws}"
+    if [[ "${enable_ws}" == "1" && -n "${WS_PORT_CHOSEN:-}" ]]; then
+      echo
+      local uri_ws="vless://${UUID}@${DOMAIN}:${WS_PORT_CHOSEN}?encryption=none&security=tls&type=ws&host=${DOMAIN}&path=/ws&sni=${DOMAIN}&fp=chrome#WS-TLS-${DOMAIN}"
+      echo -e "${G}VLESS-WS-TLS:${N}"
+      echo "  ${uri_ws}"
+    fi
 
-    echo
-    local uri_hy2="hysteria2://${HY2_PASS}@${DOMAIN}:${HY2_PORT_CHOSEN}/?sni=${DOMAIN}&alpn=h3&insecure=0#Hysteria2-${DOMAIN}"
-    echo -e "${G}Hysteria2:${N}"
-    echo "  ${uri_hy2}"
+    if [[ "${enable_hy2}" == "1" && -n "${HY2_PORT_CHOSEN:-}" ]]; then
+      echo
+      local uri_hy2="hysteria2://${HY2_PASS}@${DOMAIN}:${HY2_PORT_CHOSEN}/?sni=${DOMAIN}&alpn=h3&insecure=0#Hysteria2-${DOMAIN}"
+      echo -e "${G}Hysteria2:${N}"
+      echo "  ${uri_hy2}"
+    fi
   fi
 
   echo

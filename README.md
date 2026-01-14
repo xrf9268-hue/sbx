@@ -18,10 +18,16 @@ Done! Connection URIs are displayed after installation. Copy them to your client
 DOMAIN=your.domain.com bash <(curl -fsSL https://raw.githubusercontent.com/xrf9268-hue/sbx/main/install.sh)
 ```
 
+**Cloudflare proxy mode** (when server IP is blocked):
+```bash
+DOMAIN=your.domain.com CF_MODE=1 bash <(curl -fsSL https://raw.githubusercontent.com/xrf9268-hue/sbx/main/install.sh)
+```
+
 ## Features
 
 - **Zero config** - Auto-detects IP, no domain/certs needed
 - **Multi-protocol** - VLESS-REALITY, VLESS-WS-TLS, Hysteria2
+- **Cloudflare support** - CF_MODE for CDN proxying when IP is blocked
 - **Easy export** - QR codes, v2rayN/Clash configs, share URIs
 
 ## Usage

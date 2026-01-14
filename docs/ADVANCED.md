@@ -17,6 +17,45 @@ DOMAIN=your.domain.com bash install.sh
 DOMAIN=1.2.3.4 bash install.sh
 ```
 
+### Cloudflare Proxy Mode
+
+When your server IP is blocked or network is restricted, use Cloudflare CDN to proxy traffic:
+
+```bash
+# Enable Cloudflare proxy mode (WS-TLS only on port 443)
+sudo DOMAIN=your.domain.com CF_MODE=1 bash install.sh
+```
+
+**CF_MODE=1 behavior:**
+- Disables Reality protocol (not compatible with CDN proxying)
+- Disables Hysteria2 protocol (Cloudflare doesn't proxy UDP)
+- Sets WS-TLS port to 443 (CF-supported HTTPS port)
+
+**Required Cloudflare settings:**
+- DNS Proxy Status: Orange cloud (Proxied)
+- SSL/TLS Mode: Full
+
+**Protocol control variables:**
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CF_MODE` | 0 | Enable Cloudflare proxy mode |
+| `ENABLE_REALITY` | 1 | Enable VLESS-Reality protocol |
+| `ENABLE_WS` | 1 | Enable VLESS-WS-TLS protocol |
+| `ENABLE_HY2` | 1 | Enable Hysteria2 protocol |
+| `WS_PORT` | 8444 (443 in CF_MODE) | WebSocket TLS port |
+
+**Cloudflare supported HTTPS ports:** 443, 2053, 2083, 2087, 2096, 8443
+
+**Custom configuration example:**
+```bash
+# CF mode with Reality on fallback port for direct connection
+sudo DOMAIN=your.domain.com CF_MODE=1 ENABLE_REALITY=1 REALITY_PORT=24443 bash install.sh
+
+# CF mode with custom WS port (must be CF-supported)
+sudo DOMAIN=your.domain.com CF_MODE=1 WS_PORT=2053 bash install.sh
+```
+
 ### Version Selection
 
 ```bash

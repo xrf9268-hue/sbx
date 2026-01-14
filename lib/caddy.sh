@@ -40,10 +40,11 @@ caddy_systemd_file() { echo "/etc/systemd/system/caddy.service"; }
 # Data directory depends on which user runs the Caddy service
 caddy_data_dir() {
   local user_home=""
-  if [[ "$CADDY_SERVICE_USER" == "root" ]]; then
-    user_home="/root"
-  else
-    user_home=$(getent passwd "$CADDY_SERVICE_USER" | cut -d: -f6) || user_home="/home/$CADDY_SERVICE_USER"
+  # Get user home directory from passwd database (works for any user including root)
+  user_home=$(getent passwd "$CADDY_SERVICE_USER" | cut -d: -f6)
+  if [[ -z "$user_home" ]]; then
+    # Fallback: use eval to expand ~user (handles root and regular users)
+    eval "user_home=~${CADDY_SERVICE_USER}"
   fi
   echo "${user_home}/.local/share/caddy"
 }
@@ -465,12 +466,15 @@ fi
 # Determine Caddy data directory
 # Get Caddy service user from systemd, fallback to root
 CADDY_USER=$(systemctl show caddy.service -P User 2>/dev/null || echo "root")
-if [[ "$CADDY_USER" == "root" || -z "$CADDY_USER" ]]; then
-    CADDY_DATA_DIR="/root/.local/share/caddy"
-else
-    CADDY_DATA_DIR=$(getent passwd "$CADDY_USER" | cut -d: -f6)/.local/share/caddy
-    [[ -z "$CADDY_DATA_DIR" || "$CADDY_DATA_DIR" == "/.local/share/caddy" ]] && CADDY_DATA_DIR="/home/$CADDY_USER/.local/share/caddy"
+[[ -z "$CADDY_USER" ]] && CADDY_USER="root"
+
+# Get user home directory from passwd database (works for any user including root)
+CADDY_USER_HOME=$(getent passwd "$CADDY_USER" | cut -d: -f6)
+if [[ -z "$CADDY_USER_HOME" ]]; then
+    # Fallback: use eval to expand ~user
+    eval "CADDY_USER_HOME=~${CADDY_USER}"
 fi
+CADDY_DATA_DIR="${CADDY_USER_HOME}/.local/share/caddy"
 
 # Try primary path structure (Let's Encrypt ACME v2)
 CADDY_CERT_DIR="${CADDY_DATA_DIR}/certificates/acme-v02.api.letsencrypt.org-directory/${DOMAIN}"
