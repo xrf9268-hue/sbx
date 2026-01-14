@@ -138,6 +138,51 @@ bash -n lib/your_module.sh
 source "${_LIB_DIR}/common.sh"
 ```
 
+### Variable Scope in Sourced Scripts (CRITICAL - Caused 8 Production Bugs)
+
+⚠️ **THIS IS A RECURRING SOURCE OF BUGS** ⚠️
+
+When `source` is called **inside a function**, variables declared with `declare -r` have **function-local scope**, not global scope!
+
+```bash
+# ❌ WRONG - Variables are local to _load_modules function
+_load_modules() {
+  for module in colors common logging; do
+    source "${LIB_DIR}/${module}.sh"  # In common.sh: declare -r MY_VAR=value
+  done
+}  # MY_VAR goes out of scope here!
+
+_load_modules
+echo "$MY_VAR"  # ERROR: MY_VAR: unbound variable
+```
+
+**Root cause of these production bugs (cb9c35c → c73b46f):**
+1. `REALITY_PORT_DEFAULT` - validation.sh:254
+2. `CADDY_HTTP_PORT_DEFAULT` - caddy.sh:240
+3. `CADDY_STARTUP_WAIT_SEC` - caddy.sh:304
+4. `CADDY_CERT_POLL_INTERVAL_SEC` - caddy.sh:347
+5. Plus terminal compatibility issues (`B`, `BLUE`, etc.)
+
+```bash
+# ✅ CORRECT - Use -g flag for global scope
+declare -gr MY_VAR="value"  # -g = global, -r = readonly
+
+# ✅ CORRECT - Or use readonly (always global)
+readonly MY_VAR="value"
+```
+
+**Key insight:** `declare -r` vs `readonly`
+- `declare -r` - Local when inside a function (including sourced scripts)
+- `declare -gr` - Always global (the `-g` flag)
+- `readonly` - Always global (legacy command, always works)
+
+**When to use which:**
+- In lib/*.sh modules: Use `declare -gr` for constants
+- In install.sh bootstrap section: Use `readonly` (before modules load)
+- For conditional declarations: Use `declare -gr` inside if blocks
+
+**MANDATORY: All lib/*.sh modules must use `declare -gr` NOT `declare -r`**
+
 ## Code Quality Standards
 
 - Use `[[ ]]` for conditionals (NOT `[ ]`)

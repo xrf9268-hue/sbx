@@ -6,18 +6,38 @@ This directory contains `test_bootstrap_constants.sh`, a comprehensive test suit
 
 ## The Problem
 
-The sbx-lite codebase uses `set -u` (strict mode), which causes immediate script failure when accessing undefined variables. During bootstrap (before module loading completes), some modules reference constants that haven't been defined yet, causing installation failures.
+The sbx-lite codebase uses `set -u` (strict mode), which causes immediate script failure when accessing undefined variables. There are **two distinct causes** of unbound variable errors:
+
+### Cause 1: Bootstrap Timing Issue
+During bootstrap (before module loading completes), some modules reference constants that haven't been defined yet.
+
+### Cause 2: Variable Scope Issue (CRITICAL - Discovered 2025-01)
+When `source` is called **inside a function** (like `_load_modules()`), variables declared with `declare -r` have **function-local scope**, not global scope. After the function returns, these variables become unbound!
+
+```bash
+# ❌ WRONG - declare -r creates local variables when inside a function
+_load_modules() {
+  source common.sh  # contains: declare -r MY_VAR=value
+}
+_load_modules
+echo "$MY_VAR"  # ERROR: unbound variable
+
+# ✅ CORRECT - use declare -gr for global scope
+declare -gr MY_VAR=value  # -g flag = global
+```
 
 ### Historical Failures
 
-This exact issue has caused **3+ production bugs**:
+This exact issue has caused **8+ production bugs** (cb9c35c → c73b46f):
 
 1. **url variable** (install.sh:836) - Installation failed on glibc systems
 2. **HTTP_DOWNLOAD_TIMEOUT_SEC** - GitHub API fetches completely broken
 3. **get_file_size()** - Bootstrap failures preventing installation
-4. **REALITY_SHORT_ID_MIN_LENGTH** (2025-11-18) - Installation failed during validation
-5. **REALITY_FLOW_VISION** (2025-11-18) - Installation failed during config generation
-6. **REALITY_MAX_TIME_DIFF** (2025-11-18) - Installation failed during config generation
+4. **REALITY_SHORT_ID_MIN_LENGTH** (2025-11) - Installation failed during validation
+5. **REALITY_FLOW_VISION** (2025-11) - Installation failed during config generation
+6. **REALITY_PORT_DEFAULT** (2026-01) - validation.sh:254 unbound
+7. **CADDY_HTTP_PORT_DEFAULT** (2026-01) - caddy.sh:240 unbound
+8. **CADDY_STARTUP_WAIT_SEC** (2026-01) - caddy.sh:304 unbound (scope issue root cause)
 
 Each time was manually fixed, but **no automated test existed to prevent recurrence**.
 
@@ -49,13 +69,15 @@ Each time was manually fixed, but **no automated test existed to prevent recurre
 
 ## What This Test Tracks
 
-Currently tracking **15 bootstrap constants**:
+Currently tracking **23 bootstrap constants**:
 
 | Category | Constants | Count |
 |----------|-----------|-------|
 | **Download** | `DOWNLOAD_CONNECT_TIMEOUT_SEC`, `DOWNLOAD_MAX_TIMEOUT_SEC`, `HTTP_DOWNLOAD_TIMEOUT_SEC`, `MIN_MODULE_FILE_SIZE_BYTES`, `MIN_MANAGER_FILE_SIZE_BYTES` | 5 |
-| **Network** | `NETWORK_TIMEOUT_SEC` | 1 |
+| **Network** | `NETWORK_TIMEOUT_SEC`, `IPV6_TEST_TIMEOUT_SEC`, `IPV6_PING_WAIT_SEC` | 3 |
 | **Reality Validation** | `REALITY_SHORT_ID_MIN_LENGTH`, `REALITY_SHORT_ID_MAX_LENGTH` | 2 |
+| **Port Defaults** | `REALITY_PORT_DEFAULT`, `WS_PORT_DEFAULT`, `HY2_PORT_DEFAULT` | 3 |
+| **Caddy Ports** | `CADDY_HTTP_PORT_DEFAULT`, `CADDY_HTTPS_PORT_DEFAULT`, `CADDY_FALLBACK_PORT_DEFAULT` | 3 |
 | **Reality Config** | `REALITY_FLOW_VISION`, `REALITY_DEFAULT_HANDSHAKE_PORT`, `REALITY_MAX_TIME_DIFF`, `REALITY_ALPN_H2`, `REALITY_ALPN_HTTP11` | 5 |
 | **Permissions** | `SECURE_DIR_PERMISSIONS`, `SECURE_FILE_PERMISSIONS` | 2 |
 
@@ -65,15 +87,16 @@ Currently tracking **15 bootstrap constants**:
 
 If you add a constant to `lib/common.sh` that will be used during bootstrap:
 
-1. **Add to `install.sh` early constants section** (lines 16-44):
+1. **Add to `install.sh` early constants section** (lines 16-55):
    ```bash
    readonly MY_NEW_CONSTANT=value
    ```
 
-2. **Update `lib/common.sh` to use conditional declaration**:
+2. **Update `lib/common.sh` to use conditional declaration with `-gr`**:
    ```bash
+   # IMPORTANT: Use declare -gr (global readonly), NOT declare -r
    if [[ -z "${MY_NEW_CONSTANT:-}" ]]; then
-     declare -r MY_NEW_CONSTANT=value
+     declare -gr MY_NEW_CONSTANT=value
    fi
    ```
 
@@ -90,6 +113,18 @@ If you add a constant to `lib/common.sh` that will be used during bootstrap:
    ```bash
    bash tests/unit/test_bootstrap_constants.sh
    ```
+
+### CRITICAL: Always Use `declare -gr` in lib/*.sh
+
+**NEVER use `declare -r` in lib/*.sh modules!**
+
+```bash
+# ❌ WRONG - Creates local variable when sourced inside _load_modules()
+declare -r MY_CONST=value
+
+# ✅ CORRECT - Creates global variable regardless of source context
+declare -gr MY_CONST=value
+```
 
 ### How to Identify if a Constant Needs Bootstrap Definition
 
@@ -184,6 +219,6 @@ With this test:
 
 ---
 
-**Last Updated**: 2025-11-18
-**Test Version**: 1.0
+**Last Updated**: 2026-01-14
+**Test Version**: 2.0 (added declare -gr scope documentation)
 **Maintained By**: sbx-lite project

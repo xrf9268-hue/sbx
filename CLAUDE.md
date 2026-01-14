@@ -30,6 +30,11 @@ sbx info | status | check | restart   # Post-install management
 - Use safe expansion: `${VAR:-default}`
 - Quote all variables: `"$VAR"`
 
+**Variable declarations in modules** (CRITICAL):
+- Use `declare -gr` NOT `declare -r` in lib/*.sh modules
+- Reason: `declare -r` creates local vars when sourced inside a function
+- See `.claude/CODING_STANDARDS.md` § "Variable Scope in Sourced Scripts"
+
 **Reality protocol** (sing-box 1.12.0+):
 - Short ID: 8 chars max via `openssl rand -hex 4`
 - Must nest under `tls.reality`, not top-level
