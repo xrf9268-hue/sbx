@@ -43,8 +43,12 @@ caddy_data_dir() {
   # Get user home directory from passwd database (works for any user including root)
   user_home=$(getent passwd "$CADDY_SERVICE_USER" | cut -d: -f6)
   if [[ -z "$user_home" ]]; then
-    # Fallback: use eval to expand ~user (handles root and regular users)
-    eval "user_home=~${CADDY_SERVICE_USER}"
+    # Fallback: infer home directory based on user name (safe, no eval)
+    if [[ "$CADDY_SERVICE_USER" == "root" ]]; then
+      user_home="/root"
+    else
+      user_home="/home/${CADDY_SERVICE_USER}"
+    fi
   fi
   echo "${user_home}/.local/share/caddy"
 }
@@ -471,8 +475,12 @@ CADDY_USER=$(systemctl show caddy.service -P User 2>/dev/null || echo "root")
 # Get user home directory from passwd database (works for any user including root)
 CADDY_USER_HOME=$(getent passwd "$CADDY_USER" | cut -d: -f6)
 if [[ -z "$CADDY_USER_HOME" ]]; then
-    # Fallback: use eval to expand ~user
-    eval "CADDY_USER_HOME=~${CADDY_USER}"
+    # Fallback: infer home directory based on user name (safe, no eval)
+    if [[ "$CADDY_USER" == "root" ]]; then
+        CADDY_USER_HOME="/root"
+    else
+        CADDY_USER_HOME="/home/${CADDY_USER}"
+    fi
 fi
 CADDY_DATA_DIR="${CADDY_USER_HOME}/.local/share/caddy"
 
