@@ -28,7 +28,7 @@ source "${_LIB_DIR}/network.sh"
 create_service_file() {
   msg "Creating systemd service ..."
 
-  cat >"${SB_SVC}" <<'EOF'
+  cat > "${SB_SVC}" << 'EOF'
 [Unit]
 Description=sing-box
 After=network.target nss-lookup.target
@@ -64,7 +64,7 @@ start_service_with_retry() {
     if systemctl start sing-box 2>&1; then
       sleep "${SERVICE_WAIT_MEDIUM_SEC:-2}"
       # Check if service is actually active
-      if systemctl is-active sing-box >/dev/null 2>&1; then
+      if systemctl is-active sing-box > /dev/null 2>&1; then
         success "  ✓ sing-box service started successfully"
         return 0
       fi
@@ -72,17 +72,17 @@ start_service_with_retry() {
 
     # Service failed to start - check if it's a port binding issue
     local error_log=''
-    error_log=$(journalctl -u sing-box -n 20 --no-pager 2>/dev/null | \
-                grep -iE "bind|address.*in use|listen.*failed" | head -3 || true)
+    error_log=$(journalctl -u sing-box -n 20 --no-pager 2> /dev/null \
+      | grep -iE "bind|address.*in use|listen.*failed" | head -3 || true)
 
     if [[ -n "${error_log}" ]]; then
       retry_count=$((retry_count + 1))
       if [[ ${retry_count} -lt ${max_retries} ]]; then
         warn "Port binding failed, retrying (${retry_count}/${max_retries}) in ${wait_time}s..."
         warn "Error: $(echo "${error_log}" | head -1)"
-        systemctl stop sing-box 2>/dev/null || true
+        systemctl stop sing-box 2> /dev/null || true
         sleep "${wait_time}"
-        wait_time=$((wait_time * 2))  # Exponential backoff
+        wait_time=$((wait_time * 2)) # Exponential backoff
       else
         err "Failed to start sing-box after ${max_retries} attempts"
         err "Last error:"
@@ -128,7 +128,7 @@ setup_service() {
   local waited=0
   local max_wait="${SERVICE_STARTUP_MAX_WAIT_SEC:-10}"
   while [[ ${waited} -lt "${max_wait}" ]]; do
-    if systemctl is-active sing-box >/dev/null 2>&1; then
+    if systemctl is-active sing-box > /dev/null 2>&1; then
       break
     fi
     sleep "${SERVICE_WAIT_SHORT_SEC:-1}"
@@ -136,7 +136,7 @@ setup_service() {
   done
 
   # Verify service is running
-  if systemctl is-active sing-box >/dev/null 2>&1; then
+  if systemctl is-active sing-box > /dev/null 2>&1; then
     success "  ✓ sing-box service is active (${waited}s)"
   else
     err "sing-box service failed to become active within ${max_wait}s"
@@ -157,24 +157,34 @@ setup_service() {
     ws_port="${WS_PORT_CHOSEN:-${WS_PORT}}"
     hy2_port="${HY2_PORT_CHOSEN:-${HY2_PORT}}"
 
-    validate_port_listening "${ws_port}" "WS-TLS" || warn "WS-TLS may not be listening properly"
-    validate_port_listening "${hy2_port}" "Hysteria2" || warn "Hysteria2 may not be listening properly"
+    validate_port_listening "${ws_port}" "WS-TLS" "tcp" || warn "WS-TLS may not be listening properly"
+    validate_port_listening "${hy2_port}" "Hysteria2" "udp" || warn "Hysteria2 may not be listening properly"
   fi
 
   return 0
 }
 
 # Validate that service is listening on specified port
+# Supports both TCP and UDP protocols
 validate_port_listening() {
   local port="$1"
   local service_name="${2:-Service}"
+  local protocol="${3:-tcp}" # Default to TCP, can be "udp" for Hysteria2
   local max_attempts=5
   local attempt=0
 
   while [[ ${attempt} -lt ${max_attempts} ]]; do
-    if ss -lntp 2>/dev/null | grep -q ":${port} " || \
-       lsof -iTCP -sTCP:LISTEN -P -n 2>/dev/null | grep -q ":${port}"; then
-      return 0
+    if [[ "${protocol}" == "udp" ]]; then
+      # Check UDP ports
+      if ss -lnup 2> /dev/null | grep -q ":${port} "; then
+        return 0
+      fi
+    else
+      # Check TCP ports
+      if ss -lntp 2> /dev/null | grep -q ":${port} " \
+        || lsof -iTCP -sTCP:LISTEN -P -n 2> /dev/null | grep -q ":${port}"; then
+        return 0
+      fi
     fi
 
     attempt=$((attempt + 1))
@@ -193,7 +203,7 @@ validate_port_listening() {
 
 # Check if sing-box service is running
 check_service_status() {
-  if systemctl is-active sing-box >/dev/null 2>&1; then
+  if systemctl is-active sing-box > /dev/null 2>&1; then
     return 0
   else
     return 1
@@ -209,12 +219,12 @@ stop_service() {
     # Wait for service to fully stop
     local max_wait="${SERVICE_STARTUP_MAX_WAIT_SEC:-10}"
     local waited=0
-    while systemctl is-active sing-box >/dev/null 2>&1 && [[ ${waited} -lt ${max_wait} ]]; do
+    while systemctl is-active sing-box > /dev/null 2>&1 && [[ ${waited} -lt ${max_wait} ]]; do
       sleep "${SERVICE_WAIT_SHORT_SEC:-1}"
       waited=$((waited + 1))
     done
 
-    if systemctl is-active sing-box >/dev/null 2>&1; then
+    if systemctl is-active sing-box > /dev/null 2>&1; then
       warn "Service did not stop within ${max_wait}s"
       return 1
     fi
@@ -252,7 +262,7 @@ restart_service() {
 reload_service() {
   if check_service_status; then
     msg "Reloading sing-box service configuration..."
-    systemctl reload sing-box 2>/dev/null || restart_service
+    systemctl reload sing-box 2> /dev/null || restart_service
   else
     msg "Service not running, starting instead..."
     systemctl start sing-box || die "Failed to start service"
@@ -268,12 +278,12 @@ remove_service() {
   msg "Removing sing-box service..."
 
   # Stop service if running
-  if systemctl is-active sing-box >/dev/null 2>&1; then
+  if systemctl is-active sing-box > /dev/null 2>&1; then
     systemctl stop sing-box || warn "Failed to stop service"
   fi
 
   # Disable service
-  if systemctl is-enabled sing-box >/dev/null 2>&1; then
+  if systemctl is-enabled sing-box > /dev/null 2>&1; then
     systemctl disable sing-box || warn "Failed to disable service"
   fi
 
@@ -298,7 +308,7 @@ remove_service() {
 show_service_logs() {
   local lines="${1:-50}"
   local follow="${2:-false}"
-  local max_lines="${3:-${LOG_VIEW_MAX_LINES}}"  # Maximum lines to follow
+  local max_lines="${3:-${LOG_VIEW_MAX_LINES}}" # Maximum lines to follow
 
   # Validate line count
   if ! [[ "${lines}" =~ ^[0-9]+$ ]] || [[ "${lines}" -gt "${LOG_VIEW_MAX_LINES}" ]]; then
