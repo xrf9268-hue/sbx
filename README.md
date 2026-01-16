@@ -44,14 +44,13 @@ sbx help      # All commands
 
 | Platform | Recommended Client |
 |----------|-------------------|
-| Windows/Linux | [NekoRay](https://github.com/MatsuriDayo/nekoray) |
-| macOS | [NekoBox](https://github.com/MatsuriDayo/NekoBoxForAndroid) |
-| Android | [NekoBox](https://github.com/MatsuriDayo/NekoBoxForAndroid) |
-| iOS | [sing-box](https://apps.apple.com/app/sing-box/id6451272673) (free) |
+| Windows/Linux/macOS | [Hiddify](https://github.com/hiddify/hiddify-app) |
+| Android | [Hiddify](https://play.google.com/store/apps/details?id=app.hiddify.com) or [sing-box](https://play.google.com/store/apps/details?id=io.nekohasekai.sfa) |
+| iOS/macOS | [sing-box](https://apps.apple.com/app/sing-box/id6451272673) (free) |
 
 **Import**: Copy URI → Paste in client → Connect
 
-> **v2rayN/v2rayNG users**: Switch core to sing-box in Settings → Core Type
+> **v2rayN users**: Ensure sing-box core is selected in Settings → Core Type
 
 ## Troubleshooting
 
