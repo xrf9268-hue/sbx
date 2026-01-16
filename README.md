@@ -46,7 +46,7 @@ sbx help      # All commands
 |----------|-------------------|
 | Windows/Linux/macOS | [Hiddify](https://github.com/hiddify/hiddify-app) |
 | Android | [Hiddify](https://play.google.com/store/apps/details?id=app.hiddify.com) or [sing-box](https://play.google.com/store/apps/details?id=io.nekohasekai.sfa) |
-| iOS/macOS | [sing-box](https://apps.apple.com/app/sing-box/id6451272673) (free) |
+| iOS | [Hiddify](https://apps.apple.com/app/hiddify-proxy-vpn/id6596777532) or [sing-box VT](https://apps.apple.com/app/sing-box-vt/id6673731168) |
 
 **Import**: Copy URI → Paste in client → Connect
 
