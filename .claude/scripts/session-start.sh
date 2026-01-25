@@ -28,6 +28,32 @@ if [[ "${CLAUDE_CODE_REMOTE:-false}" != "true" ]]; then
 fi
 
 #==============================================================================
+# CLAUDE_ENV_FILE Support (Persist PATH across Bash commands)
+#==============================================================================
+
+# Ensure /usr/local/bin is in PATH for tools installed by this script
+# CLAUDE_ENV_FILE is sourced before each Bash command by Claude Code
+setup_claude_env() {
+    local env_file="${CLAUDE_ENV_FILE:-}"
+
+    # Skip if CLAUDE_ENV_FILE not set
+    [[ -z "$env_file" ]] && return 0
+
+    # Create env file if it doesn't exist
+    if [[ ! -f "$env_file" ]]; then
+        touch "$env_file" 2>/dev/null || return 0
+    fi
+
+    # Add /usr/local/bin to PATH if not already present in env file
+    if ! grep -q 'PATH=.*\/usr\/local\/bin' "$env_file" 2>/dev/null; then
+        cat >> "$env_file" <<'EOF'
+# sbx-lite: Ensure installed tools are in PATH
+export PATH="/usr/local/bin:$PATH"
+EOF
+    fi
+}
+
+#==============================================================================
 # First Run Setup (runs once, then cached)
 #==============================================================================
 
@@ -58,6 +84,9 @@ first_run_setup() {
             install_tool "$tool"
         fi
     done
+
+    # Persist PATH to CLAUDE_ENV_FILE for subsequent commands
+    setup_claude_env
 
     # Run bootstrap validation once
     if [[ -x "tests/unit/test_bootstrap_constants.sh" ]]; then
