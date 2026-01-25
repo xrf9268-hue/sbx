@@ -212,7 +212,7 @@ fi
 #==============================================================================
 test_start "Modules have error handling (die, err, or return codes)"
 
-failures=0
+warnings=0
 for module in "$SCRIPT_DIR"/lib/*.sh; do
   # Skip colors.sh as it just defines constants
   if [[ "$(basename "$module")" == "colors.sh" ]]; then
@@ -222,18 +222,14 @@ for module in "$SCRIPT_DIR"/lib/*.sh; do
   # Check if module has error handling
   if ! grep -qE 'die |err |return 1|exit 1' "$module"; then
     echo ""
-    echo "  WARNING: $(basename "$module") may lack error handling"
-    failures=$((failures + 1))
+    echo "  INFO: $(basename "$module") may lack error handling"
+    warnings=$((warnings + 1))
   fi
 done
 
-if [[ $failures -eq 0 ]]; then
-  test_pass
-else
-  # This is a warning, not a failure
-  test_pass
-  echo "    (Note: $failures modules may need error handling review)"
-fi
+# This is informational only - modules without error handling may be intentional
+test_pass
+[[ $warnings -gt 0 ]] && echo "    (Note: $warnings modules may need error handling review)"
 
 #==============================================================================
 # Test 9: Module size distribution is reasonable
