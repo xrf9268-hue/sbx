@@ -1,190 +1,152 @@
 #!/usr/bin/env bash
 # .claude/scripts/session-start.sh - SessionStart hook for sbx-lite
 #
-# Optimized for minimal context window usage while providing essential
-# environment information to Claude.
+# Smart session initialization with caching for efficiency.
+# - First run: Installs deps and runs full validation
+# - Subsequent runs: Quick status check only (~0.1s)
 #
-# Environment: Claude Code web/iOS (CLAUDE_CODE_REMOTE=true)
-# Trigger: SessionStart (new session only, not resume/clear)
+# Cache invalidation: Delete /tmp/sbx-session-* files to force re-check
 
 set -euo pipefail
 
-# Project root
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 cd "$PROJECT_DIR" || exit 1
+
+# Cache keys based on project path
+CACHE_DIR="${TMPDIR:-/tmp}"
+PROJECT_HASH=$(echo "$PROJECT_DIR" | md5sum | cut -c1-8)
+SETUP_MARKER="$CACHE_DIR/sbx-setup-done-$PROJECT_HASH"
+BOOTSTRAP_CACHE="$CACHE_DIR/sbx-bootstrap-$PROJECT_HASH"
 
 #==============================================================================
 # Environment Detection
 #==============================================================================
 
-# Desktop environment - provide minimal guidance
 if [[ "${CLAUDE_CODE_REMOTE:-false}" != "true" ]]; then
-    echo "Desktop environment: Run 'bash hooks/install-hooks.sh' to set up git hooks."
+    echo "Desktop: Run 'bash hooks/install-hooks.sh' to set up git hooks."
     exit 0
 fi
 
 #==============================================================================
-# Setup Tasks (run silently, only report results)
+# First Run Setup (runs once, then cached)
 #==============================================================================
 
-setup_status=()
-setup_errors=()
+first_run_setup() {
+    echo "First run: Setting up sbx-lite environment..."
 
-# 1. Install Git Hooks
-if [[ -x "hooks/install-hooks.sh" ]]; then
-    if bash hooks/install-hooks.sh > /tmp/hook-install.log 2>&1; then
-        setup_status+=("git-hooks:✓")
-    else
-        setup_status+=("git-hooks:⚠")
-        setup_errors+=("Git hooks: warnings in /tmp/hook-install.log")
+    # Install git hooks
+    if [[ -x "hooks/install-hooks.sh" ]]; then
+        bash hooks/install-hooks.sh > /dev/null 2>&1 && echo "  [OK] Git hooks" || echo "  [WARN] Git hooks"
     fi
-else
-    setup_status+=("git-hooks:⚠")
-    setup_errors+=("Git hooks installer not found")
-fi
 
-# 2. Verify Dependencies
-# Essential deps (required for core functionality)
-essential_deps=(jq openssl bash git)
-# Optional deps (code quality tools - nice to have)
-optional_deps=(shellcheck shfmt)
-
-essential_missing=()
-optional_missing=()
-
-for dep in "${essential_deps[@]}"; do
-    if ! command -v "$dep" >/dev/null 2>&1; then
-        essential_missing+=("$dep")
-    fi
-done
-
-for dep in "${optional_deps[@]}"; do
-    if ! command -v "$dep" >/dev/null 2>&1; then
-        optional_missing+=("$dep")
-    fi
-done
-
-# Try to install missing essential dependencies
-if [[ ${#essential_missing[@]} -gt 0 ]]; then
-    if command -v apt-get >/dev/null 2>&1; then
-        sudo apt-get update -qq && sudo apt-get install -y -qq "${essential_missing[@]}" >/dev/null 2>&1 || true
-    elif command -v yum >/dev/null 2>&1; then
-        sudo yum install -y -q "${essential_missing[@]}" >/dev/null 2>&1 || true
-    elif command -v apk >/dev/null 2>&1; then
-        sudo apk add --quiet "${essential_missing[@]}" >/dev/null 2>&1 || true
-    fi
-fi
-
-# Try to install shellcheck (available via apt/yum/apk)
-if [[ " ${optional_missing[*]} " =~ " shellcheck " ]]; then
-    if command -v apt-get >/dev/null 2>&1; then
-        sudo apt-get install -y -qq shellcheck >/dev/null 2>&1 || true
-    elif command -v yum >/dev/null 2>&1; then
-        sudo yum install -y -q ShellCheck >/dev/null 2>&1 || true
-    elif command -v apk >/dev/null 2>&1; then
-        sudo apk add --quiet shellcheck >/dev/null 2>&1 || true
-    fi
-fi
-
-# Try to install shfmt (NOT in apt - use snap, go, or direct binary)
-if [[ " ${optional_missing[*]} " =~ " shfmt " ]]; then
-    if command -v snap >/dev/null 2>&1; then
-        sudo snap install shfmt >/dev/null 2>&1 || true
-    elif command -v go >/dev/null 2>&1; then
-        go install mvdan.cc/sh/v3/cmd/shfmt@latest >/dev/null 2>&1 || true
-        # Add Go bin to PATH for this session and future commands
-        export PATH="$PATH:$HOME/go/bin"
-        if [[ -n "${CLAUDE_ENV_FILE:-}" ]]; then
-            echo "export PATH=\"\$PATH:\$HOME/go/bin\"" >> "$CLAUDE_ENV_FILE"
-        fi
-    else
-        # Direct binary download as last resort
-        SHFMT_VERSION="v3.10.0"
-        if wget -qO /tmp/shfmt "https://github.com/mvdan/sh/releases/download/${SHFMT_VERSION}/shfmt_${SHFMT_VERSION}_linux_amd64" 2>/dev/null; then
-            sudo mv /tmp/shfmt /usr/local/bin/shfmt && sudo chmod +x /usr/local/bin/shfmt
-        fi
-    fi
-fi
-
-# Try to install shellcheck via direct binary if apt failed
-if [[ " ${optional_missing[*]} " =~ " shellcheck " ]] && ! command -v shellcheck >/dev/null 2>&1; then
-    SHELLCHECK_VERSION="v0.10.0"
-    if wget -qO- "https://github.com/koalaman/shellcheck/releases/download/${SHELLCHECK_VERSION}/shellcheck-${SHELLCHECK_VERSION}.linux.x86_64.tar.xz" 2>/dev/null | tar -xJf - -C /tmp/ 2>/dev/null; then
-        sudo mv "/tmp/shellcheck-${SHELLCHECK_VERSION}/shellcheck" /usr/local/bin/ && sudo chmod +x /usr/local/bin/shellcheck
-    fi
-fi
-
-# Re-check after installation attempts (include Go bin in PATH)
-export PATH="$PATH:$HOME/go/bin:/usr/local/bin"
-still_missing_essential=()
-still_missing_optional=()
-
-for dep in "${essential_deps[@]}"; do
-    if ! command -v "$dep" >/dev/null 2>&1; then
-        still_missing_essential+=("$dep")
-    fi
-done
-
-for dep in "${optional_deps[@]}"; do
-    if ! command -v "$dep" >/dev/null 2>&1; then
-        still_missing_optional+=("$dep")
-    fi
-done
-
-# Determine status
-if [[ ${#still_missing_essential[@]} -eq 0 ]]; then
-    if [[ ${#still_missing_optional[@]} -eq 0 ]]; then
-        setup_status+=("deps:✓")
-    else
-        setup_status+=("deps:✓")
-        setup_errors+=("Missing: ${still_missing_optional[*]}")
-    fi
-else
-    setup_status+=("deps:✗")
-    setup_errors+=("Missing essential: ${still_missing_essential[*]}")
-fi
-
-# 3. Validate Bootstrap Constants
-if [[ -x "tests/unit/test_bootstrap_constants.sh" ]]; then
-    if bash tests/unit/test_bootstrap_constants.sh > /tmp/bootstrap-validation.log 2>&1; then
-        setup_status+=("bootstrap:✓")
-    else
-        setup_status+=("bootstrap:✗")
-        setup_errors+=("Bootstrap validation failed (see /tmp/bootstrap-validation.log)")
-    fi
-else
-    setup_status+=("bootstrap:⚠")
-    setup_errors+=("Bootstrap test not found")
-fi
-
-#==============================================================================
-# Output: Concise Summary for Claude
-#==============================================================================
-
-# Get branch info
-if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-    branch=$(git branch --show-current 2>/dev/null || echo "detached")
-    latest_commit=$(git log --oneline --max-count=1 2>/dev/null | cut -c1-50 || echo "unknown")
-else
-    branch="not-a-repo"
-    latest_commit="N/A"
-fi
-
-# Build concise output
-echo "sbx-lite development environment initialized:"
-echo "• Status: ${setup_status[*]}"
-echo "• Branch: $branch"
-echo "• Latest: $latest_commit"
-echo "• Tests: bash tests/test-runner.sh unit"
-echo "• Hooks: bash hooks/install-hooks.sh"
-echo "• Docs: CONTRIBUTING.md, CLAUDE.md, .claude/WORKFLOWS.md"
-
-# Report errors if any
-if [[ ${#setup_errors[@]} -gt 0 ]]; then
-    echo "• Issues:"
-    for error in "${setup_errors[@]}"; do
-        echo "  - $error"
+    # Check and install essential deps
+    local missing=()
+    for dep in jq openssl; do
+        command -v "$dep" >/dev/null 2>&1 || missing+=("$dep")
     done
+
+    if [[ ${#missing[@]} -gt 0 ]]; then
+        echo "  Installing: ${missing[*]}..."
+        if command -v apt-get >/dev/null 2>&1; then
+            sudo apt-get update -qq && sudo apt-get install -y -qq "${missing[@]}" >/dev/null 2>&1 || true
+        fi
+    fi
+
+    # Install shellcheck/shfmt (optional, best-effort)
+    for tool in shellcheck shfmt; do
+        if ! command -v "$tool" >/dev/null 2>&1; then
+            install_tool "$tool"
+        fi
+    done
+
+    # Run bootstrap validation once
+    if [[ -x "tests/unit/test_bootstrap_constants.sh" ]]; then
+        if bash tests/unit/test_bootstrap_constants.sh > "$BOOTSTRAP_CACHE.log" 2>&1; then
+            echo "OK" > "$BOOTSTRAP_CACHE"
+            echo "  [OK] Bootstrap validation"
+        else
+            echo "FAIL" > "$BOOTSTRAP_CACHE"
+            echo "  [FAIL] Bootstrap - see $BOOTSTRAP_CACHE.log"
+        fi
+    fi
+
+    # Mark setup complete
+    date +%s > "$SETUP_MARKER"
+    echo "Setup complete."
+}
+
+install_tool() {
+    local tool="$1"
+    case "$tool" in
+        shellcheck)
+            if command -v apt-get >/dev/null 2>&1; then
+                sudo apt-get install -y -qq shellcheck >/dev/null 2>&1 || true
+            fi
+            if ! command -v shellcheck >/dev/null 2>&1; then
+                local ver="v0.10.0"
+                wget -qO- "https://github.com/koalaman/shellcheck/releases/download/$ver/shellcheck-$ver.linux.x86_64.tar.xz" 2>/dev/null \
+                    | tar -xJf - -C /tmp/ 2>/dev/null \
+                    && sudo mv "/tmp/shellcheck-$ver/shellcheck" /usr/local/bin/ 2>/dev/null || true
+            fi
+            ;;
+        shfmt)
+            local ver="v3.10.0"
+            wget -qO /tmp/shfmt "https://github.com/mvdan/sh/releases/download/$ver/shfmt_${ver}_linux_amd64" 2>/dev/null \
+                && sudo mv /tmp/shfmt /usr/local/bin/shfmt && sudo chmod +x /usr/local/bin/shfmt 2>/dev/null || true
+            ;;
+    esac
+}
+
+#==============================================================================
+# Quick Status Check (subsequent runs)
+#==============================================================================
+
+quick_status() {
+    local status=()
+
+    # Git hooks
+    [[ -f ".git/hooks/pre-commit" ]] && status+=("hooks:OK") || status+=("hooks:MISS")
+
+    # Essential deps
+    local deps_ok=true
+    for dep in jq openssl bash git; do
+        command -v "$dep" >/dev/null 2>&1 || deps_ok=false
+    done
+    $deps_ok && status+=("deps:OK") || status+=("deps:MISS")
+
+    # Bootstrap (from cache)
+    if [[ -f "$BOOTSTRAP_CACHE" ]]; then
+        [[ "$(cat "$BOOTSTRAP_CACHE")" == "OK" ]] && status+=("boot:OK") || status+=("boot:FAIL")
+    fi
+
+    # Branch info
+    local branch commit
+    branch=$(git branch --show-current 2>/dev/null || echo "?")
+    commit=$(git log --oneline -1 2>/dev/null | cut -c1-7 || echo "?")
+
+    echo "sbx: ${status[*]} | $branch ($commit)"
+
+    # Show issues only if something is wrong
+    if [[ ! -f ".git/hooks/pre-commit" ]] || ! $deps_ok; then
+        echo "Issues: Run 'rm $SETUP_MARKER' then restart to re-setup"
+    fi
+}
+
+#==============================================================================
+# Main
+#==============================================================================
+
+# Check if setup already done (file exists and is less than 7 days old)
+if [[ -f "$SETUP_MARKER" ]]; then
+    setup_age=$(( $(date +%s) - $(cat "$SETUP_MARKER") ))
+    if [[ $setup_age -lt 604800 ]]; then  # 7 days in seconds
+        quick_status
+        exit 0
+    fi
 fi
+
+# First run or cache expired
+first_run_setup
+quick_status
 
 exit 0
