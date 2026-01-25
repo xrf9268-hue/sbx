@@ -18,6 +18,7 @@ sbx-lite uses Claude Code hooks to automate development workflows:
 **First run automatically:**
 - ✅ Installs git hooks for code quality enforcement
 - ✅ Verifies/installs dependencies (jq, openssl, shellcheck, shfmt)
+- ✅ Persists PATH to `CLAUDE_ENV_FILE` (ensures installed tools are available)
 - ✅ Validates bootstrap constants configuration
 - ✅ Caches results for fast subsequent sessions
 
@@ -128,6 +129,24 @@ The SessionStart hook runs on every session start:
 | **shellcheck** | Shell script linter | ✅ Yes (binary fallback) |
 | **shfmt** | Shell script formatter | ✅ Yes (binary fallback) |
 | **Bootstrap Tests** | Constant validation | ✅ Cached after first run |
+
+### CLAUDE_ENV_FILE Support
+
+When `CLAUDE_ENV_FILE` is set, the SessionStart hook automatically adds `/usr/local/bin` to PATH in that file. This ensures tools installed during setup (shellcheck, shfmt) are available in all subsequent Bash commands.
+
+**How it works:**
+- Claude Code sources `CLAUDE_ENV_FILE` before each Bash command
+- This solves the problem of environment variable loss between commands
+- The hook is idempotent (won't duplicate PATH entries)
+
+**Usage:**
+```bash
+# Set before launching Claude Code
+export CLAUDE_ENV_FILE=~/.claude-env.sh
+claude
+```
+
+**Without CLAUDE_ENV_FILE:** The feature is skipped silently. Tools may still work if `/usr/local/bin` is already in your system PATH.
 
 ### Installing Development Tools (Recommended)
 
