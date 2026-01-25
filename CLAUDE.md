@@ -74,7 +74,7 @@ sbx info | status | check | restart   # Post-install management
 ## Automated Quality
 
 Hooks run automatically - no manual checks needed:
-- **SessionStart**: Installs git hooks, verifies deps, validates constants
+- **SessionStart**: Installs git hooks, verifies deps, validates constants, persists PATH via CLAUDE_ENV_FILE
 - **PostToolUse**: Formats with shfmt, lints with shellcheck
 - **Pre-commit**: Syntax check, strict mode, unbound variable detection
 
