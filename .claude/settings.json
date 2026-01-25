@@ -1,25 +1,12 @@
 {
   "hooks": {
-    "Setup": [
-      {
-        "matcher": "init",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/scripts/setup.sh",
-            "timeout": 120
-          }
-        ]
-      }
-    ],
     "SessionStart": [
       {
-        "matcher": "startup",
         "hooks": [
           {
             "type": "command",
             "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/scripts/session-start.sh",
-            "timeout": 30
+            "timeout": 60
           }
         ]
       }
