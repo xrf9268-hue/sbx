@@ -27,6 +27,21 @@ test_result() {
   fi
 }
 
+# Simulates CF_MODE logic as implemented in install.sh
+# Sets ENABLE_REALITY, ENABLE_HY2, and WS_PORT based on CF_MODE and user overrides
+_apply_cf_mode_defaults() {
+  if [[ "${CF_MODE:-0}" == "1" ]]; then
+    ENABLE_REALITY=${ENABLE_REALITY:-0}
+    ENABLE_HY2=${ENABLE_HY2:-0}
+    if [[ "${WS_PORT_USER_SPECIFIED:-0}" == "1" ]]; then
+      WS_PORT=${WS_PORT:-443}
+    else
+      WS_PORT=443
+    fi
+  fi
+}
+export -f _apply_cf_mode_defaults
+
 #==============================================================================
 # CF_MODE Environment Variable Tests
 #==============================================================================
@@ -57,21 +72,11 @@ test_cf_mode_enables_ws_only() {
   (
     export CF_MODE=1
     export DOMAIN="example.com"
-    # Simulate lib/common.sh defaults being applied before CF_MODE logic.
-    # In the real installer, WS_PORT is often already set to the default (8444).
+    # Simulate lib/common.sh defaults being applied before CF_MODE logic
     export WS_PORT=8444
     export WS_PORT_USER_SPECIFIED=0
 
-    # Simulate the CF_MODE logic
-    if [[ "${CF_MODE:-0}" == "1" ]]; then
-      ENABLE_REALITY=${ENABLE_REALITY:-0}
-      ENABLE_HY2=${ENABLE_HY2:-0}
-      if [[ "${WS_PORT_USER_SPECIFIED:-0}" == "1" ]]; then
-        WS_PORT=${WS_PORT:-443}
-      else
-        WS_PORT=443
-      fi
-    fi
+    _apply_cf_mode_defaults
 
     if [[ "$ENABLE_REALITY" == "0" && "$ENABLE_HY2" == "0" && "$WS_PORT" == "443" ]]; then
       echo "pass"
@@ -130,16 +135,7 @@ test_cf_mode_ws_port_override() {
     export WS_PORT=2053 # Another CF-supported port
     export WS_PORT_USER_SPECIFIED=1
 
-    if [[ "${CF_MODE:-0}" == "1" ]]; then
-      # WS_PORT should keep user-specified value
-      ENABLE_REALITY=${ENABLE_REALITY:-0}
-      ENABLE_HY2=${ENABLE_HY2:-0}
-      if [[ "${WS_PORT_USER_SPECIFIED:-0}" == "1" ]]; then
-        WS_PORT=${WS_PORT:-443}
-      else
-        WS_PORT=443
-      fi
-    fi
+    _apply_cf_mode_defaults
 
     if [[ "$WS_PORT" == "2053" ]]; then
       echo "pass"
@@ -161,11 +157,7 @@ test_cf_mode_reality_fallback_port() {
     export ENABLE_REALITY=1
     export REALITY_PORT=24443
 
-    if [[ "${CF_MODE:-0}" == "1" ]]; then
-      ENABLE_REALITY=${ENABLE_REALITY:-0}
-      ENABLE_HY2=${ENABLE_HY2:-0}
-      WS_PORT=${WS_PORT:-443}
-    fi
+    _apply_cf_mode_defaults
 
     # User override should be respected
     if [[ "$ENABLE_REALITY" == "1" ]]; then
