@@ -119,19 +119,11 @@ log_json() {
 # Check if message should be logged based on level
 _should_log() {
   local msg_level="$1"
-  # Map log level to numeric value
-  local msg_level_value=0
-  case "${msg_level}" in
-    ERROR) msg_level_value=0 ;;
-    WARN)  msg_level_value=1 ;;
-    INFO)  msg_level_value=2 ;;
-    DEBUG) msg_level_value=3 ;;
-    *)     msg_level_value=2 ;;  # Default to INFO level
-  esac
-
   [[ -z "${LOG_LEVEL_FILTER:-}" ]] && return 0
-  [[ ${msg_level_value} -le ${LOG_LEVEL_CURRENT:-2} ]] && return 0
-  return 1
+
+  # Use LOG_LEVELS array for lookup, defaulting to INFO level (2)
+  local msg_level_value="${LOG_LEVELS[${msg_level}]:-2}"
+  [[ ${msg_level_value} -le ${LOG_LEVEL_CURRENT:-2} ]]
 }
 
 #==============================================================================
