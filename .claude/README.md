@@ -8,13 +8,22 @@ This directory contains:
 
 sbx-lite uses Claude Code hooks to automate development workflows:
 
-### SessionStart Hook (Environment Setup)
+### SessionStart Hook (Smart Caching)
 
-When you start a new Claude Code session (web/iOS), automatically:
+**Performance optimized with smart caching:**
+- **First run** (~5s): Full setup with dependency installation
+- **Subsequent runs** (~0.12s): Quick status check from cache
+- **Cache expires**: After 7 days (auto re-validates)
+
+**First run automatically:**
 - ✅ Installs git hooks for code quality enforcement
-- ✅ Verifies/installs dependencies (jq, openssl)
+- ✅ Verifies/installs dependencies (jq, openssl, shellcheck, shfmt)
 - ✅ Validates bootstrap constants configuration
-- ✅ Displays project information and quick commands
+- ✅ Caches results for fast subsequent sessions
+
+**Subsequent runs show:**
+- ✅ Quick status: `sbx: hooks:OK deps:OK boot:OK | branch (commit)`
+- ✅ Issues only if something needs attention
 
 ### PostToolUse Hooks (Shell Formatting & Linting)
 
@@ -39,27 +48,41 @@ When you start a new Claude Code session (web/iOS), automatically:
 
 - **settings.json** - Hook configuration (committed)
 - **settings.local.json** - User-specific overrides (gitignored)
-- **scripts/session-start.sh** - SessionStart hook implementation
+- **scripts/session-start.sh** - SessionStart hook with smart caching
 - **scripts/format-and-lint-shell.sh** - PostToolUse combined hook (sequential format→lint)
+- **scripts/stop-hook-combined.sh** - Stop hook for handoff reminders
 - **docs/POSTTOOLUSE_HOOK.md** - PostToolUse hook rationale and behavior
+
+### Cache Management
+
+Session setup results are cached in `/tmp/sbx-*` files:
+- `sbx-setup-done-*` - Setup completion marker (7-day TTL)
+- `sbx-bootstrap-*` - Bootstrap validation result
+
+**Force re-setup:**
+```bash
+rm /tmp/sbx-setup-done-* && # restart Claude session
+```
 
 ### How It Works
 
-The SessionStart hook is triggered only on **new session startup** (not resume/clear):
+The SessionStart hook runs on every session start:
 
 ```json
 {
   "hooks": {
     "SessionStart": [{
-      "matcher": "startup",
       "hooks": [{
         "type": "command",
-        "command": "$CLAUDE_PROJECT_DIR/.claude/scripts/session-start.sh"
+        "command": "$CLAUDE_PROJECT_DIR/.claude/scripts/session-start.sh",
+        "timeout": 60
       }]
     }]
   }
 }
 ```
+
+**Note:** Matchers are ignored for lifecycle hooks (SessionStart, Stop). The script handles caching internally.
 
 ### Hook Concurrency Best Practices ⚠️ IMPORTANT
 
@@ -95,16 +118,16 @@ The SessionStart hook is triggered only on **new session startup** (not resume/c
 
 **See Also**: `.claude/docs/POSTTOOLUSE_HOOK.md` for details.
 
-### What Gets Installed
+### What Gets Installed (First Run Only)
 
 | Component | Purpose | Auto-Installed |
 |-----------|---------|----------------|
 | **Git Hooks** | Pre-commit validation | ✅ Yes (web/iOS) |
 | **jq** | JSON processing | ✅ Yes (if missing) |
 | **openssl** | Cryptographic operations | ✅ Yes (if missing) |
-| **Bootstrap Tests** | Constant validation | ✅ Runs automatically |
-| **shfmt** | Shell script formatter | ⚠️ Manual (see below) |
-| **shellcheck** | Shell script linter | ⚠️ Manual (see below) |
+| **shellcheck** | Shell script linter | ✅ Yes (binary fallback) |
+| **shfmt** | Shell script formatter | ✅ Yes (binary fallback) |
+| **Bootstrap Tests** | Constant validation | ✅ Cached after first run |
 
 ### Installing Development Tools (Recommended)
 
