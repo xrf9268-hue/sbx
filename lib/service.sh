@@ -203,11 +203,7 @@ validate_port_listening() {
 
 # Check if sing-box service is running
 check_service_status() {
-  if systemctl is-active sing-box > /dev/null 2>&1; then
-    return 0
-  else
-    return 1
-  fi
+  systemctl is-active sing-box > /dev/null 2>&1
 }
 
 # Stop sing-box service

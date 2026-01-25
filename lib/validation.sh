@@ -569,8 +569,6 @@ _validate_incompatible_combinations() {
       return 0
       ;;
   esac
-
-  return 0
 }
 
 #==============================================================================
