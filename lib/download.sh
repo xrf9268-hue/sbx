@@ -43,17 +43,17 @@ DOWNLOADER="${DOWNLOADER:-auto}"
 # Returns:
 #   0 if curl supports --retry, 1 otherwise
 check_curl_retry_support() {
-    if ! command -v curl > /dev/null 2>&1; then
-        return 1
-  fi
-
-    # Test if curl accepts --retry flag (without network request)
-    # Check help output for --retry flag
-    if curl --help all 2> /dev/null | grep -q -- '--retry'; then
-        return 0
-  fi
-
+  if ! command -v curl > /dev/null 2>&1; then
     return 1
+  fi
+
+  # Test if curl accepts --retry flag (without network request)
+  # Check help output for --retry flag
+  if curl --help all 2> /dev/null | grep -q -- '--retry'; then
+    return 0
+  fi
+
+  return 1
 }
 
 # Check if curl supports continue-at flag
@@ -62,16 +62,16 @@ check_curl_retry_support() {
 # Returns:
 #   0 if curl supports -C -, 1 otherwise
 check_curl_continue_support() {
-    if ! command -v curl > /dev/null 2>&1; then
-        return 1
-  fi
-
-    # Test if curl accepts -C flag
-    if curl -C - --help > /dev/null 2>&1; then
-        return 0
-  fi
-
+  if ! command -v curl > /dev/null 2>&1; then
     return 1
+  fi
+
+  # Test if curl accepts -C flag
+  if curl -C - --help > /dev/null 2>&1; then
+    return 0
+  fi
+
+  return 1
 }
 
 # Detect best available downloader
@@ -80,12 +80,12 @@ check_curl_continue_support() {
 # Returns:
 #   "curl", "wget", or "none"
 detect_downloader() {
-    if command -v curl > /dev/null 2>&1; then
-        echo "curl"
-  elif   command -v wget > /dev/null 2>&1; then
-        echo "wget"
+  if command -v curl > /dev/null 2>&1; then
+    echo "curl"
+  elif command -v wget > /dev/null 2>&1; then
+    echo "wget"
   else
-        echo "none"
+    echo "none"
   fi
 }
 
@@ -103,33 +103,33 @@ detect_downloader() {
 # Returns:
 #   0 on success, curl exit code on failure
 _download_with_curl() {
-    local url="$1"
-    local output="$2"
+  local url="$1"
+  local output="$2"
 
-    # Build curl arguments
-    local args=(
-        -fsSL                                      # fail silently, show errors, follow redirects, silent progress
-        --proto '=https'                           # only HTTPS (security requirement)
-        --tlsv1.2                                  # TLS 1.2+ only (security requirement)
-        --connect-timeout "${DOWNLOAD_CONNECT_TIMEOUT}"  # connection timeout
-        --max-time "${DOWNLOAD_TIMEOUT}"           # total operation timeout
+  # Build curl arguments
+  local args=(
+    -fsSL                                           # fail silently, show errors, follow redirects, silent progress
+    --proto '=https'                                # only HTTPS (security requirement)
+    --tlsv1.2                                       # TLS 1.2+ only (security requirement)
+    --connect-timeout "${DOWNLOAD_CONNECT_TIMEOUT}" # connection timeout
+    --max-time "${DOWNLOAD_TIMEOUT}"                # total operation timeout
   )
 
-    # Add retry support if available (Rustup pattern)
-    # Note: Retry is handled by retry_with_backoff, so we set --retry 0
-    if check_curl_retry_support; then
-        args+=(--retry 0)  # Disable curl's internal retry (we handle it)
+  # Add retry support if available (Rustup pattern)
+  # Note: Retry is handled by retry_with_backoff, so we set --retry 0
+  if check_curl_retry_support; then
+    args+=(--retry 0) # Disable curl's internal retry (we handle it)
   fi
 
-    # Add continue-at support if available
-    # Useful for large file downloads that may be interrupted
-    if check_curl_continue_support; then
-        args+=(-C -)  # Resume from where it left off
+  # Add continue-at support if available
+  # Useful for large file downloads that may be interrupted
+  if check_curl_continue_support; then
+    args+=(-C -) # Resume from where it left off
   fi
 
-    # Execute download
-    curl "${args[@]}" "${url}" -o "${output}" 2>&1
-    return $?
+  # Execute download
+  curl "${args[@]}" "${url}" -o "${output}" 2>&1
+  return $?
 }
 
 # Download file using wget
@@ -142,20 +142,20 @@ _download_with_curl() {
 # Returns:
 #   0 on success, wget exit code on failure
 _download_with_wget() {
-    local url="$1"
-    local output="$2"
+  local url="$1"
+  local output="$2"
 
-    # Build wget arguments
-    local args=(
-        --quiet                                    # quiet mode (no progress bar)
-        --timeout="${DOWNLOAD_TIMEOUT}"            # timeout for all operations
-        --secure-protocol=TLSv1_2                  # TLS 1.2+ only
-        --https-only                               # reject non-HTTPS URLs
+  # Build wget arguments
+  local args=(
+    --quiet                         # quiet mode (no progress bar)
+    --timeout="${DOWNLOAD_TIMEOUT}" # timeout for all operations
+    --secure-protocol=TLSv1_2       # TLS 1.2+ only
+    --https-only                    # reject non-HTTPS URLs
   )
 
-    # Execute download
-    wget "${args[@]}" "${url}" -O "${output}" 2>&1
-    return $?
+  # Execute download
+  wget "${args[@]}" "${url}" -O "${output}" 2>&1
+  return $?
 }
 
 #==============================================================================
@@ -171,28 +171,28 @@ _download_with_wget() {
 # Returns:
 #   0 if valid, 1 if invalid
 validate_download_url() {
-    local url="$1"
+  local url="$1"
 
-    # Must start with https://
-    if [[ ! "${url}" =~ ^https:// ]]; then
-        err "Invalid URL: Must use HTTPS protocol"
-        err "URL: ${url}"
-        return 1
+  # Must start with https://
+  if [[ ! "${url}" =~ ^https:// ]]; then
+    err "Invalid URL: Must use HTTPS protocol"
+    err "URL: ${url}"
+    return 1
   fi
 
-    # Check reasonable length (prevent buffer overflow attacks)
-    if [[ ${#url} -gt "${MAX_URL_LENGTH}" ]]; then
-        err "Invalid URL: Too long (max ${MAX_URL_LENGTH} characters)"
-        return 1
+  # Check reasonable length (prevent buffer overflow attacks)
+  if [[ ${#url} -gt "${MAX_URL_LENGTH}" ]]; then
+    err "Invalid URL: Too long (max ${MAX_URL_LENGTH} characters)"
+    return 1
   fi
 
-    # Check for suspicious patterns (basic injection prevention)
-    if [[ "${url}" =~ [[:space:]] ]]; then
-        err "Invalid URL: Contains whitespace"
-        return 1
+  # Check for suspicious patterns (basic injection prevention)
+  if [[ "${url}" =~ [[:space:]] ]]; then
+    err "Invalid URL: Contains whitespace"
+    return 1
   fi
 
-    return 0
+  return 0
 }
 
 # Download file with automatic downloader selection
@@ -210,66 +210,66 @@ validate_download_url() {
 #   download_file "https://example.com/file.sh" "/tmp/file.sh"
 #   download_file "$url" "$output" "curl"  # Force curl
 download_file() {
-    local url="$1"
-    local output="$2"
-    local downloader_pref="${3:-${DOWNLOADER}}"
+  local url="$1"
+  local output="$2"
+  local downloader_pref="${3:-${DOWNLOADER}}"
 
-    # Validate URL
-    if ! validate_download_url "${url}"; then
+  # Validate URL
+  if ! validate_download_url "${url}"; then
+    return 1
+  fi
+
+  # Create output directory if needed
+  local output_dir=''
+  output_dir="$(dirname "${output}")"
+  if [[ ! -d "${output_dir}" ]]; then
+    if ! mkdir -p "${output_dir}"; then
+      err "Failed to create directory: ${output_dir}"
+      return 1
+    fi
+  fi
+
+  # Select downloader
+  local downloader="${downloader_pref}"
+  if [[ "${downloader}" == "auto" ]]; then
+    downloader="$(detect_downloader)"
+  fi
+
+  # Execute download with selected tool
+  case "${downloader}" in
+    curl)
+      if ! command -v curl > /dev/null 2>&1; then
+        err "curl not found. Please install curl or set DOWNLOADER=wget"
         return 1
-  fi
-
-    # Create output directory if needed
-    local output_dir=''
-    output_dir="$(dirname "${output}")"
-    if [[ ! -d "${output_dir}" ]]; then
-        mkdir -p "${output_dir}" || {
-            err "Failed to create directory: ${output_dir}"
-            return 1
-    }
-  fi
-
-    # Select downloader
-    local downloader="${downloader_pref}"
-    if [[ "${downloader}" == "auto" ]]; then
-        downloader="$(detect_downloader)"
-  fi
-
-    # Execute download with selected tool
-    case "${downloader}" in
-        curl)
-            if ! command -v curl > /dev/null 2>&1; then
-                err "curl not found. Please install curl or set DOWNLOADER=wget"
-                return 1
       fi
-            _download_with_curl "${url}" "${output}"
-            ;;
+      _download_with_curl "${url}" "${output}"
+      ;;
 
-        wget)
-            if ! command -v wget > /dev/null 2>&1; then
-                err "wget not found. Please install wget or set DOWNLOADER=curl"
-                return 1
+    wget)
+      if ! command -v wget > /dev/null 2>&1; then
+        err "wget not found. Please install wget or set DOWNLOADER=curl"
+        return 1
       fi
-            _download_with_wget "${url}" "${output}"
-            ;;
+      _download_with_wget "${url}" "${output}"
+      ;;
 
-        none)
-            err ""
-            err "ERROR: No supported downloader found"
-            err "Please install one of the following:"
-            err "  • curl: apt-get install curl  (Debian/Ubuntu)"
-            err "  • wget: apt-get install wget  (Debian/Ubuntu)"
-            err "  • curl: yum install curl      (CentOS/RHEL)"
-            err "  • wget: yum install wget      (CentOS/RHEL)"
-            err ""
-            return 1
-            ;;
+    none)
+      err ""
+      err "ERROR: No supported downloader found"
+      err "Please install one of the following:"
+      err "  • curl: apt-get install curl  (Debian/Ubuntu)"
+      err "  • wget: apt-get install wget  (Debian/Ubuntu)"
+      err "  • curl: yum install curl      (CentOS/RHEL)"
+      err "  • wget: yum install wget      (CentOS/RHEL)"
+      err ""
+      return 1
+      ;;
 
-        *)
-            err "Invalid downloader: ${downloader}"
-            err "Supported: curl, wget, auto"
-            return 1
-            ;;
+    *)
+      err "Invalid downloader: ${downloader}"
+      err "Supported: curl, wget, auto"
+      return 1
+      ;;
   esac
 }
 
@@ -288,11 +288,11 @@ download_file() {
 #   download_file_with_retry "https://example.com/file.sh" "/tmp/file.sh"
 #   download_file_with_retry "$url" "$output" 5  # 5 attempts
 download_file_with_retry() {
-    local url="$1"
-    local output="$2"
-    local max_retries="${3:-${DOWNLOAD_MAX_RETRIES}}"
+  local url="$1"
+  local output="$2"
+  local max_retries="${3:-${DOWNLOAD_MAX_RETRIES}}"
 
-    retry_with_backoff "${max_retries}" download_file "${url}" "${output}"
+  retry_with_backoff "${max_retries}" download_file "${url}" "${output}"
 }
 
 # Verify downloaded file
@@ -305,25 +305,25 @@ download_file_with_retry() {
 # Returns:
 #   0 if valid, 1 if invalid
 verify_downloaded_file() {
-    local file_path="$1"
-    local min_size="${2:-100}"
+  local file_path="$1"
+  local min_size="${2:-100}"
 
-    # Check file exists
-    if [[ ! -f "${file_path}" ]]; then
-        err "Downloaded file not found: ${file_path}"
-        return 1
+  # Check file exists
+  if [[ ! -f "${file_path}" ]]; then
+    err "Downloaded file not found: ${file_path}"
+    return 1
   fi
 
-    # Check file size
-    local file_size=0
-    file_size=$(stat -c%s "${file_path}" 2> /dev/null || stat -f%z "${file_path}" 2> /dev/null || echo "0")
+  # Check file size
+  local file_size=0
+  file_size=$(stat -c%s "${file_path}" 2> /dev/null || stat -f%z "${file_path}" 2> /dev/null || echo "0")
 
-    if [[ "${file_size}" -lt "${min_size}" ]]; then
-        err "Downloaded file too small: ${file_path} (${file_size} bytes, expected >= ${min_size})"
-        return 1
+  if [[ "${file_size}" -lt "${min_size}" ]]; then
+    err "Downloaded file too small: ${file_path} (${file_size} bytes, expected >= ${min_size})"
+    return 1
   fi
 
-    return 0
+  return 0
 }
 
 # Download and verify in one operation
@@ -341,44 +341,44 @@ verify_downloaded_file() {
 # Example:
 #   download_and_verify "https://example.com/file.sh" "/tmp/file.sh" 1000
 download_and_verify() {
-    local url="$1"
-    local output="$2"
-    local min_size="${3:-100}"
-    local max_retries="${4:-${DOWNLOAD_MAX_RETRIES}}"
+  local url="$1"
+  local output="$2"
+  local min_size="${3:-100}"
+  local max_retries="${4:-${DOWNLOAD_MAX_RETRIES}}"
 
-    # Download with retry
-    if ! download_file_with_retry "${url}" "${output}" "${max_retries}"; then
-        return 1
+  # Download with retry
+  if ! download_file_with_retry "${url}" "${output}" "${max_retries}"; then
+    return 1
   fi
 
-    # Verify
-    if ! verify_downloaded_file "${output}" "${min_size}"; then
-        rm -f "${output}"  # Clean up invalid file
-        return 1
+  # Verify
+  if ! verify_downloaded_file "${output}" "${min_size}"; then
+    rm -f "${output}" # Clean up invalid file
+    return 1
   fi
 
-    return 0
+  return 0
 }
 
 # Get download tool information
 # Useful for debugging and diagnostics
 get_download_info() {
-    local downloader=''
-    downloader="$(detect_downloader)"
+  local downloader=''
+  downloader="$(detect_downloader)"
 
-    echo "Download configuration:"
-    echo "  Preferred downloader: ${DOWNLOADER}"
-    echo "  Detected downloader: ${downloader}"
-    echo "  Connection timeout: ${DOWNLOAD_CONNECT_TIMEOUT}s"
-    echo "  Total timeout: ${DOWNLOAD_TIMEOUT}s"
-    echo "  Max retries: ${DOWNLOAD_MAX_RETRIES}"
+  echo "Download configuration:"
+  echo "  Preferred downloader: ${DOWNLOADER}"
+  echo "  Detected downloader: ${downloader}"
+  echo "  Connection timeout: ${DOWNLOAD_CONNECT_TIMEOUT}s"
+  echo "  Total timeout: ${DOWNLOAD_TIMEOUT}s"
+  echo "  Max retries: ${DOWNLOAD_MAX_RETRIES}"
 
-    if [[ "${downloader}" == "curl" ]]; then
-        echo "  Curl version: $(curl --version 2> /dev/null | head -1)"
-        echo "  Curl retry support: $(check_curl_retry_support && echo "Yes" || echo "No")"
-        echo "  Curl continue support: $(check_curl_continue_support && echo "Yes" || echo "No")"
-  elif   [[ "${downloader}" == "wget" ]]; then
-        echo "  Wget version: $(wget --version 2> /dev/null | head -1)"
+  if [[ "${downloader}" == "curl" ]]; then
+    echo "  Curl version: $(curl --version 2> /dev/null | head -1)"
+    echo "  Curl retry support: $(check_curl_retry_support && echo "Yes" || echo "No")"
+    echo "  Curl continue support: $(check_curl_continue_support && echo "Yes" || echo "No")"
+  elif [[ "${downloader}" == "wget" ]]; then
+    echo "  Wget version: $(wget --version 2> /dev/null | head -1)"
   fi
 }
 
