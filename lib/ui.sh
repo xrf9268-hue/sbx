@@ -19,6 +19,12 @@ source "${_LIB_DIR}/common.sh"
 # Use ${var+x} pattern to check if defined (works with empty values)
 # shellcheck disable=SC2154
 [[ -n "${B+x}" ]] || die "Color variable B not defined - colors.sh not loaded"
+
+# Declare color variables for ShellCheck (defined in colors.sh, loaded before this module)
+# These variables are exported by colors.sh and available at runtime
+# shellcheck disable=SC2154
+: "${B:-}" "${N:-}" "${R:-}" "${G:-}" "${Y:-}" "${BLUE:-}" "${PURPLE:-}" "${CYAN:-}"
+
 # shellcheck disable=SC2154
 : "${SB_BIN:?}" "${SB_CONF:?}" "${SB_SVC:?}"
 
