@@ -53,15 +53,27 @@ get_public_ip() {
     )
   fi
 
+  # Determine downloader once before the loop (optimization: avoid repeated command checks)
+  local downloader=""
+  if have curl; then
+    downloader="curl"
+  elif have wget; then
+    downloader="wget"
+  else
+    err "Neither curl nor wget is available"
+    return 1
+  fi
+
   # Try multiple IP detection services for redundancy
   for service in "${services[@]}"; do
-    if have curl; then
-      ip=$(timeout "${NETWORK_TIMEOUT_SEC}" curl -s --max-time "${NETWORK_TIMEOUT_SEC}" "${service}" 2> /dev/null | grep -E '^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$' | head -1)
-    elif have wget; then
-      ip=$(timeout "${NETWORK_TIMEOUT_SEC}" wget -qO- --timeout="${NETWORK_TIMEOUT_SEC}" "${service}" 2> /dev/null | grep -E '^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$' | head -1)
-    else
-      break
-    fi
+    case "${downloader}" in
+      curl)
+        ip=$(timeout "${NETWORK_TIMEOUT_SEC}" curl -s --max-time "${NETWORK_TIMEOUT_SEC}" "${service}" 2> /dev/null | grep -E '^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$' | head -1)
+        ;;
+      wget)
+        ip=$(timeout "${NETWORK_TIMEOUT_SEC}" wget -qO- --timeout="${NETWORK_TIMEOUT_SEC}" "${service}" 2> /dev/null | grep -E '^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$' | head -1)
+        ;;
+    esac
 
     # Validate the detected IP more thoroughly
     if [[ -n "${ip}" ]] && validate_ip_address "${ip}"; then
@@ -188,7 +200,7 @@ allocate_port() {
     if [[ "${have_flock}" == "true" ]]; then
       # Use flock for atomic check (non-blocking)
       local lock_file="${lock_dir}/sbx-port-${p}.lock"
-      ( 
+      (
         # Try to acquire exclusive lock (non-blocking)
         if ! flock -n 200 2> /dev/null; then
           # Lock held by another process - port is being allocated
@@ -348,9 +360,9 @@ safe_http_get() {
       # Add SSL/TLS security options for HTTPS URLs
       if [[ "${url}" =~ ^https:// ]]; then
         curl_opts+=(
-          --proto '=https'        # Only allow HTTPS protocol
-          --tlsv1.2               # Minimum TLS 1.2
-          --ssl-reqd              # Require SSL/TLS
+          --proto '=https' # Only allow HTTPS protocol
+          --tlsv1.2        # Minimum TLS 1.2
+          --ssl-reqd       # Require SSL/TLS
         )
       fi
 
@@ -373,8 +385,8 @@ safe_http_get() {
       # Add SSL/TLS security options for HTTPS URLs
       if [[ "${url}" =~ ^https:// ]]; then
         wget_opts+=(
-          --https-only            # Only use HTTPS
-          --secure-protocol=TLSv1_2  # Minimum TLS 1.2
+          --https-only              # Only use HTTPS
+          --secure-protocol=TLSv1_2 # Minimum TLS 1.2
         )
       fi
 

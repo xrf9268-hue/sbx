@@ -533,7 +533,22 @@ _load_modules() {
   local INSTALLER_SCRIPT_DIR="${SCRIPT_DIR}"
   [[ "${DEBUG:-0}" == "1" ]] && echo "DEBUG: Loading modules from: ${INSTALLER_SCRIPT_DIR}/lib" >&2
 
+  # Defensive validation: ensure module names match expected pattern
+  # Prevents potential path traversal or injection if modules array is ever modified
+  _validate_module_name() {
+    local module="$1"
+    # Whitelist: only lowercase letters and underscores allowed
+    if [[ ! "${module}" =~ ^[a-z_]+$ ]]; then
+      echo "ERROR: Invalid module name: ${module}"
+      echo "Module names must contain only lowercase letters and underscores."
+      exit 1
+    fi
+  }
+
   for module in "${modules[@]}"; do
+    # Validate module name before constructing path (defense in depth)
+    _validate_module_name "${module}"
+
     local module_path="${INSTALLER_SCRIPT_DIR}/lib/${module}.sh"
 
     if [[ -f "${module_path}" ]]; then
@@ -1032,13 +1047,14 @@ download_singbox() {
   success "sing-box ${tag} installed successfully"
 }
 
-# Generate configuration materials (UUIDs, keys, ports, etc.)
-gen_materials() {
-  msg "Generating configuration materials..."
+#==============================================================================
+# Configuration Material Generation (Refactored for SRP)
+#==============================================================================
 
-  # Handle DOMAIN/IP detection
+# Configure server address (domain or IP)
+# Sets: DOMAIN, REALITY_ONLY_MODE
+_configure_server_address() {
   if [[ -z "${DOMAIN:-}" ]]; then
-    # Auto-install mode: auto-detect IP without prompting
     if [[ "${AUTO_INSTALL:-0}" == "1" ]]; then
       msg "Auto-install mode: detecting server IP..."
       DOMAIN=$(get_public_ip) || die "Failed to detect server IP"
@@ -1079,31 +1095,27 @@ gen_materials() {
       fi
     fi
   else
-    # Determine if domain or IP
     if validate_ip_address "${DOMAIN}"; then
       export REALITY_ONLY_MODE=1
     else
       export REALITY_ONLY_MODE=0
     fi
   fi
+}
 
-  # Handle Cloudflare proxy mode (CF_MODE)
-  # When CF_MODE=1, only WS-TLS on port 443 is enabled (for CF CDN compatibility)
+# Configure Cloudflare proxy mode
+# Sets: CF_MODE, ENABLE_REALITY, ENABLE_WS, ENABLE_HY2, WS_PORT
+_configure_cloudflare_mode() {
   export CF_MODE="${CF_MODE:-0}"
 
   if [[ "${CF_MODE}" == "1" ]]; then
-    # CF_MODE requires a domain (not IP)
-    if [[ "${REALITY_ONLY_MODE}" == "1" ]]; then
-      die "CF_MODE requires a domain name, not an IP address"
-    fi
+    [[ "${REALITY_ONLY_MODE}" == "1" ]] && die "CF_MODE requires a domain name, not an IP address"
 
-    # Set CF_MODE defaults: disable Reality and Hysteria2 (not CF-compatible)
-    # User can override with explicit ENABLE_*=1 environment variables
     ENABLE_REALITY="${ENABLE_REALITY:-0}"
     ENABLE_WS="${ENABLE_WS:-1}"
     ENABLE_HY2="${ENABLE_HY2:-0}"
-    # Use 443 for WS-TLS in CF mode (CF-compatible port)
-    if [[ "${WS_PORT_USER_SPECIFIED}" == "1" ]]; then
+
+    if [[ "${WS_PORT_USER_SPECIFIED:-0}" == "1" ]]; then
       WS_PORT="${WS_PORT:-443}"
     else
       WS_PORT="443"
@@ -1112,62 +1124,57 @@ gen_materials() {
     echo
     info "Cloudflare proxy mode enabled (CF_MODE=1)"
     info "  - VLESS-WS-TLS will use port ${WS_PORT}"
-    if [[ "${ENABLE_REALITY}" == "0" ]]; then
-      info "  - Reality protocol: disabled (not compatible with CF proxy)"
-    else
-      info "  - Reality protocol: enabled on fallback port (direct connection only)"
-    fi
-    if [[ "${ENABLE_HY2}" == "0" ]]; then
-      info "  - Hysteria2 protocol: disabled (CF doesn't proxy UDP)"
-    fi
+    [[ "${ENABLE_REALITY}" == "0" ]] && info "  - Reality protocol: disabled (not compatible with CF proxy)"
+    [[ "${ENABLE_REALITY}" == "1" ]] && info "  - Reality protocol: enabled on fallback port (direct connection only)"
+    [[ "${ENABLE_HY2}" == "0" ]] && info "  - Hysteria2 protocol: disabled (CF doesn't proxy UDP)"
     echo
     warn "Cloudflare settings required:"
     warn "  - DNS proxy status: Proxied (orange cloud)"
     warn "  - SSL/TLS mode: Full or Full (strict)"
     echo
   else
-    # Normal mode defaults: all protocols enabled
     ENABLE_REALITY="${ENABLE_REALITY:-1}"
     ENABLE_WS="${ENABLE_WS:-1}"
     ENABLE_HY2="${ENABLE_HY2:-1}"
   fi
   export ENABLE_REALITY ENABLE_WS ENABLE_HY2
+}
 
-  # Validate at least one protocol is enabled
+# Validate protocol configuration
+_validate_protocol_config() {
   if [[ "${REALITY_ONLY_MODE:-0}" == "1" ]]; then
-    # In Reality-only mode (IP address), only Reality is available
-    if [[ "${ENABLE_REALITY}" != "1" ]]; then
-      die "Reality protocol must be enabled in IP-only mode (no domain provided)"
-    fi
+    [[ "${ENABLE_REALITY}" != "1" ]] && die "Reality protocol must be enabled in IP-only mode (no domain provided)"
   else
-    # In domain mode, at least one protocol must be enabled
     if [[ "${ENABLE_REALITY}" != "1" && "${ENABLE_WS}" != "1" && "${ENABLE_HY2}" != "1" ]]; then
       die "At least one protocol must be enabled. Set ENABLE_REALITY=1, ENABLE_WS=1, or ENABLE_HY2=1"
     fi
   fi
+}
 
-  # Generate UUID
+# Generate cryptographic credentials
+# Sets: UUID, PRIV, PUB, SID
+_generate_credentials() {
   export UUID
   UUID=$(generate_uuid)
   success "  ✓ UUID generated"
 
-  # Generate Reality keypair
   local keypair=''
   keypair=$(generate_reality_keypair) || die "Failed to generate Reality keypair"
   export PRIV PUB
   read -r PRIV PUB <<< "${keypair}"
   success "  ✓ Reality keypair generated"
 
-  # Generate short ID (8 hex characters for sing-box)
   export SID
   SID=$(openssl rand -hex 4)
   validate_short_id "${SID}" || die "Generated invalid short ID: ${SID}"
   success "  ✓ Short ID generated: ${SID}"
+}
 
-  # Allocate ports based on enabled protocols
+# Allocate ports for enabled protocols
+# Sets: REALITY_PORT_CHOSEN, WS_PORT_CHOSEN, HY2_PORT_CHOSEN, HY2_PASS
+_allocate_ports() {
   msg "Allocating ports..."
 
-  # Reality port (if enabled)
   if [[ "${ENABLE_REALITY}" == "1" ]]; then
     export REALITY_PORT_CHOSEN
     REALITY_PORT_CHOSEN=$(allocate_port "${REALITY_PORT}" "${REALITY_PORT_FALLBACK}" "Reality") || die "Failed to allocate Reality port"
@@ -1176,7 +1183,6 @@ gen_materials() {
     export REALITY_PORT_CHOSEN=""
   fi
 
-  # WS-TLS and Hysteria2 ports (if not Reality-only mode and enabled)
   if [[ "${REALITY_ONLY_MODE:-0}" != "1" ]]; then
     export WS_PORT_CHOSEN="" HY2_PORT_CHOSEN="" HY2_PASS=""
 
@@ -1191,6 +1197,18 @@ gen_materials() {
       success "  ✓ Hysteria2 port: ${HY2_PORT_CHOSEN}"
     fi
   fi
+}
+
+# Generate configuration materials (UUIDs, keys, ports, etc.)
+# Orchestrates the configuration material generation process
+gen_materials() {
+  msg "Generating configuration materials..."
+
+  _configure_server_address
+  _configure_cloudflare_mode
+  _validate_protocol_config
+  _generate_credentials
+  _allocate_ports
 
   success "Configuration materials generated successfully"
 }

@@ -107,6 +107,7 @@ validate_domain() {
 
   # Each label (part between dots) must not end with hyphen
   # Split by dots and check each label
+  # Note: 'local IFS' creates function-scoped variable, automatically restored on return
   local IFS='.'
   local -a labels
   read -ra labels <<< "${domain}"
@@ -120,7 +121,7 @@ validate_domain() {
   # Reserved names
   [[ "${domain}" != "localhost" ]] || return 1
   [[ "${domain}" != "127.0.0.1" ]] || return 1
-  [[ ! "${domain}" =~ ^[0-9.]+$ ]] || return 1  # Not an IP address
+  [[ ! "${domain}" =~ ^[0-9.]+$ ]] || return 1 # Not an IP address
 
   return 0
 }
@@ -244,10 +245,10 @@ validate_env_vars() {
   # Validate certificate files if provided
   if [[ -n "${CERT_FULLCHAIN}" || -n "${CERT_KEY}" ]]; then
     [[ -n "${CERT_FULLCHAIN}" && -n "${CERT_KEY}" ]] \
-                                                     || die "Both CERT_FULLCHAIN and CERT_KEY must be specified together"
+      || die "Both CERT_FULLCHAIN and CERT_KEY must be specified together"
 
     validate_cert_files "${CERT_FULLCHAIN}" "${CERT_KEY}" \
-                                                          || die "Certificate file validation failed"
+      || die "Certificate file validation failed"
   fi
 
   # Validate port numbers if custom values provided
@@ -266,7 +267,7 @@ validate_env_vars() {
   # Validate version string if provided
   if [[ -n "${SINGBOX_VERSION}" ]]; then
     [[ "${SINGBOX_VERSION}" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]] \
-                                                                              || die "Invalid SINGBOX_VERSION format: ${SINGBOX_VERSION}"
+      || die "Invalid SINGBOX_VERSION format: ${SINGBOX_VERSION}"
   fi
 
   return 0
@@ -594,9 +595,9 @@ _validate_incompatible_combinations() {
 #   - gRPC is INCOMPATIBLE with Reality (use gRPC+TLS instead)
 #   - HTTP is INCOMPATIBLE with Reality (use TCP+Reality for Vision)
 validate_transport_security_pairing() {
-  local transport="${1:-tcp}"  # Default to TCP
-  local security="${2:-}"      # TLS, Reality, or none
-  local flow="${3:-}"          # xtls-rprx-vision or empty
+  local transport="${1:-tcp}" # Default to TCP
+  local security="${2:-}"     # TLS, Reality, or none
+  local flow="${3:-}"         # xtls-rprx-vision or empty
 
   # Validate Vision flow requirements
   if [[ "${flow}" == "xtls-rprx-vision" ]]; then
