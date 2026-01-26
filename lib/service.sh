@@ -111,9 +111,7 @@ setup_service() {
 
   # Validate configuration before starting service
   msg "Validating configuration before starting service..."
-  if ! "${SB_BIN}" check -c "${SB_CONF}" 2>&1; then
-    die "Configuration validation failed. Service not started."
-  fi
+  "${SB_BIN}" check -c "${SB_CONF}" 2>&1 || die "Configuration validation failed. Service not started."
   success "  ✓ Configuration validated"
 
   # Enable service for auto-start on boot

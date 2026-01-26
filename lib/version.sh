@@ -61,11 +61,11 @@ _github_api_fetch_json() {
     return $?
   fi
 
-  api_response=$(cat "${tmpfile}") || {
+  if ! api_response=$(cat "${tmpfile}"); then
     err "Failed to read GitHub API response from temp file: ${tmpfile}"
     rm -f "${tmpfile}" 2> /dev/null || true
     return 1
-  }
+  fi
   rm -f "${tmpfile}" 2> /dev/null || true
 
   if [[ -z "${api_response}" ]]; then
@@ -379,11 +379,11 @@ validate_singbox_version() {
   msg "Checking sing-box version compatibility..."
 
   local current_version=''
-  current_version=$(get_singbox_version) || {
+  if ! current_version=$(get_singbox_version); then
     warn "Could not detect sing-box version"
     warn "Reality protocol requires sing-box ${min_version} or later"
     return 0 # Don't fail on detection failure
-  }
+  fi
 
   debug "Detected sing-box version: ${current_version}"
 

@@ -149,11 +149,11 @@ caddy_install() {
   checksum_url="https://github.com/caddyserver/caddy/releases/download/${version}/caddy_${version:1}_checksums.txt"
 
   msg "  - Downloading Caddy ${version} for ${arch}..."
-  if ! safe_http_get "${url}" "${tmpfile}"; then
+  safe_http_get "${url}" "${tmpfile}" || {
     rm -rf "${tmpdir}"
     err "Failed to download Caddy from: ${url}"
     return 1
-  fi
+  }
 
   # Checksum Verification Strategy:
   # Unlike sing-box (which uses graceful degradation), Caddy verification is FATAL on failure.
@@ -165,11 +165,11 @@ caddy_install() {
   # Trade-off: Higher security guarantee vs. installation resilience
   # Override: Not currently supported (Caddy is optional, users can provide manual certs)
   msg "  - Verifying checksum..."
-  if ! safe_http_get "${checksum_url}" "${checksum_file}"; then
+  safe_http_get "${checksum_url}" "${checksum_file}" || {
     rm -rf "${tmpdir}"
     err "Failed to download Caddy checksum file"
     return 1
-  fi
+  }
 
   expected=$(grep "${archive}$" "${checksum_file}" | awk '{print $1}' | head -n1)
   if [[ -z "${expected}" ]]; then
@@ -321,11 +321,11 @@ EOF
   # Wait for Caddy to be ready
   sleep "${CADDY_STARTUP_WAIT_SEC}"
 
-  if ! systemctl is-active caddy > /dev/null 2>&1; then
+  systemctl is-active caddy > /dev/null 2>&1 || {
     err "Caddy service failed to start"
     journalctl -u caddy --no-pager -n 20 >&2
     return 1
-  fi
+  }
 
   success "  ✓ Caddy service started"
   return 0
