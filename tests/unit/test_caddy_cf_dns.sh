@@ -66,22 +66,22 @@ test_caddy_setup_dns_challenge_exists() {
 }
 
 #==============================================================================
-# Test: caddy_create_service_with_env function exists
+# Test: caddy_create_service function exists (supports optional env vars)
 #==============================================================================
 
-test_caddy_create_service_with_env_exists() {
+test_caddy_create_service_exists() {
   echo ""
-  echo "Testing caddy_create_service_with_env function exists..."
+  echo "Testing caddy_create_service function exists..."
 
   (
     source "${PROJECT_ROOT}/lib/caddy.sh" 2> /dev/null
-    if declare -f caddy_create_service_with_env > /dev/null 2>&1; then
+    if declare -f caddy_create_service > /dev/null 2>&1; then
       echo "pass"
     else
       echo "fail"
     fi
-  ) | grep -q "pass" && test_result "caddy_create_service_with_env function exists" "pass" \
-    || test_result "caddy_create_service_with_env function exists" "fail"
+  ) | grep -q "pass" && test_result "caddy_create_service function exists" "pass" \
+    || test_result "caddy_create_service function exists" "fail"
 }
 
 #==============================================================================
@@ -175,7 +175,7 @@ echo "=========================================="
 
 test_caddy_install_with_cf_dns_exists
 test_caddy_setup_dns_challenge_exists
-test_caddy_create_service_with_env_exists
+test_caddy_create_service_exists
 test_cf_dns_caddy_download_url_pattern
 test_caddyfile_dns_challenge_structure
 test_systemd_service_has_environment

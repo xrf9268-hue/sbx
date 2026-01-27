@@ -218,15 +218,13 @@ validate_cert_files() {
 # Returns: 0 if valid, 1 if invalid
 validate_cf_api_token() {
   local token="${1:-}"
-  local min_len="${CF_API_TOKEN_MIN_LENGTH:-40}"
-  local max_len="${CF_API_TOKEN_MAX_LENGTH:-60}"
 
   # Check non-empty
   [[ -z "${token}" ]] && return 1
 
-  # Check length
+  # Check length bounds
   local len=${#token}
-  [[ ${len} -lt ${min_len} || ${len} -gt ${max_len} ]] && return 1
+  [[ ${len} -lt ${CF_API_TOKEN_MIN_LENGTH} || ${len} -gt ${CF_API_TOKEN_MAX_LENGTH} ]] && return 1
 
   # Check format (alphanumeric, underscores, dashes)
   [[ ! "${token}" =~ ^[a-zA-Z0-9_-]+$ ]] && return 1
@@ -262,7 +260,7 @@ validate_env_vars() {
           warn "CF_Token is deprecated, use CF_API_TOKEN instead"
         fi
         [[ -n "${CF_API_TOKEN:-}" ]] || die "CF_API_TOKEN required for Cloudflare DNS-01 challenge"
-        validate_cf_api_token "${CF_API_TOKEN}" || die "Invalid CF_API_TOKEN format (must be ${CF_API_TOKEN_MIN_LENGTH:-40}-${CF_API_TOKEN_MAX_LENGTH:-60} alphanumeric characters)"
+        validate_cf_api_token "${CF_API_TOKEN}" || die "Invalid CF_API_TOKEN format (must be ${CF_API_TOKEN_MIN_LENGTH}-${CF_API_TOKEN_MAX_LENGTH} alphanumeric characters)"
         ;;
       le_http | caddy)
         # No additional validation needed for HTTP-01 challenge

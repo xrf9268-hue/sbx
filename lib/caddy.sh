@@ -211,12 +211,23 @@ caddy_install() {
 #==============================================================================
 
 # Create systemd service for Caddy
+# Args: $@ - optional environment variables (KEY=VALUE format)
 caddy_create_service() {
+  local env_lines="" env_var="" description="Caddy HTTP/2 web server"
+
+  # Build environment lines if arguments provided
+  if [[ $# -gt 0 ]]; then
+    description="Caddy HTTP/2 web server (DNS-01 challenge)"
+    for env_var in "$@"; do
+      env_lines+="Environment=\"${env_var}\"\n"
+    done
+  fi
+
   msg "  - Creating Caddy systemd service..."
 
   cat > "$(caddy_systemd_file)" << EOF
 [Unit]
-Description=Caddy HTTP/2 web server
+Description=${description}
 Documentation=https://caddyserver.com/docs/
 After=network.target network-online.target
 Requires=network-online.target
@@ -233,7 +244,7 @@ LimitNPROC=1048576
 PrivateTmp=true
 ProtectSystem=full
 AmbientCapabilities=CAP_NET_BIND_SERVICE
-
+$(printf '%b' "${env_lines}")
 [Install]
 WantedBy=multi-user.target
 EOF
@@ -593,7 +604,7 @@ EOF
 #   For maximum security, users should build Caddy locally with xcaddy.
 #
 caddy_install_with_cf_dns() {
-  local arch="" os="linux" tmpfile1="" tmpfile2="" checksum1="" checksum2=""
+  local arch="" tmpfile1="" tmpfile2="" checksum1="" checksum2=""
 
   # Skip if already installed with CF DNS support
   if [[ -x "$(caddy_bin)" ]] && "$(caddy_bin)" list-modules 2> /dev/null | grep -q "dns.providers.cloudflare"; then
@@ -605,9 +616,7 @@ caddy_install_with_cf_dns() {
 
   msg "Downloading Caddy with Cloudflare DNS plugin..."
 
-  # Download from Caddy's official API with CF DNS plugin
-  # Add idempotency=on to ensure consistent builds
-  local download_url="https://caddyserver.com/api/download?os=${os}&arch=${arch}&p=github.com/caddy-dns/cloudflare&idempotency=on"
+  local download_url="https://caddyserver.com/api/download?os=linux&arch=${arch}&p=github.com/caddy-dns/cloudflare&idempotency=on"
 
   tmpfile1=$(create_temp_file "caddy-cf-dns-1") || {
     err "Failed to create temp file"
@@ -620,25 +629,26 @@ caddy_install_with_cf_dns() {
     return 1
   }
 
+  # Cleanup helper for consistent temp file removal
+  _cleanup_cf_dns_temps() { rm -f "${tmpfile1}" "${tmpfile2}"; }
+
   # First download
   msg "  - Downloading binary (pass 1)..."
-  safe_http_get "${download_url}" "${tmpfile1}" || {
+  if ! safe_http_get "${download_url}" "${tmpfile1}"; then
     err "Failed to download Caddy with CF DNS plugin"
-    rm -f "${tmpfile1}" "${tmpfile2}"
+    _cleanup_cf_dns_temps
     return 1
-  }
+  fi
 
   # Second download for verification
   msg "  - Downloading binary (pass 2) for verification..."
-  safe_http_get "${download_url}" "${tmpfile2}" || {
+  if ! safe_http_get "${download_url}" "${tmpfile2}"; then
     err "Failed to download Caddy for verification"
-    rm -f "${tmpfile1}" "${tmpfile2}"
+    _cleanup_cf_dns_temps
     return 1
-  }
+  fi
 
-  # Dual-Download Integrity Verification:
-  # Compare SHA-256 checksums of both downloads to detect transmission corruption.
-  # This ensures the binary was not corrupted during download.
+  # Compare checksums to detect transmission corruption
   msg "  - Verifying download integrity..."
   checksum1=$(sha256sum "${tmpfile1}" | awk '{print $1}')
   checksum2=$(sha256sum "${tmpfile2}" | awk '{print $1}')
@@ -649,7 +659,7 @@ caddy_install_with_cf_dns() {
     err "  Download 2: ${checksum2}"
     err "This may indicate network corruption or a MITM attack."
     err "Please try again or build Caddy locally with xcaddy."
-    rm -f "${tmpfile1}" "${tmpfile2}"
+    _cleanup_cf_dns_temps
     return 1
   fi
 
@@ -657,11 +667,11 @@ caddy_install_with_cf_dns() {
 
   # Install binary
   msg "  - Installing Caddy binary..."
-  install -m 755 "${tmpfile1}" "$(caddy_bin)" || {
+  if ! install -m 755 "${tmpfile1}" "$(caddy_bin)"; then
     err "Failed to install Caddy"
     rm -f "${tmpfile1}"
     return 1
-  }
+  fi
 
   rm -f "${tmpfile1}"
 
@@ -672,48 +682,6 @@ caddy_install_with_cf_dns() {
   fi
 
   success "Caddy with Cloudflare DNS plugin installed (SHA256: ${checksum1:0:16}...)"
-  return 0
-}
-
-# Create systemd service with environment variables
-# Args: $@ - environment variables (KEY=VALUE format)
-caddy_create_service_with_env() {
-  local env_lines=""
-  local env_var=""
-
-  for env_var in "$@"; do
-    env_lines+="Environment=\"${env_var}\"\n"
-  done
-
-  msg "  - Creating Caddy systemd service with environment..."
-
-  cat > "$(caddy_systemd_file)" << EOF
-[Unit]
-Description=Caddy HTTP/2 web server (DNS-01 challenge)
-Documentation=https://caddyserver.com/docs/
-After=network.target network-online.target
-Requires=network-online.target
-
-[Service]
-Type=notify
-User=${CADDY_SERVICE_USER}
-Group=${CADDY_SERVICE_USER}
-ExecStart=/usr/local/bin/caddy run --environ --config /usr/local/etc/caddy/Caddyfile
-ExecReload=/usr/local/bin/caddy reload --config /usr/local/etc/caddy/Caddyfile --force
-TimeoutStopSec=5s
-LimitNOFILE=1048576
-LimitNPROC=1048576
-PrivateTmp=true
-ProtectSystem=full
-AmbientCapabilities=CAP_NET_BIND_SERVICE
-$(printf '%b' "${env_lines}")
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-  systemctl daemon-reload
-  success "  ✓ Caddy service created with environment"
   return 0
 }
 
@@ -756,7 +724,7 @@ EOF
   success "  ✓ Caddyfile configured for DNS-01 challenge"
 
   # Create systemd service with CF_API_TOKEN environment
-  caddy_create_service_with_env "CF_API_TOKEN=${CF_API_TOKEN}" || return 1
+  caddy_create_service "CF_API_TOKEN=${CF_API_TOKEN}" || return 1
 
   # Enable and start Caddy
   msg "  - Starting Caddy service..."
@@ -817,5 +785,5 @@ caddy_uninstall() {
 #==============================================================================
 
 export -f caddy_install caddy_setup_auto_tls caddy_setup_cert_sync
-export -f caddy_wait_for_cert caddy_uninstall
-export -f caddy_install_with_cf_dns caddy_setup_dns_challenge caddy_create_service_with_env
+export -f caddy_wait_for_cert caddy_uninstall caddy_create_service
+export -f caddy_install_with_cf_dns caddy_setup_dns_challenge
