@@ -23,11 +23,17 @@ DOMAIN=your.domain.com bash <(curl -fsSL https://raw.githubusercontent.com/xrf92
 DOMAIN=your.domain.com CF_MODE=1 bash <(curl -fsSL https://raw.githubusercontent.com/xrf9268-hue/sbx/main/install.sh)
 ```
 
+**DNS-01 challenge** (when port 80 is blocked):
+```bash
+CF_API_TOKEN=your_token CERT_MODE=cf_dns DOMAIN=your.domain.com bash <(curl -fsSL https://raw.githubusercontent.com/xrf9268-hue/sbx/main/install.sh)
+```
+
 ## Features
 
 - **Zero config** - Auto-detects IP, no domain/certs needed
 - **Multi-protocol** - VLESS-REALITY, VLESS-WS-TLS, Hysteria2
 - **Cloudflare support** - CF_MODE for CDN proxying when IP is blocked
+- **DNS-01 challenge** - Certificate issuance without port 80 via Cloudflare API
 - **Easy export** - QR codes, v2rayN/Clash configs, share URIs
 
 ## Usage
@@ -71,10 +77,13 @@ See [REALITY_TROUBLESHOOTING.md](docs/REALITY_TROUBLESHOOTING.md) for more solut
 - Root access
 - Ports available (default mode):
   - **443/tcp** - VLESS-Reality
+  - **80/tcp** - ACME HTTP-01 challenge (certificate issuance, with domain)
   - **8444/tcp** - VLESS-WS-TLS (with domain)
   - **8443/udp** - Hysteria2 (with domain)
 - Ports available (CF_MODE=1):
   - **443/tcp** - VLESS-WS-TLS only (through Cloudflare CDN)
+- Ports available (CERT_MODE=cf_dns):
+  - **443/tcp** - VLESS-Reality + WS-TLS (no port 80 needed)
 
 ## Documentation
 
