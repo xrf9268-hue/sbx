@@ -84,6 +84,8 @@ Requirements:
 - Cloudflare API token with Zone:DNS:Edit permissions
 - Domain managed by Cloudflare DNS
 
+**How to get CF_API_TOKEN:** See [docs/ADVANCED.md](ADVANCED.md#how-to-create-a-cloudflare-api-token) for step-by-step instructions.
+
 **B. Free port 80:**
 ```bash
 # Find what's using port 80

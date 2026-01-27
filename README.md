@@ -28,6 +28,8 @@ DOMAIN=your.domain.com CF_MODE=1 bash <(curl -fsSL https://raw.githubusercontent
 CF_API_TOKEN=your_token CERT_MODE=cf_dns DOMAIN=your.domain.com bash <(curl -fsSL https://raw.githubusercontent.com/xrf9268-hue/sbx/main/install.sh)
 ```
 
+> **Note:** See [docs/ADVANCED.md](docs/ADVANCED.md#how-to-create-a-cloudflare-api-token) for how to create a Cloudflare API token.
+
 ## Features
 
 - **Zero config** - Auto-detects IP, no domain/certs needed

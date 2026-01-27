@@ -86,6 +86,44 @@ CF_API_TOKEN=your_cf_api_token CERT_MODE=cf_dns DOMAIN=your.domain.com bash inst
 - Cloudflare API token with Zone:DNS:Edit permissions
 - Domain managed by Cloudflare DNS
 
+##### How to Create a Cloudflare API Token
+
+1. **Log in to Cloudflare Dashboard**
+   - Go to https://dash.cloudflare.com/
+   - Sign in with your Cloudflare account
+
+2. **Navigate to API Tokens**
+   - Click your profile icon (top right)
+   - Select **My Profile**
+   - Click **API Tokens** tab
+
+3. **Create Custom Token**
+   - Click **Create Token**
+   - Click **Get started** under "Create Custom Token"
+
+4. **Configure Token Permissions**
+   - **Token name**: `sbx-dns-01` (or any descriptive name)
+   - **Permissions**:
+     - Zone → DNS → Edit
+   - **Zone Resources**:
+     - Include → Specific zone → Select your domain
+   - **Client IP Address Filtering** (optional but recommended):
+     - Add your server's IP for extra security
+   - **TTL** (optional):
+     - Set expiration date if desired
+
+5. **Create and Copy Token**
+   - Click **Continue to summary**
+   - Click **Create Token**
+   - **Copy the token immediately** (it won't be shown again)
+
+6. **Use the Token**
+   ```bash
+   CF_API_TOKEN=your_copied_token CERT_MODE=cf_dns DOMAIN=your.domain.com bash install.sh
+   ```
+
+**Token format:** Cloudflare API tokens are 40 alphanumeric characters (e.g., `abcdefghijklmnopqrstuvwxyz1234567890ABCD`).
+
 **Security note:** The Caddy binary for DNS-01 mode is downloaded from caddyserver.com/api/download with dual-download integrity verification. For maximum security, build Caddy locally with xcaddy.
 
 ### Debugging
