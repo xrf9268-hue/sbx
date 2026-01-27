@@ -58,6 +58,10 @@ readonly REALITY_MAX_TIME_DIFF="1m"
 readonly REALITY_ALPN_H2="h2"
 readonly REALITY_ALPN_HTTP11="http/1.1"
 
+# Cloudflare API Token validation (used by lib/validation.sh during bootstrap)
+readonly CF_API_TOKEN_MIN_LENGTH=40
+readonly CF_API_TOKEN_MAX_LENGTH=60
+
 # File permissions (octal)
 readonly SECURE_DIR_PERMISSIONS=700
 readonly SECURE_FILE_PERMISSIONS=600

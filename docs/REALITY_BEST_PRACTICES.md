@@ -164,7 +164,33 @@ openssl x509 -in /path/to/cert.pem -noout -dates
 
 ---
 
-### 5. Access Control
+### 5. Binary Download Verification
+
+**sbx-lite verifies all downloaded binaries:**
+
+| Binary | Verification Method | Details |
+|--------|---------------------|---------|
+| sing-box | SHA256 checksum | Official checksums from GitHub releases |
+| Caddy (standard) | SHA512 checksum | Official checksums from GitHub releases |
+| Caddy (CF DNS) | Dual-download verification | Downloads twice, compares SHA256 |
+
+**Caddy CF DNS mode security note:**
+
+The Caddy download API (caddyserver.com/api/download) builds binaries on-demand and doesn't provide pre-computed checksums. sbx-lite uses dual-download verification:
+1. Downloads the binary twice from the same URL
+2. Compares SHA-256 checksums of both downloads
+3. Fails if checksums don't match (indicates corruption or MITM)
+
+For maximum security in sensitive environments:
+```bash
+# Build Caddy locally with xcaddy
+xcaddy build --with github.com/caddy-dns/cloudflare
+sudo mv caddy /usr/local/bin/caddy
+```
+
+---
+
+### 6. Access Control
 
 **Limit access to configuration files:**
 ```bash

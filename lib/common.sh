@@ -182,12 +182,25 @@ if [[ -z "${HTTP_DOWNLOAD_TIMEOUT_SEC:-}" ]]; then
 fi
 
 #==============================================================================
+# Cloudflare API Token Constants
+#==============================================================================
+
+# Cloudflare API Token validation (may be defined in install.sh for bootstrap)
+if [[ -z "${CF_API_TOKEN_MIN_LENGTH:-}" ]]; then
+  declare -gr CF_API_TOKEN_MIN_LENGTH=40
+fi
+if [[ -z "${CF_API_TOKEN_MAX_LENGTH:-}" ]]; then
+  declare -gr CF_API_TOKEN_MAX_LENGTH=60
+fi
+
+#==============================================================================
 # Global Variables (from environment)
 #==============================================================================
 
 DOMAIN="${DOMAIN:-}"
 CERT_MODE="${CERT_MODE:-}"
 CF_Token="${CF_Token:-}"
+CF_API_TOKEN="${CF_API_TOKEN:-}"
 CF_Zone_ID="${CF_Zone_ID:-}"
 CF_Account_ID="${CF_Account_ID:-}"
 CERT_FORCE="${CERT_FORCE:-0}"

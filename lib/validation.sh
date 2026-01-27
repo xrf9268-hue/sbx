@@ -210,6 +210,29 @@ validate_cert_files() {
 }
 
 #==============================================================================
+# Cloudflare API Token Validation
+#==============================================================================
+
+# Validate Cloudflare API Token format
+# Args: $1 - token string
+# Returns: 0 if valid, 1 if invalid
+validate_cf_api_token() {
+  local token="${1:-}"
+
+  # Check non-empty
+  [[ -z "${token}" ]] && return 1
+
+  # Check length bounds
+  local len=${#token}
+  [[ ${len} -lt ${CF_API_TOKEN_MIN_LENGTH} || ${len} -gt ${CF_API_TOKEN_MAX_LENGTH} ]] && return 1
+
+  # Check format (alphanumeric, underscores, dashes)
+  [[ ! "${token}" =~ ^[a-zA-Z0-9_-]+$ ]] && return 1
+
+  return 0
+}
+
+#==============================================================================
 # Environment Variables Validation
 #==============================================================================
 
@@ -231,13 +254,19 @@ validate_env_vars() {
   if [[ -n "${CERT_MODE}" ]]; then
     case "${CERT_MODE}" in
       cf_dns)
-        [[ -n "${CF_Token}" ]] || die "CF_Token required for Cloudflare DNS-01 challenge"
+        # Support legacy CF_Token for backward compatibility
+        if [[ -z "${CF_API_TOKEN:-}" && -n "${CF_Token:-}" ]]; then
+          export CF_API_TOKEN="${CF_Token}"
+          warn "CF_Token is deprecated, use CF_API_TOKEN instead"
+        fi
+        [[ -n "${CF_API_TOKEN:-}" ]] || die "CF_API_TOKEN required for Cloudflare DNS-01 challenge"
+        validate_cf_api_token "${CF_API_TOKEN}" || die "Invalid CF_API_TOKEN format (must be ${CF_API_TOKEN_MIN_LENGTH}-${CF_API_TOKEN_MAX_LENGTH} alphanumeric characters)"
         ;;
-      le_http)
-        # No additional validation needed
+      le_http | caddy)
+        # No additional validation needed for HTTP-01 challenge
         ;;
       *)
-        die "Invalid CERT_MODE: ${CERT_MODE} (must be cf_dns or le_http)"
+        die "Invalid CERT_MODE: ${CERT_MODE} (must be cf_dns, caddy, or le_http)"
         ;;
     esac
   fi
@@ -833,5 +862,6 @@ validate_files_integrity() {
 export -f sanitize_input validate_port validate_domain validate_cert_files validate_env_vars
 export -f validate_short_id validate_reality_sni validate_menu_choice validate_yes_no
 export -f validate_singbox_config validate_json_syntax validate_transport_security_pairing
+export -f validate_cf_api_token
 export -f require require_all require_valid
 export -f validate_file_integrity validate_files_integrity

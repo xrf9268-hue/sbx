@@ -58,6 +58,59 @@ Ports not listening?
 
 ## Configuration Issues
 
+### Issue 0: Port 80 Unavailable for Certificate Issuance
+
+**Symptoms:**
+```
+Warning: Port 80 is in use by: nginx
+Warning: Port 80 may be blocked by cloud provider firewall
+Caddy failed to start: bind :80 address already in use
+```
+
+**Root Cause:**
+- Port 80 is required for HTTP-01 ACME challenge (default certificate mode)
+- Another service (nginx, apache, etc.) is using port 80
+- Cloud provider firewall (GCP, AWS, Azure) blocks port 80
+
+**Solutions:**
+
+**A. Use DNS-01 Challenge (Recommended for blocked port 80):**
+```bash
+# Set Cloudflare API token and enable DNS-01 mode
+CF_API_TOKEN=your_cf_api_token CERT_MODE=cf_dns DOMAIN=your.domain.com bash install.sh
+```
+
+Requirements:
+- Cloudflare API token with Zone:DNS:Edit permissions
+- Domain managed by Cloudflare DNS
+
+**B. Free port 80:**
+```bash
+# Find what's using port 80
+sudo ss -lntp | grep ':80'
+
+# Stop conflicting service
+sudo systemctl stop nginx  # or apache2, etc.
+
+# Re-run installation
+bash install.sh
+```
+
+**C. Open port 80 in cloud firewall:**
+
+For GCP:
+```bash
+gcloud compute firewall-rules create allow-http \
+  --allow tcp:80 \
+  --source-ranges 0.0.0.0/0
+```
+
+For AWS: Edit Security Group inbound rules to allow TCP 80.
+
+For Azure: Add inbound rule to Network Security Group for port 80.
+
+---
+
 ### Issue 1: Short ID Validation Error
 
 **Symptoms:**

@@ -211,12 +211,23 @@ caddy_install() {
 #==============================================================================
 
 # Create systemd service for Caddy
+# Args: $@ - optional environment variables (KEY=VALUE format)
 caddy_create_service() {
+  local env_lines="" env_var="" description="Caddy HTTP/2 web server"
+
+  # Build environment lines if arguments provided
+  if [[ $# -gt 0 ]]; then
+    description="Caddy HTTP/2 web server (DNS-01 challenge)"
+    for env_var in "$@"; do
+      env_lines+="Environment=\"${env_var}\"\n"
+    done
+  fi
+
   msg "  - Creating Caddy systemd service..."
 
   cat > "$(caddy_systemd_file)" << EOF
 [Unit]
-Description=Caddy HTTP/2 web server
+Description=${description}
 Documentation=https://caddyserver.com/docs/
 After=network.target network-online.target
 Requires=network-online.target
@@ -233,7 +244,7 @@ LimitNPROC=1048576
 PrivateTmp=true
 ProtectSystem=full
 AmbientCapabilities=CAP_NET_BIND_SERVICE
-
+$(printf '%b' "${env_lines}")
 [Install]
 WantedBy=multi-user.target
 EOF
@@ -575,6 +586,169 @@ EOF
 }
 
 #==============================================================================
+# Caddy with Cloudflare DNS Plugin
+#==============================================================================
+
+# Download Caddy with Cloudflare DNS plugin
+# Uses caddyserver.com/api/download for pre-built binary with modules
+#
+# Integrity Verification Strategy:
+#   The Caddy download API builds binaries on-demand with requested plugins.
+#   Unlike GitHub releases, there's no pre-computed checksum file available.
+#   We use dual-download verification to ensure transmission integrity:
+#   1. Download the binary twice from the same URL
+#   2. Compare SHA-256 checksums of both downloads
+#   3. Only proceed if checksums match (confirms no corruption in transit)
+#
+#   Security note: This verifies transmission integrity but not authenticity.
+#   For maximum security, users should build Caddy locally with xcaddy.
+#
+caddy_install_with_cf_dns() {
+  local arch="" tmpfile1="" tmpfile2="" checksum1="" checksum2=""
+
+  # Skip if already installed with CF DNS support
+  if [[ -x "$(caddy_bin)" ]] && "$(caddy_bin)" list-modules 2> /dev/null | grep -q "dns.providers.cloudflare"; then
+    info "Caddy with Cloudflare DNS plugin already installed"
+    return 0
+  fi
+
+  arch=$(caddy_detect_arch) || return 1
+
+  msg "Downloading Caddy with Cloudflare DNS plugin..."
+
+  local download_url="https://caddyserver.com/api/download?os=linux&arch=${arch}&p=github.com/caddy-dns/cloudflare&idempotency=on"
+
+  tmpfile1=$(create_temp_file "caddy-cf-dns-1") || {
+    err "Failed to create temp file"
+    return 1
+  }
+
+  tmpfile2=$(create_temp_file "caddy-cf-dns-2") || {
+    err "Failed to create temp file"
+    rm -f "${tmpfile1}"
+    return 1
+  }
+
+  # Cleanup helper for consistent temp file removal
+  _cleanup_cf_dns_temps() { rm -f "${tmpfile1}" "${tmpfile2}"; }
+
+  # First download
+  msg "  - Downloading binary (pass 1)..."
+  if ! safe_http_get "${download_url}" "${tmpfile1}"; then
+    err "Failed to download Caddy with CF DNS plugin"
+    _cleanup_cf_dns_temps
+    return 1
+  fi
+
+  # Second download for verification
+  msg "  - Downloading binary (pass 2) for verification..."
+  if ! safe_http_get "${download_url}" "${tmpfile2}"; then
+    err "Failed to download Caddy for verification"
+    _cleanup_cf_dns_temps
+    return 1
+  fi
+
+  # Compare checksums to detect transmission corruption
+  msg "  - Verifying download integrity..."
+  checksum1=$(sha256sum "${tmpfile1}" | awk '{print $1}')
+  checksum2=$(sha256sum "${tmpfile2}" | awk '{print $1}')
+
+  if [[ "${checksum1}" != "${checksum2}" ]]; then
+    err "Checksum mismatch between downloads!"
+    err "  Download 1: ${checksum1}"
+    err "  Download 2: ${checksum2}"
+    err "This may indicate network corruption or a MITM attack."
+    err "Please try again or build Caddy locally with xcaddy."
+    _cleanup_cf_dns_temps
+    return 1
+  fi
+
+  rm -f "${tmpfile2}"
+
+  # Install binary
+  msg "  - Installing Caddy binary..."
+  if ! install -m 755 "${tmpfile1}" "$(caddy_bin)"; then
+    err "Failed to install Caddy"
+    rm -f "${tmpfile1}"
+    return 1
+  fi
+
+  rm -f "${tmpfile1}"
+
+  # Verify CF DNS module is present
+  if ! "$(caddy_bin)" list-modules 2> /dev/null | grep -q "dns.providers.cloudflare"; then
+    err "Caddy installation missing Cloudflare DNS module"
+    return 1
+  fi
+
+  success "Caddy with Cloudflare DNS plugin installed (SHA256: ${checksum1:0:16}...)"
+  return 0
+}
+
+# Setup Caddy for DNS-01 challenge using Cloudflare API
+# Args: $1 - domain
+caddy_setup_dns_challenge() {
+  local domain="$1"
+  local caddy_https_port="${CADDY_HTTPS_PORT:-${CADDY_HTTPS_PORT_DEFAULT}}"
+
+  msg "  - Configuring Caddy for DNS-01 challenge: ${domain}"
+
+  # Validate CF_API_TOKEN is set
+  [[ -n "${CF_API_TOKEN:-}" ]] || {
+    err "CF_API_TOKEN not set for DNS-01 challenge"
+    return 1
+  }
+
+  # Create directories
+  mkdir -p "$(caddy_config_dir)" "$(caddy_data_dir)"
+  chmod 755 "$(caddy_config_dir)"
+  chmod 700 "$(caddy_data_dir)"
+
+  # Create Caddyfile with DNS-01 challenge
+  msg "  - Writing Caddyfile with DNS-01 configuration..."
+  cat > "$(caddy_config_file)" << EOF
+{
+  admin off
+  email admin@${domain}
+}
+
+# DNS-01 challenge - no port 80 required
+${domain}:${caddy_https_port} {
+  tls {
+    dns cloudflare {env.CF_API_TOKEN}
+  }
+  respond "Caddy Certificate Management (DNS-01)" 200
+}
+EOF
+
+  success "  ✓ Caddyfile configured for DNS-01 challenge"
+
+  # Create systemd service with CF_API_TOKEN environment
+  caddy_create_service "CF_API_TOKEN=${CF_API_TOKEN}" || return 1
+
+  # Enable and start Caddy
+  msg "  - Starting Caddy service..."
+  systemctl enable caddy > /dev/null 2>&1
+  systemctl start caddy || {
+    err "Failed to start Caddy service"
+    journalctl -u caddy --no-pager -n 20 >&2
+    return 1
+  }
+
+  # Wait for Caddy to be ready
+  sleep "${CADDY_STARTUP_WAIT_SEC}"
+
+  systemctl is-active caddy > /dev/null 2>&1 || {
+    err "Caddy service failed to start"
+    journalctl -u caddy --no-pager -n 20 >&2
+    return 1
+  }
+
+  success "  ✓ Caddy DNS-01 challenge configured for ${domain}"
+  return 0
+}
+
+#==============================================================================
 # Caddy Uninstallation
 #==============================================================================
 
@@ -611,4 +785,5 @@ caddy_uninstall() {
 #==============================================================================
 
 export -f caddy_install caddy_setup_auto_tls caddy_setup_cert_sync
-export -f caddy_wait_for_cert caddy_uninstall
+export -f caddy_wait_for_cert caddy_uninstall caddy_create_service
+export -f caddy_install_with_cf_dns caddy_setup_dns_challenge
