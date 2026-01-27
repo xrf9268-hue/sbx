@@ -580,8 +580,20 @@ EOF
 
 # Download Caddy with Cloudflare DNS plugin
 # Uses caddyserver.com/api/download for pre-built binary with modules
+#
+# Integrity Verification Strategy:
+#   The Caddy download API builds binaries on-demand with requested plugins.
+#   Unlike GitHub releases, there's no pre-computed checksum file available.
+#   We use dual-download verification to ensure transmission integrity:
+#   1. Download the binary twice from the same URL
+#   2. Compare SHA-256 checksums of both downloads
+#   3. Only proceed if checksums match (confirms no corruption in transit)
+#
+#   Security note: This verifies transmission integrity but not authenticity.
+#   For maximum security, users should build Caddy locally with xcaddy.
+#
 caddy_install_with_cf_dns() {
-  local arch="" os="linux" tmpfile=""
+  local arch="" os="linux" tmpfile1="" tmpfile2="" checksum1="" checksum2=""
 
   # Skip if already installed with CF DNS support
   if [[ -x "$(caddy_bin)" ]] && "$(caddy_bin)" list-modules 2> /dev/null | grep -q "dns.providers.cloudflare"; then
@@ -594,27 +606,64 @@ caddy_install_with_cf_dns() {
   msg "Downloading Caddy with Cloudflare DNS plugin..."
 
   # Download from Caddy's official API with CF DNS plugin
-  local download_url="https://caddyserver.com/api/download?os=${os}&arch=${arch}&p=github.com/caddy-dns/cloudflare"
+  # Add idempotency=on to ensure consistent builds
+  local download_url="https://caddyserver.com/api/download?os=${os}&arch=${arch}&p=github.com/caddy-dns/cloudflare&idempotency=on"
 
-  tmpfile=$(create_temp_file "caddy-cf-dns") || {
+  tmpfile1=$(create_temp_file "caddy-cf-dns-1") || {
     err "Failed to create temp file"
     return 1
   }
 
-  safe_http_get "${download_url}" "${tmpfile}" || {
-    err "Failed to download Caddy with CF DNS plugin"
-    rm -f "${tmpfile}"
+  tmpfile2=$(create_temp_file "caddy-cf-dns-2") || {
+    err "Failed to create temp file"
+    rm -f "${tmpfile1}"
     return 1
   }
+
+  # First download
+  msg "  - Downloading binary (pass 1)..."
+  safe_http_get "${download_url}" "${tmpfile1}" || {
+    err "Failed to download Caddy with CF DNS plugin"
+    rm -f "${tmpfile1}" "${tmpfile2}"
+    return 1
+  }
+
+  # Second download for verification
+  msg "  - Downloading binary (pass 2) for verification..."
+  safe_http_get "${download_url}" "${tmpfile2}" || {
+    err "Failed to download Caddy for verification"
+    rm -f "${tmpfile1}" "${tmpfile2}"
+    return 1
+  }
+
+  # Dual-Download Integrity Verification:
+  # Compare SHA-256 checksums of both downloads to detect transmission corruption.
+  # This ensures the binary was not corrupted during download.
+  msg "  - Verifying download integrity..."
+  checksum1=$(sha256sum "${tmpfile1}" | awk '{print $1}')
+  checksum2=$(sha256sum "${tmpfile2}" | awk '{print $1}')
+
+  if [[ "${checksum1}" != "${checksum2}" ]]; then
+    err "Checksum mismatch between downloads!"
+    err "  Download 1: ${checksum1}"
+    err "  Download 2: ${checksum2}"
+    err "This may indicate network corruption or a MITM attack."
+    err "Please try again or build Caddy locally with xcaddy."
+    rm -f "${tmpfile1}" "${tmpfile2}"
+    return 1
+  fi
+
+  rm -f "${tmpfile2}"
 
   # Install binary
-  install -m 755 "${tmpfile}" "$(caddy_bin)" || {
+  msg "  - Installing Caddy binary..."
+  install -m 755 "${tmpfile1}" "$(caddy_bin)" || {
     err "Failed to install Caddy"
-    rm -f "${tmpfile}"
+    rm -f "${tmpfile1}"
     return 1
   }
 
-  rm -f "${tmpfile}"
+  rm -f "${tmpfile1}"
 
   # Verify CF DNS module is present
   if ! "$(caddy_bin)" list-modules 2> /dev/null | grep -q "dns.providers.cloudflare"; then
@@ -622,7 +671,7 @@ caddy_install_with_cf_dns() {
     return 1
   fi
 
-  success "Caddy with Cloudflare DNS plugin installed"
+  success "Caddy with Cloudflare DNS plugin installed (SHA256: ${checksum1:0:16}...)"
   return 0
 }
 
