@@ -416,8 +416,47 @@ safe_http_get() {
 }
 
 #==============================================================================
+# Port 80 Check for ACME HTTP-01 Challenge
+#==============================================================================
+
+# Check port 80 availability for ACME HTTP-01 challenge
+# Returns: 0 if available, 1 if in use or blocked
+check_port_80_for_acme() {
+  local port_user=""
+
+  # Check if port 80 is in use
+  if port_in_use 80; then
+    port_user=$(ss -lntp 2> /dev/null | grep ':80 ' | awk '{print $NF}' | head -1)
+    warn "Port 80 is in use by: ${port_user:-unknown process}"
+    warn "ACME HTTP-01 challenge requires port 80 to be accessible"
+    return 1
+  fi
+
+  return 0
+}
+
+# Display port 80 guidance for cloud platforms and firewalls
+# Outputs helpful commands for common cloud providers and Linux firewalls
+show_port_80_guidance() {
+  info ""
+  info "Port 80 must be accessible from the internet for Let's Encrypt HTTP-01 verification"
+  info ""
+  info "Cloud platform firewall commands:"
+  info "  GCP:   gcloud compute firewall-rules create allow-http --allow tcp:80"
+  info "  AWS:   Security Group -> Add inbound rule -> HTTP (port 80)"
+  info "  Azure: Network Security Group -> Add inbound rule -> Port 80"
+  info ""
+  info "Linux firewall commands:"
+  info "  firewalld: firewall-cmd --permanent --add-port=80/tcp && firewall-cmd --reload"
+  info "  ufw:       ufw allow 80/tcp"
+  info "  iptables:  iptables -I INPUT -p tcp --dport 80 -j ACCEPT"
+  info ""
+}
+
+#==============================================================================
 # Export Functions
 #==============================================================================
 
 export -f get_public_ip validate_ip_address port_in_use allocate_port
 export -f detect_ipv6_support choose_listen_address safe_http_get
+export -f check_port_80_for_acme show_port_80_guidance

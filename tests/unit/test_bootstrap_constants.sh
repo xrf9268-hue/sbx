@@ -104,6 +104,12 @@ PERMISSION_CONSTANTS=(
   "SECURE_FILE_PERMISSIONS"
 )
 
+# Cloudflare API Token constants (used by lib/validation.sh during bootstrap)
+CF_TOKEN_CONSTANTS=(
+  "CF_API_TOKEN_MIN_LENGTH"
+  "CF_API_TOKEN_MAX_LENGTH"
+)
+
 # Combine all into master list
 REQUIRED_BOOTSTRAP_CONSTANTS=(
   "${DOWNLOAD_CONSTANTS[@]}"
@@ -113,6 +119,7 @@ REQUIRED_BOOTSTRAP_CONSTANTS=(
   "${CADDY_PORT_CONSTANTS[@]}"
   "${REALITY_CONFIG_CONSTANTS[@]}"
   "${PERMISSION_CONSTANTS[@]}"
+  "${CF_TOKEN_CONSTANTS[@]}"
 )
 
 #==============================================================================
@@ -355,6 +362,7 @@ echo "  - Port defaults: ${#PORT_DEFAULT_CONSTANTS[@]}"
 echo "  - Caddy ports: ${#CADDY_PORT_CONSTANTS[@]}"
 echo "  - Reality config: ${#REALITY_CONFIG_CONSTANTS[@]}"
 echo "  - Permissions: ${#PERMISSION_CONSTANTS[@]}"
+echo "  - CF Token: ${#CF_TOKEN_CONSTANTS[@]}"
 echo ""
 echo "Tests run:    $TESTS_RUN"
 echo "Tests passed: $TESTS_PASSED"

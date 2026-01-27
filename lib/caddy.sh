@@ -575,6 +575,163 @@ EOF
 }
 
 #==============================================================================
+# Caddy with Cloudflare DNS Plugin
+#==============================================================================
+
+# Download Caddy with Cloudflare DNS plugin
+# Uses caddyserver.com/api/download for pre-built binary with modules
+caddy_install_with_cf_dns() {
+  local arch="" os="linux" tmpfile=""
+
+  # Skip if already installed with CF DNS support
+  if [[ -x "$(caddy_bin)" ]] && "$(caddy_bin)" list-modules 2> /dev/null | grep -q "dns.providers.cloudflare"; then
+    info "Caddy with Cloudflare DNS plugin already installed"
+    return 0
+  fi
+
+  arch=$(caddy_detect_arch) || return 1
+
+  msg "Downloading Caddy with Cloudflare DNS plugin..."
+
+  # Download from Caddy's official API with CF DNS plugin
+  local download_url="https://caddyserver.com/api/download?os=${os}&arch=${arch}&p=github.com/caddy-dns/cloudflare"
+
+  tmpfile=$(create_temp_file "caddy-cf-dns") || {
+    err "Failed to create temp file"
+    return 1
+  }
+
+  safe_http_get "${download_url}" "${tmpfile}" || {
+    err "Failed to download Caddy with CF DNS plugin"
+    rm -f "${tmpfile}"
+    return 1
+  }
+
+  # Install binary
+  install -m 755 "${tmpfile}" "$(caddy_bin)" || {
+    err "Failed to install Caddy"
+    rm -f "${tmpfile}"
+    return 1
+  }
+
+  rm -f "${tmpfile}"
+
+  # Verify CF DNS module is present
+  if ! "$(caddy_bin)" list-modules 2> /dev/null | grep -q "dns.providers.cloudflare"; then
+    err "Caddy installation missing Cloudflare DNS module"
+    return 1
+  fi
+
+  success "Caddy with Cloudflare DNS plugin installed"
+  return 0
+}
+
+# Create systemd service with environment variables
+# Args: $@ - environment variables (KEY=VALUE format)
+caddy_create_service_with_env() {
+  local env_lines=""
+  local env_var=""
+
+  for env_var in "$@"; do
+    env_lines+="Environment=\"${env_var}\"\n"
+  done
+
+  msg "  - Creating Caddy systemd service with environment..."
+
+  cat > "$(caddy_systemd_file)" << EOF
+[Unit]
+Description=Caddy HTTP/2 web server (DNS-01 challenge)
+Documentation=https://caddyserver.com/docs/
+After=network.target network-online.target
+Requires=network-online.target
+
+[Service]
+Type=notify
+User=${CADDY_SERVICE_USER}
+Group=${CADDY_SERVICE_USER}
+ExecStart=/usr/local/bin/caddy run --environ --config /usr/local/etc/caddy/Caddyfile
+ExecReload=/usr/local/bin/caddy reload --config /usr/local/etc/caddy/Caddyfile --force
+TimeoutStopSec=5s
+LimitNOFILE=1048576
+LimitNPROC=1048576
+PrivateTmp=true
+ProtectSystem=full
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+$(printf '%b' "${env_lines}")
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+  systemctl daemon-reload
+  success "  ✓ Caddy service created with environment"
+  return 0
+}
+
+# Setup Caddy for DNS-01 challenge using Cloudflare API
+# Args: $1 - domain
+caddy_setup_dns_challenge() {
+  local domain="$1"
+  local caddy_https_port="${CADDY_HTTPS_PORT:-${CADDY_HTTPS_PORT_DEFAULT}}"
+
+  msg "  - Configuring Caddy for DNS-01 challenge: ${domain}"
+
+  # Validate CF_API_TOKEN is set
+  [[ -n "${CF_API_TOKEN:-}" ]] || {
+    err "CF_API_TOKEN not set for DNS-01 challenge"
+    return 1
+  }
+
+  # Create directories
+  mkdir -p "$(caddy_config_dir)" "$(caddy_data_dir)"
+  chmod 755 "$(caddy_config_dir)"
+  chmod 700 "$(caddy_data_dir)"
+
+  # Create Caddyfile with DNS-01 challenge
+  msg "  - Writing Caddyfile with DNS-01 configuration..."
+  cat > "$(caddy_config_file)" << EOF
+{
+  admin off
+  email admin@${domain}
+}
+
+# DNS-01 challenge - no port 80 required
+${domain}:${caddy_https_port} {
+  tls {
+    dns cloudflare {env.CF_API_TOKEN}
+  }
+  respond "Caddy Certificate Management (DNS-01)" 200
+}
+EOF
+
+  success "  ✓ Caddyfile configured for DNS-01 challenge"
+
+  # Create systemd service with CF_API_TOKEN environment
+  caddy_create_service_with_env "CF_API_TOKEN=${CF_API_TOKEN}" || return 1
+
+  # Enable and start Caddy
+  msg "  - Starting Caddy service..."
+  systemctl enable caddy > /dev/null 2>&1
+  systemctl start caddy || {
+    err "Failed to start Caddy service"
+    journalctl -u caddy --no-pager -n 20 >&2
+    return 1
+  }
+
+  # Wait for Caddy to be ready
+  sleep "${CADDY_STARTUP_WAIT_SEC}"
+
+  systemctl is-active caddy > /dev/null 2>&1 || {
+    err "Caddy service failed to start"
+    journalctl -u caddy --no-pager -n 20 >&2
+    return 1
+  }
+
+  success "  ✓ Caddy DNS-01 challenge configured for ${domain}"
+  return 0
+}
+
+#==============================================================================
 # Caddy Uninstallation
 #==============================================================================
 
@@ -612,3 +769,4 @@ caddy_uninstall() {
 
 export -f caddy_install caddy_setup_auto_tls caddy_setup_cert_sync
 export -f caddy_wait_for_cert caddy_uninstall
+export -f caddy_install_with_cf_dns caddy_setup_dns_challenge caddy_create_service_with_env

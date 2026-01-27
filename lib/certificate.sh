@@ -52,6 +52,14 @@ maybe_issue_cert() {
   # Issue certificate based on mode
   case "${CERT_MODE}" in
     caddy)
+      # HTTP-01 challenge - requires port 80
+      # Check port 80 availability first
+      if ! check_port_80_for_acme; then
+        warn "Port 80 is not available for HTTP-01 challenge"
+        show_port_80_guidance
+        warn "Consider using CERT_MODE=cf_dns if port 80 cannot be opened"
+      fi
+
       # Install Caddy
       caddy_install || die "Failed to install Caddy"
 
@@ -62,8 +70,23 @@ maybe_issue_cert() {
       caddy_setup_cert_sync "${DOMAIN}" || die "Failed to setup certificate sync"
       ;;
 
+    cf_dns)
+      # DNS-01 challenge via Cloudflare API - no port 80 required
+      info "Using DNS-01 challenge via Cloudflare API"
+      info "  ℹ No port 80 required for DNS-01 challenge"
+
+      # Install Caddy with CF DNS plugin
+      caddy_install_with_cf_dns || die "Failed to install Caddy with CF DNS plugin"
+
+      # Setup DNS challenge
+      caddy_setup_dns_challenge "${DOMAIN}" || die "Failed to setup DNS-01 challenge"
+
+      # Wait for certificate and sync to sing-box
+      caddy_setup_cert_sync "${DOMAIN}" || die "Failed to setup certificate sync"
+      ;;
+
     *)
-      die "Unknown CERT_MODE: ${CERT_MODE} (only 'caddy' is supported)"
+      die "Unknown CERT_MODE: ${CERT_MODE} (supported: caddy, cf_dns)"
       ;;
   esac
 
@@ -77,12 +100,12 @@ check_cert_expiry() {
   local expiry_date='' expiry_epoch='' now_epoch='' days_left=0
   [[ -f "${cert_file}" ]] || return 1
 
-  expiry_date=$(openssl x509 -in "${cert_file}" -noout -enddate 2>/dev/null | cut -d= -f2)
+  expiry_date=$(openssl x509 -in "${cert_file}" -noout -enddate 2> /dev/null | cut -d= -f2)
 
   if [[ -n "${expiry_date}" ]]; then
-    expiry_epoch=$(date -d "${expiry_date}" +%s 2>/dev/null || date -j -f "%b %d %T %Y %Z" "${expiry_date}" +%s 2>/dev/null)
+    expiry_epoch=$(date -d "${expiry_date}" +%s 2> /dev/null || date -j -f "%b %d %T %Y %Z" "${expiry_date}" +%s 2> /dev/null)
     now_epoch=$(date +%s)
-    days_left=$(( (expiry_epoch - now_epoch) / 86400 ))
+    days_left=$(((expiry_epoch - now_epoch) / 86400))
 
     if [[ ${days_left} -lt 30 ]]; then
       warn "Certificate expires in ${days_left} days: ${cert_file}"
