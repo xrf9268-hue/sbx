@@ -67,10 +67,26 @@ SINGBOX_VERSION=latest    # Including pre-releases
 ### Custom Certificates
 
 ```bash
-CERT_MODE=caddy                        # Auto TLS via Caddy (default)
+CERT_MODE=caddy                        # Auto TLS via Caddy HTTP-01 (default)
+CERT_MODE=cf_dns                       # DNS-01 via Cloudflare API (no port 80 needed)
 CERT_FULLCHAIN=/path/to/fullchain.pem  # Custom certificate
 CERT_KEY=/path/to/privkey.pem          # Custom private key
 ```
+
+#### DNS-01 Challenge with Cloudflare
+
+When port 80 is unavailable (blocked by firewall, in use, or restricted by cloud provider), use DNS-01 challenge:
+
+```bash
+# Set Cloudflare API token and enable DNS-01 mode
+CF_API_TOKEN=your_cf_api_token CERT_MODE=cf_dns DOMAIN=your.domain.com bash install.sh
+```
+
+**Requirements:**
+- Cloudflare API token with Zone:DNS:Edit permissions
+- Domain managed by Cloudflare DNS
+
+**Security note:** The Caddy binary for DNS-01 mode is downloaded from caddyserver.com/api/download with dual-download integrity verification. For maximum security, build Caddy locally with xcaddy.
 
 ### Debugging
 
