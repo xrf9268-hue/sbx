@@ -40,7 +40,7 @@ test_library_has_strict_mode() {
 # Main test execution
 main() {
     local modules=(
-        common network validation checksum certificate caddy
+        common network validation checksum certificate caddy_cleanup
         config service ui backup export retry download version
     )
 

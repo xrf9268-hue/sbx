@@ -118,7 +118,6 @@ violations=0
 # Format: "parent:child1,child2"
 known_sub_modules=(
     "common:logging,generators"
-    "certificate:caddy"
     "config:config_validator"
 )
 

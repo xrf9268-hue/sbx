@@ -46,10 +46,8 @@ readonly REALITY_PORT_DEFAULT=443
 readonly WS_PORT_DEFAULT=8444
 readonly HY2_PORT_DEFAULT=8443
 
-# Caddy port defaults (used by lib/caddy.sh during bootstrap)
-readonly CADDY_HTTP_PORT_DEFAULT=80
-readonly CADDY_HTTPS_PORT_DEFAULT=8445
-readonly CADDY_FALLBACK_PORT_DEFAULT=8080
+# ACME data directory (used by lib/config.sh for native ACME)
+readonly ACME_DATA_DIRECTORY="/var/lib/sing-box/acme"
 
 # Reality configuration defaults (used by lib/config.sh during bootstrap)
 readonly REALITY_FLOW_VISION="xtls-rprx-vision"
@@ -472,7 +470,7 @@ _download_and_validate_manager_script() {
 _load_modules() {
   local github_repo="https://raw.githubusercontent.com/xrf9268-hue/sbx/main"
   # Module loading order: colors first (required by common and logging), then common loads logging and generators, tools after common
-  local modules=(colors common logging generators tools retry download network validation checksum version certificate caddy config config_validator schema_validator service ui backup export messages)
+  local modules=(colors common logging generators tools retry download network validation checksum version certificate caddy_cleanup config config_validator schema_validator service ui backup export messages)
   local temp_lib_dir=""
 
   # Check if lib directory exists
@@ -1478,6 +1476,12 @@ install_flow() {
       maybe_issue_cert
     fi
 
+    # Create ACME data directory for native certificate management
+    if [[ "${REALITY_ONLY_MODE:-0}" != "1" ]]; then
+      mkdir -p "${ACME_DATA_DIRECTORY}"
+      chmod "${SECURE_DIR_PERMISSIONS}" "${ACME_DATA_DIRECTORY}"
+    fi
+
     # Write configuration
     write_config
 
@@ -1547,10 +1551,11 @@ uninstall_flow() {
   msg "Removing files..."
   rm -f "${SB_BIN}" /usr/local/bin/sbx-manager /usr/local/bin/sbx
   rm -rf "${SB_CONF_DIR}" "${CERT_DIR_BASE}" /usr/local/lib/sbx
+  rm -rf "${ACME_DATA_DIRECTORY}"
 
-  # Remove Caddy if installed
+  # Remove legacy Caddy if installed (pre-1.13.0 installations)
   if have caddy; then
-    msg "Removing Caddy..."
+    msg "Removing legacy Caddy installation..."
     caddy_uninstall || warn "Failed to remove Caddy completely"
   fi
 

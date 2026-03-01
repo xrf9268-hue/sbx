@@ -262,11 +262,16 @@ validate_env_vars() {
         [[ -n "${CF_API_TOKEN:-}" ]] || die "CF_API_TOKEN required for Cloudflare DNS-01 challenge"
         validate_cf_api_token "${CF_API_TOKEN}" || die "Invalid CF_API_TOKEN format (must be ${CF_API_TOKEN_MIN_LENGTH}-${CF_API_TOKEN_MAX_LENGTH} alphanumeric characters)"
         ;;
+      acme)
+        # No additional validation needed for HTTP-01 challenge (sing-box native ACME)
+        ;;
       le_http | caddy)
-        # No additional validation needed for HTTP-01 challenge
+        # Legacy aliases — remap to acme with deprecation warning
+        warn "CERT_MODE=${CERT_MODE} is deprecated, use CERT_MODE=acme instead"
+        export CERT_MODE="acme"
         ;;
       *)
-        die "Invalid CERT_MODE: ${CERT_MODE} (must be cf_dns, caddy, or le_http)"
+        die "Invalid CERT_MODE: ${CERT_MODE} (must be acme, cf_dns, or manual via CERT_FULLCHAIN/CERT_KEY)"
         ;;
     esac
   fi

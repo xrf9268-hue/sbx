@@ -99,7 +99,7 @@ fi
 
 # Test 6: Check module list completeness
 info "Test 6: Verifying all required modules are downloaded"
-EXPECTED_MODULES="common retry download network validation checksum version certificate caddy config service ui backup export"
+EXPECTED_MODULES="common retry download network validation checksum version certificate caddy_cleanup config service ui backup export"
 if grep -q "local modules=.*$EXPECTED_MODULES" install.sh; then
     pass "All 13 modules listed for download"
 else

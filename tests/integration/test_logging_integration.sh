@@ -24,8 +24,6 @@ NC='\033[0m'
 source "${PROJECT_ROOT}/lib/common.sh"
 # shellcheck source=../../lib/config.sh
 source "${PROJECT_ROOT}/lib/config.sh"
-# shellcheck source=../../lib/caddy.sh
-source "${PROJECT_ROOT}/lib/caddy.sh"
 
 # Test helper functions
 assert_contains() {
@@ -105,43 +103,6 @@ test_reality_inbound_debug_logging() {
         FAILED_TESTS=$((FAILED_TESTS + 1))
         echo -e "${RED}✗${NC} Reality inbound creation includes debug output (not implemented yet)"
     fi
-}
-
-#=============================================================================
-# Caddy Certificate Path Detection Logging Tests
-#=============================================================================
-
-test_caddy_cert_path_detection_logging() {
-    echo ""
-    echo "Testing Caddy Certificate Path Detection - Logging"
-    echo "---------------------------------------------------"
-
-    # Test that Caddy certificate path detection logs the paths found
-    local test_cert_dir
-    test_cert_dir=$(mktemp -d)
-    # shellcheck disable=SC2064
-    trap "rm -rf $test_cert_dir" RETURN
-
-    # Create mock certificate structure
-    mkdir -p "$test_cert_dir/certificates/acme-v02.api.letsencrypt.org-directory/example.com"
-    touch "$test_cert_dir/certificates/acme-v02.api.letsencrypt.org-directory/example.com/example.com.crt"
-    touch "$test_cert_dir/certificates/acme-v02.api.letsencrypt.org-directory/example.com/example.com.key"
-
-    local output
-    output=$(bash -c "
-        source lib/common.sh
-        source lib/caddy.sh
-
-        # Mock Caddy data directory
-        export CADDY_DATA_DIR='$test_cert_dir'
-
-        # This would be the certificate path detection logic
-        msg 'Searching for certificates in Caddy data directory'
-        find '$test_cert_dir' -name '*.crt' 2>&1
-    " 2>&1)
-
-    # Should log certificate path discovery
-    assert_contains "certificate path detection logs results" "$output" "example.com.crt"
 }
 
 #=============================================================================
@@ -328,7 +289,6 @@ main() {
     # Run test suites
     test_config_generation_debug_logging
     test_reality_inbound_debug_logging
-    test_caddy_cert_path_detection_logging
     test_logging_flow_consistency
     test_timestamp_consistency
     test_json_logging_integration

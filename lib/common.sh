@@ -58,7 +58,6 @@ declare -gr PORT_ALLOCATION_MAX_RETRIES=3
 declare -gr PORT_ALLOCATION_RETRY_DELAY_SEC=2
 declare -gr CLEANUP_OLD_FILES_MIN=60
 declare -gr BACKUP_RETENTION_DAYS=30
-declare -gr CADDY_CERT_WAIT_TIMEOUT_SEC=60
 
 # Download configuration (some constants defined in install.sh early boot)
 # DOWNLOAD_CONNECT_TIMEOUT_SEC, DOWNLOAD_MAX_TIMEOUT_SEC, MIN_MODULE_FILE_SIZE_BYTES
@@ -153,23 +152,13 @@ declare -gr BACKUP_PASSWORD_LENGTH=64
 declare -gr BACKUP_PASSWORD_MIN_LENGTH=32
 
 #==============================================================================
-# Caddy Configuration Constants
+# ACME Configuration Constants
 #==============================================================================
 
-# Caddy default ports (may be defined in install.sh bootstrap for early use)
-if [[ -z "${CADDY_HTTP_PORT_DEFAULT:-}" ]]; then
-  declare -gr CADDY_HTTP_PORT_DEFAULT=80
+# ACME data directory (may be defined in install.sh bootstrap for early use)
+if [[ -z "${ACME_DATA_DIRECTORY:-}" ]]; then
+  declare -gr ACME_DATA_DIRECTORY="/var/lib/sing-box/acme"
 fi
-if [[ -z "${CADDY_HTTPS_PORT_DEFAULT:-}" ]]; then
-  declare -gr CADDY_HTTPS_PORT_DEFAULT=8445
-fi
-if [[ -z "${CADDY_FALLBACK_PORT_DEFAULT:-}" ]]; then
-  declare -gr CADDY_FALLBACK_PORT_DEFAULT=8080
-fi
-
-# Caddy service wait times
-declare -gr CADDY_STARTUP_WAIT_SEC=2
-declare -gr CADDY_CERT_POLL_INTERVAL_SEC=3
 
 #==============================================================================
 # Network and Download Constants

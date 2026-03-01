@@ -69,7 +69,7 @@ if bash -c '
 
     # Test modules array
     _test_modules() {
-        local modules=(common retry download network validation checksum version certificate caddy config service ui backup export)
+        local modules=(common retry download network validation checksum version certificate caddy_cleanup config service ui backup export)
         if [[ " ${modules[*]} " =~ " version " ]]; then
             echo "Module list contains version"
             return 0

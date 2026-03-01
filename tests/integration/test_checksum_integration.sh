@@ -67,7 +67,7 @@ if bash -c '
 
     # Verify the modules array includes checksum
     _test_modules() {
-        local modules=(common retry download network validation checksum certificate caddy config service ui backup export)
+        local modules=(common retry download network validation checksum certificate caddy_cleanup config service ui backup export)
         if [[ " ${modules[*]} " =~ " checksum " ]]; then
             echo "Module list contains checksum"
             return 0

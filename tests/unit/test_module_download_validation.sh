@@ -82,7 +82,7 @@ test_start "All lib/*.sh modules can be sourced (with dependencies)"
 # Test sourcing in correct order to handle dependencies
 modules_order=(
   colors common logging generators tools retry download network
-  validation checksum version certificate caddy config config_validator
+  validation checksum version certificate caddy_cleanup config config_validator
   schema_validator service ui backup export messages
 )
 
