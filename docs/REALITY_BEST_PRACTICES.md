@@ -136,30 +136,24 @@ openssl s_client -connect www.microsoft.com:443 -servername www.microsoft.com
 
 **Certificate Best Practices:**
 ```bash
-# Use Let's Encrypt with automatic renewal
-# sbx-lite does this automatically with Caddy
+# sing-box 1.13.0+ handles ACME natively — no external tools needed
+# sbx-lite configures this automatically via CERT_MODE=acme (default)
 
-# Manual certificate management
-certbot certonly --standalone -d yourdomain.com
+# DNS-01 mode (when port 80 is unavailable):
+CF_API_TOKEN=your_token CERT_MODE=cf_dns DOMAIN=your.domain.com bash install.sh
 
-# Set proper permissions
-chmod 600 /etc/letsencrypt/live/yourdomain.com/privkey.pem
-chmod 644 /etc/letsencrypt/live/yourdomain.com/fullchain.pem
+# Manual certificate (skip ACME):
+CERT_FULLCHAIN=/path/to/fullchain.pem CERT_KEY=/path/to/privkey.pem bash install.sh
 ```
 
 **Certificate Rotation:**
-- Certificates expire every 90 days (Let's Encrypt)
-- Set up automatic renewal (sbx-lite does this)
-- Test renewal process before expiration
+- ACME certificates renew automatically (managed by sing-box)
+- Manual certificates: monitor expiry and replace before 90-day expiration
 
-**Monitor expiry:**
+**Monitor expiry (manual certs only):**
 ```bash
 # Check certificate expiration
 openssl x509 -in /path/to/cert.pem -noout -dates
-
-# Should show:
-# notBefore=...
-# notAfter=...
 ```
 
 ---
@@ -171,22 +165,6 @@ openssl x509 -in /path/to/cert.pem -noout -dates
 | Binary | Verification Method | Details |
 |--------|---------------------|---------|
 | sing-box | SHA256 checksum | Official checksums from GitHub releases |
-| Caddy (standard) | SHA512 checksum | Official checksums from GitHub releases |
-| Caddy (CF DNS) | Dual-download verification | Downloads twice, compares SHA256 |
-
-**Caddy CF DNS mode security note:**
-
-The Caddy download API (caddyserver.com/api/download) builds binaries on-demand and doesn't provide pre-computed checksums. sbx-lite uses dual-download verification:
-1. Downloads the binary twice from the same URL
-2. Compares SHA-256 checksums of both downloads
-3. Fails if checksums don't match (indicates corruption or MITM)
-
-For maximum security in sensitive environments:
-```bash
-# Build Caddy locally with xcaddy
-xcaddy build --with github.com/caddy-dns/cloudflare
-sudo mv caddy /usr/local/bin/caddy
-```
 
 ---
 
@@ -219,6 +197,22 @@ chown root:root /var/backups/sbx/
 - Document who has which UUID
 - Rotate UUIDs periodically
 - Remove unused UUIDs immediately
+
+---
+
+### 7. uTLS Fingerprint Security Note
+
+> **sing-box 1.13.0 official warning:** uTLS has repeatedly been found to have fingerprint vulnerabilities and is not recommended for use against deep packet inspection. If TLS fingerprint resistance is required, consider NaiveProxy instead. The Reality protocol's own security is not affected by uTLS issues.
+
+**What this means:**
+- Reality protocol security relies on the Reality handshake, not uTLS fingerprinting
+- Reality deployments remain secure regardless of uTLS vulnerabilities
+- uTLS fingerprinting affects only scenarios where precise TLS client emulation is critical (e.g., plain VLESS-TLS without Reality)
+
+**Recommendation:**
+- For censorship resistance, prefer Reality over plain TLS
+- If using WS-TLS (non-Reality), be aware that uTLS fingerprints may be detectable
+- For environments with deep TLS inspection, evaluate NaiveProxy as an alternative
 
 ---
 
