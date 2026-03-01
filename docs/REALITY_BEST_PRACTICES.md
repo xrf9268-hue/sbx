@@ -226,10 +226,15 @@ chown root:root /var/backups/sbx/
 {
   "outbounds": [{
     "type": "direct",
-    "tcp_fast_open": true  // Enable TFO
+    "tcp_fast_open": true,
+    "udp_fragment": true,
+    "bind_address_no_port": true,
+    "tcp_keep_alive": "5m"
   }]
 }
 ```
+
+> **Note:** sbx configures all of the above automatically. `bind_address_no_port` reduces port exhaustion under high concurrency. `tcp_keep_alive` is set to `5m` (the sing-box 1.13.0 default).
 
 **System-level TFO:**
 ```bash
@@ -329,11 +334,15 @@ cat /proc/sys/net/ipv4/tcp_fastopen
   "outbounds": [{
     "type": "direct",
     "tcp_fast_open": true,
-    "tcp_multi_path": false,
-    "udp_fragment": true
+    "udp_fragment": true,
+    "bind_address_no_port": true,
+    "tcp_keep_alive": "5m",
+    "kernel_tx": true
   }]
 }
 ```
+
+> **Note:** `kernel_tx` (kernel TLS offload) is automatically included on Linux 5.1+ kernels. On older kernels it is omitted. `bind_address_no_port` enables `IP_BIND_ADDRESS_NO_PORT` to defer port assignment until connect time, which helps under high connection rates.
 
 **System-level optimizations:**
 ```bash
@@ -789,7 +798,10 @@ Before going to production:
 - [ ] Regular backups enabled
 
 **Performance:**
-- [ ] TCP Fast Open enabled
+- [ ] TCP Fast Open enabled (automatic)
+- [ ] `bind_address_no_port` enabled (automatic)
+- [ ] `tcp_keep_alive: 5m` set (automatic)
+- [ ] Kernel TLS offload active on Linux 5.1+ (automatic, check `uname -r`)
 - [ ] DNS caching enabled
 - [ ] Log level appropriate (warn/info)
 - [ ] System limits increased (if needed)

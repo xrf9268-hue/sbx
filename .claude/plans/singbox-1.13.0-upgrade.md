@@ -297,16 +297,16 @@ bash -u install.sh --help
 
 ---
 
-## 七、1.13.0 新特性总览（本次不实施，供后续参考）
+## 七、1.13.0 新特性总览
 
-| 特性 | 说明 | 潜在价值 |
-|------|------|----------|
-| kTLS (`kernel_tx`) | Linux 5.1+ TLS 1.3 内核级卸载 | 性能提升 |
-| `bind_address_no_port` | 高并发场景端口复用 | 性能提升 |
-| Chrome Root Store | `certificate.store: "chrome"` | 安全增强 |
-| NaiveProxy outbound | QUIC + ECH 支持 | 新协议选项 |
-| ICMP echo proxy | ping 代理支持 | 功能扩展 |
-| `preferred_by` rule item | 匹配 outbound 首选路由 | 路由灵活性 |
-| Wi-Fi state 规则 | Linux 上的 wifi_ssid/wifi_bssid 匹配 | 条件路由 |
-| `disable_tcp_keep_alive` / `tcp_keep_alive` | 新增连接参数（默认 keep-alive 从 10m 改为 5m） | 连接优化 |
-| CCM/OCM service | Claude Code / OpenAI Codex 远程复用 | 开发工具 |
+| 特性 | 说明 | 潜在价值 | 状态 |
+|------|------|----------|------|
+| kTLS (`kernel_tx`) | Linux 5.1+ TLS 1.3 内核级卸载 | 性能提升 | ✅ 已实施（auto-detect） |
+| `bind_address_no_port` | 高并发场景端口复用 | 性能提升 | ✅ 已实施 |
+| Chrome Root Store | `certificate.store: "chrome"` | 安全增强 | ✅ 已实施（ACME 模式） |
+| `tcp_keep_alive` | 新增连接参数（默认 keep-alive 从 10m 改为 5m） | 连接优化 | ✅ 已实施（显式 5m） |
+| NaiveProxy outbound | QUIC + ECH 支持 | 新协议选项 | 未实施 |
+| ICMP echo proxy | ping 代理支持 | 功能扩展 | 未实施 |
+| `preferred_by` rule item | 匹配 outbound 首选路由 | 路由灵活性 | 未实施 |
+| Wi-Fi state 规则 | Linux 上的 wifi_ssid/wifi_bssid 匹配 | 条件路由 | 未实施 |
+| CCM/OCM service | Claude Code / OpenAI Codex 远程复用 | 开发工具 | 未实施 |
