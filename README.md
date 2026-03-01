@@ -3,7 +3,7 @@
 One-click sing-box proxy deployment with VLESS-REALITY support.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![sing-box](https://img.shields.io/badge/sing--box-1.12.0+-orange.svg)](https://github.com/SagerNet/sing-box)
+[![sing-box](https://img.shields.io/badge/sing--box-1.13.0+-orange.svg)](https://github.com/SagerNet/sing-box)
 
 ## Quick Start
 

@@ -35,7 +35,7 @@ sbx info | status | check | restart   # Post-install management
 - Reason: `declare -r` creates local vars when sourced inside a function
 - See `.claude/CODING_STANDARDS.md` § "Variable Scope in Sourced Scripts"
 
-**Reality protocol** (sing-box 1.12.0+):
+**Reality protocol** (sing-box 1.13.0+):
 - Short ID: 8 chars max via `openssl rand -hex 4`
 - Must nest under `tls.reality`, not top-level
 - Flow field in `users[]` array, not inbound level
@@ -88,6 +88,6 @@ CF_MODE=1             # Cloudflare proxy mode (WS-TLS on 443 only)
 ENABLE_REALITY=1      # Enable/disable Reality protocol
 ENABLE_WS=1           # Enable/disable WS-TLS protocol
 ENABLE_HY2=1          # Enable/disable Hysteria2 protocol
-SINGBOX_VERSION=v1.12.0  # Specific version
+SINGBOX_VERSION=v1.13.0  # Specific version
 DEBUG=1               # Debug output
 ```

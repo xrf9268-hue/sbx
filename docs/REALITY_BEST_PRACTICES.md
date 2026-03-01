@@ -2,7 +2,7 @@
 
 **Version:** 1.0.0
 **Last Updated:** 2025-11-17
-**Applies to:** sing-box 1.12.0+
+**Applies to:** sing-box 1.13.0+
 
 This guide documents production-grade best practices for deploying and maintaining VLESS + REALITY + Vision protocol with sing-box.
 

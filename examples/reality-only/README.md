@@ -19,7 +19,7 @@ This example demonstrates a minimal Reality-only server configuration - the simp
 ## Requirements
 
 - Linux server with public IPv4 address
-- sing-box 1.8.0+ (1.12.0+ recommended)
+- sing-box 1.13.0+
 - Port 443 available (or any port you specify)
 - No domain or certificate required
 

@@ -88,8 +88,7 @@ create_base_config() {
       } + if $dns_strategy != "" then {strategy: $dns_strategy} else {} end),
       inbounds: [],
       outbounds: [
-        { type: "direct", tag: "direct" },
-        { type: "block", tag: "block" }
+        { type: "direct", tag: "direct" }
       ]
     }' 2> /dev/null); then
     err "Failed to create base configuration with jq"
@@ -204,14 +203,110 @@ create_reality_inbound() {
   echo "${reality_config}"
 }
 
+# Build TLS configuration block based on cert mode
+# Returns a JSON TLS object for use in inbound configurations
+# Args: domain alpn_json [cert_path key_path] OR [cert_mode cf_api_token]
+_build_tls_block() {
+  local domain="$1"
+  local alpn_json="$2"
+  local cert_path="${3:-}"
+  local key_path="${4:-}"
+  local cert_mode="${5:-}"
+  local cf_api_token="${6:-}"
+
+  local tls_block=''
+
+  # Manual certificate mode: use certificate_path + key_path
+  if [[ -n "${cert_path}" && -n "${key_path}" ]]; then
+    if ! tls_block=$(jq -n \
+      --arg domain "${domain}" \
+      --argjson alpn "${alpn_json}" \
+      --arg cert_path "${cert_path}" \
+      --arg key_path "${key_path}" \
+      '{
+        enabled: true,
+        server_name: $domain,
+        certificate_path: $cert_path,
+        key_path: $key_path,
+        alpn: $alpn
+      }' 2> /dev/null); then
+      err "Failed to build manual TLS block"
+      return 1
+    fi
+    echo "${tls_block}"
+    return 0
+  fi
+
+  # ACME mode: build acme block based on cert_mode
+  local acme_block=''
+  case "${cert_mode}" in
+    acme|caddy)
+      # HTTP-01 challenge (disable TLS-ALPN to avoid port conflict)
+      if ! acme_block=$(jq -n \
+        --arg domain "${domain}" \
+        '{
+          domain: [$domain],
+          data_directory: "/var/lib/sing-box/acme",
+          email: "",
+          provider: "letsencrypt",
+          disable_tls_alpn_challenge: true
+        }' 2> /dev/null); then
+        err "Failed to build ACME HTTP-01 block"
+        return 1
+      fi
+      ;;
+    cf_dns)
+      # DNS-01 challenge via Cloudflare (disable HTTP + TLS-ALPN challenges)
+      if ! acme_block=$(jq -n \
+        --arg domain "${domain}" \
+        --arg api_token "${cf_api_token}" \
+        '{
+          domain: [$domain],
+          data_directory: "/var/lib/sing-box/acme",
+          email: "",
+          provider: "letsencrypt",
+          disable_http_challenge: true,
+          disable_tls_alpn_challenge: true,
+          dns01_challenge: {
+            provider: "cloudflare",
+            api_token: $api_token
+          }
+        }' 2> /dev/null); then
+        err "Failed to build ACME DNS-01 block"
+        return 1
+      fi
+      ;;
+    *)
+      err "Unknown cert_mode for ACME: ${cert_mode}"
+      return 1
+      ;;
+  esac
+
+  if ! tls_block=$(jq -n \
+    --arg domain "${domain}" \
+    --argjson alpn "${alpn_json}" \
+    --argjson acme "${acme_block}" \
+    '{
+      enabled: true,
+      server_name: $domain,
+      alpn: $alpn,
+      acme: $acme
+    }' 2> /dev/null); then
+    err "Failed to build ACME TLS block"
+    return 1
+  fi
+
+  echo "${tls_block}"
+}
+
 # Create WS-TLS inbound configuration
+# Args: uuid port listen_addr domain tls_json
 create_ws_inbound() {
   local uuid="$1"
   local port="$2"
   local listen_addr="$3"
   local domain="$4"
-  local cert_path="$5"
-  local key_path="$6"
+  local tls_json="$5"
 
   local ws_config=''
 
@@ -219,9 +314,7 @@ create_ws_inbound() {
     --arg uuid "${uuid}" \
     --arg port "${port}" \
     --arg listen_addr "${listen_addr}" \
-    --arg domain "${domain}" \
-    --arg cert_path "${cert_path}" \
-    --arg key_path "${key_path}" \
+    --argjson tls "${tls_json}" \
     '{
       type: "vless",
       tag: "in-ws",
@@ -237,13 +330,7 @@ create_ws_inbound() {
           down_mbps: 1000
         }
       },
-      tls: {
-        enabled: true,
-        server_name: $domain,
-        certificate_path: $cert_path,
-        key_path: $key_path,
-        alpn: ["h2", "http/1.1"]
-      },
+      tls: $tls,
       transport: { type: "ws", path: "/ws" }
     }' 2> /dev/null); then
     err "Failed to create WS-TLS configuration with jq"
@@ -254,12 +341,12 @@ create_ws_inbound() {
 }
 
 # Create Hysteria2 inbound configuration
+# Args: password port listen_addr tls_json
 create_hysteria2_inbound() {
   local password="$1"
   local port="$2"
   local listen_addr="$3"
-  local cert_path="$4"
-  local key_path="$5"
+  local tls_json="$4"
 
   local hy2_config=''
 
@@ -267,8 +354,7 @@ create_hysteria2_inbound() {
     --arg password "${password}" \
     --arg port "${port}" \
     --arg listen_addr "${listen_addr}" \
-    --arg cert_path "${cert_path}" \
-    --arg key_path "${key_path}" \
+    --argjson tls "${tls_json}" \
     '{
       type: "hysteria2",
       tag: "in-hy2",
@@ -277,12 +363,7 @@ create_hysteria2_inbound() {
       users: [{ password: $password }],
       up_mbps: 100,
       down_mbps: 100,
-      tls: {
-        enabled: true,
-        certificate_path: $cert_path,
-        key_path: $key_path,
-        alpn: ["h3"]
-      }
+      tls: $tls
     }' 2> /dev/null); then
     err "Failed to create Hysteria2 configuration with jq"
     return 1
@@ -295,7 +376,7 @@ create_hysteria2_inbound() {
 # Route Configuration
 #==============================================================================
 
-# Add route configuration for sing-box 1.12.0+ compatibility
+# Add route configuration for sing-box 1.13.0+ compatibility
 add_route_config() {
   local config="$1"
   local has_certs="${2:-false}"
@@ -341,9 +422,6 @@ add_outbound_config() {
 
   local updated_config=''
   if ! updated_config=$(echo "${config}" | jq '.outbounds[0] += {
-    "bind_interface": "",
-    "routing_mark": 0,
-    "reuse_addr": false,
     "connect_timeout": "5s",
     "tcp_fast_open": true,
     "udp_fragment": true
@@ -361,25 +439,38 @@ add_outbound_config() {
 # Configuration Generation Helpers
 #==============================================================================
 
-# Validate certificate-based configuration requirements
+# Validate certificate/ACME configuration requirements
 # Respects ENABLE_WS and ENABLE_HY2 environment variables
 _validate_certificate_config() {
   local cert_fullchain="$1"
   local cert_key="$2"
 
-  if [[ -z "${cert_fullchain}" || -z "${cert_key}" ]]; then
-    return 0 # No certificates provided, skip validation
+  local cert_mode="${CERT_MODE:-}"
+  local has_manual_certs="false"
+  local has_acme="false"
+
+  # Check manual certificate mode
+  if [[ -n "${cert_fullchain}" && -n "${cert_key}" && -f "${cert_fullchain}" && -f "${cert_key}" ]]; then
+    has_manual_certs="true"
+    validate_cert_files "${cert_fullchain}" "${cert_key}" || die "Certificate validation failed"
   fi
 
-  if [[ ! -f "${cert_fullchain}" || ! -f "${cert_key}" ]]; then
-    return 0 # Files don't exist, skip (handled elsewhere)
+  # Check ACME mode
+  if [[ -n "${cert_mode}" && -n "${DOMAIN:-}" ]]; then
+    has_acme="true"
+    # Validate CF_API_TOKEN for DNS-01 mode
+    if [[ "${cert_mode}" == "cf_dns" ]]; then
+      [[ -n "${CF_API_TOKEN:-}" ]] || die "CF_API_TOKEN is required for CERT_MODE=cf_dns"
+    fi
   fi
 
-  # Validate certificate files
-  validate_cert_files "${cert_fullchain}" "${cert_key}" || die "Certificate validation failed"
+  # Skip if neither manual certs nor ACME
+  if [[ "${has_manual_certs}" != "true" && "${has_acme}" != "true" ]]; then
+    return 0
+  fi
 
   # Validate domain is set
-  [[ -n "${DOMAIN}" ]] || die "Domain is not set for certificate configuration."
+  [[ -n "${DOMAIN:-}" ]] || die "Domain is not set for certificate/ACME configuration."
 
   # Validate required variables based on enabled protocols
   local enable_ws="${ENABLE_WS:-1}"
@@ -399,6 +490,7 @@ _validate_certificate_config() {
 
 # Create all inbound configurations
 # Respects ENABLE_REALITY, ENABLE_WS, ENABLE_HY2 environment variables
+# Supports manual certificates (cert_fullchain/cert_key) and ACME modes
 _create_all_inbounds() {
   local base_config="$1"
   local uuid="$2"
@@ -427,16 +519,32 @@ _create_all_inbounds() {
       || die "Failed to add Reality configuration to base config"
   fi
 
-  # Add WS-TLS and Hysteria2 inbounds if certificates are available
+  # Determine TLS mode: manual certificates, ACME, or none
   local has_certs="false"
+  local cert_mode="${CERT_MODE:-}"
+  local tls_available="false"
+
+  # Manual certificate mode: files provided and exist
   if [[ -n "${cert_fullchain}" && -n "${cert_key}" && -f "${cert_fullchain}" && -f "${cert_key}" ]]; then
+    tls_available="true"
+  # ACME mode: cert_mode is set and domain is available
+  elif [[ -n "${cert_mode}" && -n "${DOMAIN:-}" ]]; then
+    tls_available="true"
+  fi
+
+  if [[ "${tls_available}" == "true" ]]; then
     has_certs="true"
 
     # Add WS-TLS inbound (if enabled and port is set)
     if [[ "${enable_ws}" == "1" && -n "${WS_PORT_CHOSEN:-}" ]]; then
+      local ws_tls=''
+      ws_tls=$(_build_tls_block "${DOMAIN}" '["h2","http/1.1"]' \
+        "${cert_fullchain}" "${cert_key}" "${cert_mode}" "${CF_API_TOKEN:-}") \
+        || die "Failed to build WS TLS configuration"
+
       local ws_config=''
       ws_config=$(create_ws_inbound "${uuid}" "${WS_PORT_CHOSEN}" "${listen_addr}" \
-        "${DOMAIN}" "${cert_fullchain}" "${cert_key}") \
+        "${DOMAIN}" "${ws_tls}") \
         || die "Failed to create WS-TLS inbound"
 
       base_config=$(echo "${base_config}" | jq --argjson ws "${ws_config}" \
@@ -446,9 +554,14 @@ _create_all_inbounds() {
 
     # Add Hysteria2 inbound (if enabled and port is set)
     if [[ "${enable_hy2}" == "1" && -n "${HY2_PORT_CHOSEN:-}" ]]; then
+      local hy2_tls=''
+      hy2_tls=$(_build_tls_block "${DOMAIN}" '["h3"]' \
+        "${cert_fullchain}" "${cert_key}" "${cert_mode}" "${CF_API_TOKEN:-}") \
+        || die "Failed to build Hysteria2 TLS configuration"
+
       local hy2_config=''
       hy2_config=$(create_hysteria2_inbound "${HY2_PASS}" "${HY2_PORT_CHOSEN}" "${listen_addr}" \
-        "${cert_fullchain}" "${cert_key}") \
+        "${hy2_tls}") \
         || die "Failed to create Hysteria2 inbound"
 
       base_config=$(echo "${base_config}" | jq --argjson hy2 "${hy2_config}" \

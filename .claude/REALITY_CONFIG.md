@@ -2,7 +2,7 @@
 
 Detailed configuration rules for sing-box VLESS-REALITY protocol.
 
-## sing-box 1.12.0+ Requirements
+## sing-box 1.13.0+ Requirements
 
 **MUST follow these requirements:**
 - Short ID: `openssl rand -hex 4` (8 chars, NOT 16 like Xray)
@@ -30,7 +30,7 @@ systemctl restart sing-box && sleep 3
 systemctl is-active sing-box || die "Service failed"
 ```
 
-## sing-box 1.12.0+ Compliance
+## sing-box 1.13.0+ Compliance
 
 **NEVER use deprecated fields:**
 - ❌ `sniff`, `sniff_override_destination`, `domain_strategy` in inbounds

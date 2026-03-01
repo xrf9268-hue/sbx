@@ -60,7 +60,7 @@ sudo DOMAIN=your.domain.com CF_MODE=1 WS_PORT=2053 bash install.sh
 
 ```bash
 SINGBOX_VERSION=stable    # Latest stable (default)
-SINGBOX_VERSION=v1.12.0   # Specific version
+SINGBOX_VERSION=v1.13.0   # Specific version
 SINGBOX_VERSION=latest    # Including pre-releases
 ```
 

@@ -1,7 +1,7 @@
 # Reality Protocol Troubleshooting Guide
 
 **Last Updated:** 2025-11-16
-**Applies to:** sbx-lite with sing-box 1.8.0+
+**Applies to:** sbx-lite with sing-box 1.13.0+
 
 ---
 

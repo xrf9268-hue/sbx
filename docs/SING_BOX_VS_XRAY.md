@@ -34,7 +34,7 @@ Both sing-box and Xray support the Reality protocol, but they have important imp
 | **Config Structure** | `tls.reality` | `streamSettings.realitySettings` | - |
 | **Performance** | Go native | Go native | Tie |
 | **Client Ecosystem** | Growing | Mature | Xray |
-| **Modern Features** | 1.12.0+ (Route actions, new DNS) | Stable | sing-box |
+| **Modern Features** | 1.13.0+ (Route actions, new DNS, native ACME) | Stable | sing-box |
 | **Update Frequency** | Active | Active | Tie |
 | **Production Stability** | Stable (1.8.0+) | Very stable | Tie |
 
@@ -108,7 +108,7 @@ Both sing-box and Xray support the Reality protocol, but they have important imp
 - ✅ Field names: `type`, `listen_port`, `users`
 - ✅ Reality nested under: `tls.reality`
 - ✅ Short ID: **Array format** `["a1b2c3d4"]`
-- ✅ DNS: Modern 1.12.0+ format with `type: "local"`
+- ✅ DNS: Modern 1.13.0+ format with `type: "local"`
 
 #### Xray Format (V2Ray-compatible)
 
@@ -257,7 +257,7 @@ Public key: jNXHt1yRo0vDuchQlIP6Z0ZvjT3KtzVI-T4E7RoLJS0
 
 ### 5. DNS Configuration
 
-**sing-box 1.12.0+ (Modern)**
+**sing-box 1.13.0+ (Modern)**
 ```json
 {
   "dns": {

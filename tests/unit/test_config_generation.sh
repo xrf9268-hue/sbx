@@ -149,11 +149,11 @@ test_create_base_config_ipv4_only() {
     TOTAL_TESTS=$((TOTAL_TESTS + 1))
     local outbound_count
     outbound_count=$(echo "$config" | jq '.outbounds | length' 2>/dev/null)
-    if [[ "$outbound_count" -ge 2 ]]; then
-        echo -e "${GREEN}✓${NC} Has at least 2 outbounds (direct, block)"
+    if [[ "$outbound_count" -ge 1 ]]; then
+        echo -e "${GREEN}✓${NC} Has outbounds (direct)"
         PASSED_TESTS=$((PASSED_TESTS + 1))
     else
-        echo -e "${RED}✗${NC} Missing outbounds (expected 2+, got $outbound_count)"
+        echo -e "${RED}✗${NC} Missing outbounds (expected 1+, got $outbound_count)"
         FAILED_TESTS=$((FAILED_TESTS + 1))
     fi
 }

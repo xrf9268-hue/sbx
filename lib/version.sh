@@ -373,8 +373,8 @@ version_meets_minimum() {
 #   validate_singbox_version || die "sing-box version too old"
 #
 validate_singbox_version() {
-  local min_version="1.8.0"          # Reality requires 1.8.0+
-  local recommended_version="1.12.0" # Modern config format
+  local min_version="1.13.0"          # ACME native + deprecated removals
+  local recommended_version="1.13.0" # Native ACME, no Caddy dependency
 
   msg "Checking sing-box version compatibility..."
 

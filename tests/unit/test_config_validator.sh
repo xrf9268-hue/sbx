@@ -310,8 +310,7 @@ test_validation_pipeline() {
     }
   }],
   "outbounds": [
-    {"type": "direct", "tag": "direct"},
-    {"type": "block", "tag": "block"}
+    {"type": "direct", "tag": "direct"}
   ],
   "route": {
     "rules": [
