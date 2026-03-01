@@ -64,14 +64,18 @@ SINGBOX_VERSION=v1.13.0   # Specific version
 SINGBOX_VERSION=latest    # Including pre-releases
 ```
 
-### Custom Certificates
+### Certificate Management
+
+sing-box 1.13.0+ handles TLS certificates natively via built-in ACME support. No external tools (Caddy, certbot) are needed.
 
 ```bash
-CERT_MODE=caddy                        # Auto TLS via Caddy HTTP-01 (default)
+CERT_MODE=acme                         # Auto TLS via sing-box native ACME HTTP-01 (default)
 CERT_MODE=cf_dns                       # DNS-01 via Cloudflare API (no port 80 needed)
-CERT_FULLCHAIN=/path/to/fullchain.pem  # Custom certificate
-CERT_KEY=/path/to/privkey.pem          # Custom private key
+CERT_FULLCHAIN=/path/to/fullchain.pem  # Custom certificate (skip ACME)
+CERT_KEY=/path/to/privkey.pem          # Custom private key (skip ACME)
 ```
+
+> **Migration note:** `CERT_MODE=caddy` is still accepted for backward compatibility but automatically maps to `acme` with a deprecation warning.
 
 #### DNS-01 Challenge with Cloudflare
 
@@ -124,7 +128,7 @@ CF_API_TOKEN=your_cf_api_token CERT_MODE=cf_dns DOMAIN=your.domain.com bash inst
 
 **Token format:** Cloudflare API tokens are 40 alphanumeric characters (e.g., `abcdefghijklmnopqrstuvwxyz1234567890ABCD`).
 
-**Security note:** The Caddy binary for DNS-01 mode is downloaded from caddyserver.com/api/download with dual-download integrity verification. For maximum security, build Caddy locally with xcaddy.
+**How it works:** sing-box handles the DNS-01 ACME challenge internally by creating a TXT record via the Cloudflare API. No port 80 is needed. Certificates are stored in `/var/lib/sing-box/acme/` and renewed automatically.
 
 ### Debugging
 
@@ -143,7 +147,7 @@ LOG_FORMAT=json           # JSON output format
 | Service | `/etc/systemd/system/sing-box.service` |
 | Manager | `/usr/local/bin/sbx` |
 | Backups | `/var/backups/sbx/` |
-| Certificates | `/etc/ssl/sbx/<domain>/` |
+| ACME data | `/var/lib/sing-box/acme/` |
 
 ## Backup & Restore
 
