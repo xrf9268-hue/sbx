@@ -282,7 +282,7 @@ validate_route_rules() {
 
     if [[ -n "${deprecated_sniff}" ]]; then
       err "Deprecated field 'sniff' found in inbound: ${deprecated_sniff}"
-      err "Use route rules with action: 'sniff' instead (sing-box 1.12.0+)"
+      err "Use route rules with action: 'sniff' instead (sing-box 1.13.0+)"
       has_errors=1
     fi
 
@@ -292,7 +292,7 @@ validate_route_rules() {
 
     if [[ -n "${deprecated_sniff_override}" ]]; then
       err "Deprecated field 'sniff_override_destination' found in inbound: ${deprecated_sniff_override}"
-      err "Use route rules instead (sing-box 1.12.0+)"
+      err "Use route rules instead (sing-box 1.13.0+)"
       has_errors=1
     fi
 
@@ -302,7 +302,7 @@ validate_route_rules() {
 
     if [[ -n "${deprecated_ds_inbound}" ]]; then
       err "Deprecated field 'domain_strategy' found in inbound: ${deprecated_ds_inbound}"
-      err "Use global dns.strategy instead (sing-box 1.12.0+)"
+      err "Use global dns.strategy instead (sing-box 1.13.0+)"
       has_errors=1
     fi
 
@@ -312,7 +312,7 @@ validate_route_rules() {
 
     if [[ -n "${deprecated_ds_outbound}" ]]; then
       err "Deprecated field 'domain_strategy' found in outbound: ${deprecated_ds_outbound}"
-      err "Use global dns.strategy instead (sing-box 1.12.0+)"
+      err "Use global dns.strategy instead (sing-box 1.13.0+)"
       has_errors=1
     fi
 

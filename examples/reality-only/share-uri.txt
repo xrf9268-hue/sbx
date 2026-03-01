@@ -30,8 +30,8 @@ vless://REPLACE_WITH_YOUR_UUID@YOUR_SERVER_IP:443?encryption=none&flow=xtls-rprx
 # 2. Copy the entire line (no line breaks!)
 # 3. Import in your client:
 #    - v2rayN: Import → From Clipboard
-#    - NekoRay: Add → Import from Clipboard
-#    - Clash Meta: Parse subscription URL
+#    - Hiddify: Add profile → Paste from clipboard
+#    - sing-box App: Import → From Clipboard
 
 # Generating materials:
 #   UUID:        sing-box generate uuid

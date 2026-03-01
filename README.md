@@ -52,14 +52,15 @@ sbx help      # All commands
 
 | Platform | Recommended Client |
 |----------|-------------------|
-| Windows/Linux | [NekoRay](https://github.com/MatsuriDayo/nekoray) |
-| macOS | [NekoBox](https://github.com/MatsuriDayo/NekoBoxForAndroid) |
-| Android | [NekoBox](https://github.com/MatsuriDayo/NekoBoxForAndroid) |
-| iOS | [sing-box](https://apps.apple.com/app/sing-box/id6451272673) (free) |
+| Windows | [v2rayN](https://github.com/2dust/v2rayN) (sing-box core) |
+| macOS | [Hiddify](https://github.com/hiddify/hiddify-app) |
+| Linux | [Hiddify](https://github.com/hiddify/hiddify-app) |
+| Android | [sing-box](https://sing-box.sagernet.org/clients/) (official SFA) |
+| iOS | [sing-box](https://apps.apple.com/app/sing-box/id6451272673) (official SFI) |
 
 **Import**: Copy URI → Paste in client → Connect
 
-> **v2rayN/v2rayNG users**: Switch core to sing-box in Settings → Core Type
+> **v2rayN users**: Switch core to sing-box in Settings → Core Type
 
 ## Troubleshooting
 

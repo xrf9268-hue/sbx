@@ -130,7 +130,7 @@ sudo systemctl status sing-box
    clash-meta -d ~/.config/clash-meta
    ```
 
-#### NekoRay/NekoBox
+#### v2rayN / Hiddify / sing-box App
 
 1. Import share URI from `share-uri.txt`
 2. Or manually create:
@@ -143,6 +143,8 @@ sudo systemctl status sing-box
    - Public Key: (your public key)
    - Short ID: (your short ID)
    - SNI: www.microsoft.com
+
+> **v2rayN users**: Switch core to sing-box in Settings → Core Type
 
 ## Testing
 

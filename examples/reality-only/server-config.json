@@ -45,11 +45,10 @@
     {
       "type": "direct",
       "tag": "direct",
-      "tcp_fast_open": true
-    },
-    {
-      "type": "block",
-      "tag": "block"
+      "tcp_fast_open": true,
+      "udp_fragment": true,
+      "bind_address_no_port": true,
+      "tcp_keep_alive": "5m"
     }
   ],
   "route": {

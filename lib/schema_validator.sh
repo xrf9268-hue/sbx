@@ -2,7 +2,7 @@
 # lib/schema_validator.sh - JSON Schema validation for sing-box configurations
 #
 # This module provides JSON schema validation for Reality configurations
-# based on official sing-box 1.12.0+ standards.
+# based on official sing-box 1.13.0+ standards.
 #
 # Functions:
 #   - validate_config_schema: Validate configuration against JSON schema
@@ -52,7 +52,7 @@ check_schema_tool() {
   fi
 
   # Check for Python jsonschema
-  if have jsonschema 2>/dev/null; then
+  if have jsonschema 2> /dev/null; then
     echo "jsonschema"
     return 0
   fi
@@ -106,7 +106,7 @@ validate_config_schema() {
   msg "Validating configuration schema..."
 
   # Validate JSON syntax first
-  if ! jq empty "${config_file}" 2>/dev/null; then
+  if ! jq empty "${config_file}" 2> /dev/null; then
     err "Invalid JSON syntax in configuration file"
     return 1
   fi
@@ -176,7 +176,7 @@ _validate_reality_enabled() {
 
   # Check Reality enabled flag
   local reality_enabled=''
-  reality_enabled=$(jq -r '.inbounds[] | select(.tls.reality) | .tls.reality.enabled' "${config_file}" 2>/dev/null | head -1)
+  reality_enabled=$(jq -r '.inbounds[] | select(.tls.reality) | .tls.reality.enabled' "${config_file}" 2> /dev/null | head -1)
   if [[ "${reality_enabled}" != "true" ]]; then
     err "  ✗ Reality enabled flag not set to true"
     validation_failed=1
@@ -186,7 +186,7 @@ _validate_reality_enabled() {
 
   # Check TLS enabled when Reality is present
   local tls_enabled=''
-  tls_enabled=$(jq -r '.inbounds[] | select(.tls.reality) | .tls.enabled' "${config_file}" 2>/dev/null | head -1)
+  tls_enabled=$(jq -r '.inbounds[] | select(.tls.reality) | .tls.enabled' "${config_file}" 2> /dev/null | head -1)
   if [[ "${tls_enabled}" != "true" ]]; then
     err "  ✗ TLS must be enabled when using Reality"
     validation_failed=1
@@ -203,7 +203,7 @@ _validate_reality_required_fields() {
   local validation_failed=0
 
   # Check Reality is nested under tls, not top-level
-  if jq -e '.inbounds[].reality' "${config_file}" >/dev/null 2>&1; then
+  if jq -e '.inbounds[].reality' "${config_file}" > /dev/null 2>&1; then
     err "  ✗ Reality configuration is at top level (should be under tls.reality)"
     validation_failed=1
   else
@@ -214,7 +214,7 @@ _validate_reality_required_fields() {
   local required_fields=("private_key" "short_id" "handshake")
   local fields_ok=1
   for field in "${required_fields[@]}"; do
-    if ! jq -e ".inbounds[] | select(.tls.reality) | .tls.reality.${field}" "${config_file}" >/dev/null 2>&1; then
+    if ! jq -e ".inbounds[] | select(.tls.reality) | .tls.reality.${field}" "${config_file}" > /dev/null 2>&1; then
       err "  ✗ Missing required Reality field: ${field}"
       validation_failed=1
       fields_ok=0
@@ -234,7 +234,7 @@ _validate_reality_field_types() {
 
   # Check Short ID is array format
   local sid_type=''
-  sid_type=$(jq -r '.inbounds[] | select(.tls.reality) | .tls.reality.short_id | type' "${config_file}" 2>/dev/null | head -1)
+  sid_type=$(jq -r '.inbounds[] | select(.tls.reality) | .tls.reality.short_id | type' "${config_file}" 2> /dev/null | head -1)
   if [[ "${sid_type}" != "array" ]]; then
     err "  ✗ Short ID must be array format, got: ${sid_type}"
     validation_failed=1
@@ -254,7 +254,7 @@ _validate_reality_field_values() {
 
   # Check Short ID length (1-8 hex characters)
   local short_ids=''
-  short_ids=$(jq -r '.inbounds[] | select(.tls.reality) | .tls.reality.short_id[]?' "${config_file}" 2>/dev/null)
+  short_ids=$(jq -r '.inbounds[] | select(.tls.reality) | .tls.reality.short_id[]?' "${config_file}" 2> /dev/null)
   if [[ -n "${short_ids}" ]]; then
     sid_ok=1
     while IFS= read -r sid; do
@@ -271,7 +271,7 @@ _validate_reality_field_values() {
 
   # Check Flow field in users array
   local flow=''
-  flow=$(jq -r '.inbounds[] | select(.tls.reality) | .users[]?.flow?' "${config_file}" 2>/dev/null | head -1)
+  flow=$(jq -r '.inbounds[] | select(.tls.reality) | .users[]?.flow?' "${config_file}" 2> /dev/null | head -1)
   if [[ "${flow}" == "xtls-rprx-vision" ]]; then
     msg "  ✓ Flow field set to xtls-rprx-vision"
   elif [[ -z "${flow}" || "${flow}" == "null" ]]; then
@@ -282,8 +282,8 @@ _validate_reality_field_values() {
   fi
 
   # Check Handshake configuration
-  if jq -e '.inbounds[] | select(.tls.reality) | .tls.reality.handshake' "${config_file}" >/dev/null 2>&1; then
-    handshake_server=$(jq -r '.inbounds[] | select(.tls.reality) | .tls.reality.handshake.server' "${config_file}" 2>/dev/null | head -1)
+  if jq -e '.inbounds[] | select(.tls.reality) | .tls.reality.handshake' "${config_file}" > /dev/null 2>&1; then
+    handshake_server=$(jq -r '.inbounds[] | select(.tls.reality) | .tls.reality.handshake.server' "${config_file}" 2> /dev/null | head -1)
     if [[ -z "${handshake_server}" || "${handshake_server}" == "null" ]]; then
       err "  ✗ Handshake server not configured"
       validation_failed=1
@@ -291,7 +291,7 @@ _validate_reality_field_values() {
       msg "  ✓ Handshake server configured: ${handshake_server}"
     fi
 
-    handshake_port=$(jq -r '.inbounds[] | select(.tls.reality) | .tls.reality.handshake.server_port' "${config_file}" 2>/dev/null | head -1)
+    handshake_port=$(jq -r '.inbounds[] | select(.tls.reality) | .tls.reality.handshake.server_port' "${config_file}" 2> /dev/null | head -1)
     if [[ -z "${handshake_port}" || "${handshake_port}" == "null" ]]; then
       err "  ✗ Handshake server_port not configured"
       validation_failed=1
@@ -337,9 +337,9 @@ validate_reality_structure() {
   fi
 
   # Check if Reality configuration exists
-  if ! jq -e '.inbounds[].tls.reality' "${config_file}" >/dev/null 2>&1; then
+  if ! jq -e '.inbounds[].tls.reality' "${config_file}" > /dev/null 2>&1; then
     warn "No Reality configuration found in inbounds"
-    return 0  # Not a failure - config might not use Reality
+    return 0 # Not a failure - config might not use Reality
   fi
 
   msg "  ✓ Reality configuration detected"
