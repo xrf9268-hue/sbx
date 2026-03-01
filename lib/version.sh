@@ -359,8 +359,8 @@ version_meets_minimum() {
 # Validate sing-box version for Reality protocol compatibility
 #
 # Checks:
-#   - Minimum version 1.8.0 (Reality support)
-#   - Recommended version 1.12.0 (modern config format)
+#   - Minimum version 1.13.0 (native ACME, deprecated removals)
+#   - Recommended version 1.13.0 (native ACME, no Caddy dependency)
 #
 # Returns:
 #   0 if validation passes (meets minimum)
@@ -373,7 +373,7 @@ version_meets_minimum() {
 #   validate_singbox_version || die "sing-box version too old"
 #
 validate_singbox_version() {
-  local min_version="1.13.0"          # ACME native + deprecated removals
+  local min_version="1.13.0"         # ACME native + deprecated removals
   local recommended_version="1.13.0" # Native ACME, no Caddy dependency
 
   msg "Checking sing-box version compatibility..."
@@ -436,18 +436,16 @@ show_version_info() {
   echo "============================"
   echo ""
   echo "Current version:     ${current_version}"
-  echo "Minimum required:    1.8.0  (Reality protocol support)"
-  echo "Recommended:         1.12.0 (Modern configuration format)"
+  echo "Minimum required:    1.13.0 (Native ACME, modern config format)"
+  echo "Recommended:         1.13.0 (Native ACME, no Caddy dependency)"
   echo "Latest info:         https://github.com/SagerNet/sing-box/releases"
   echo ""
 
   if [[ "${current_version}" != "unknown" ]]; then
-    if version_meets_minimum "${current_version}" "1.12.0"; then
+    if version_meets_minimum "${current_version}" "1.13.0"; then
       echo "Status: ✓ Fully compatible"
-    elif version_meets_minimum "${current_version}" "1.8.0"; then
-      echo "Status: ⚠ Compatible (upgrade recommended)"
     else
-      echo "Status: ✗ Upgrade required"
+      echo "Status: ✗ Upgrade required (minimum 1.13.0)"
     fi
   fi
 

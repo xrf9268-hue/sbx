@@ -678,16 +678,14 @@ sbx backup restore backup-file.tar.gz.enc
 
 | Platform | Client | sing-box Support | Notes |
 |----------|--------|------------------|-------|
-| Windows | NekoRay | ✅ Native | Best choice |
-| Windows | v2rayN | ✅ Switch core | Requires core switch |
-| macOS | NekoBox | ✅ Native | Recommended |
-| Linux | NekoRay | ✅ Native | Full support |
-| Android | v2rayNG | ✅ Switch core | Requires core switch |
-| Android | NekoBox | ✅ Native | Recommended |
-| iOS | Shadowrocket | ✅ Native | Commercial |
-| iOS | sing-box | ✅ Official | Free, open source |
+| Windows | v2rayN | ✅ sing-box core | Best choice, actively maintained |
+| macOS | Hiddify | ✅ Native | Open source, ad-free |
+| Linux | Hiddify | ✅ Native | Open source, ad-free |
+| Android | sing-box SFA | ✅ Official | Free, best compatibility |
+| Android | Hiddify | ✅ Native | Alternative, multi-core |
+| iOS | sing-box SFI | ✅ Official | Free, open source |
 
-**Key consideration:** Native sing-box support > Core switching required
+**Key consideration:** Official sing-box clients > Third-party with native support > Core switching required
 
 ---
 
@@ -700,7 +698,7 @@ sbx export uri reality
 
 # Import in client
 # - v2rayN: Import → From Clipboard
-# - NekoRay: Add → Import from Clipboard
+# - Hiddify: Add profile → Paste from clipboard
 ```
 
 **Method 2: JSON Configuration**
@@ -710,7 +708,7 @@ sbx export v2rayn reality > reality-client.json
 
 # Import in client
 # - v2rayN: Import → Custom config
-# - NekoRay: Import → From file
+# - Hiddify: Add profile → Import from file
 ```
 
 **Method 3: QR Code**
@@ -743,7 +741,7 @@ sbx export subscription
 - Check YAML syntax
 - Verify all required fields present
 
-**NekoRay import failed:**
+**Hiddify import failed:**
 - Remove line breaks from URI
 - Verify all parameters present
 - Check for typos in UUID/keys

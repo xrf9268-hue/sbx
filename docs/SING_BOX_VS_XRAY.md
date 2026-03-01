@@ -292,12 +292,10 @@ Public key: jNXHt1yRo0vDuchQlIP6Z0ZvjT3KtzVI-T4E7RoLJS0
 | Client | sing-box Core | Xray Core | Notes |
 |--------|---------------|-----------|-------|
 | **v2rayN** (Windows) | ✅ Supported | ✅ Supported | **Must manually switch core!** |
-| **v2rayNG** (Android) | ✅ Supported | ✅ Supported | **Must manually switch core!** |
-| **NekoRay/NekoBox** | ✅ Native | ✅ Supported | Detects automatically |
+| **Hiddify** (All platforms) | ✅ Native | ✅ Supported | Open source, ad-free |
 | **Clash Meta** | ✅ Supported | ✅ Supported | Auto-detects based on config |
-| **sing-box official** | ✅ Native | ❌ N/A | iOS, Android, CLI |
+| **sing-box official** (SFA/SFI) | ✅ Native | ❌ N/A | iOS, Android, recommended |
 | **Shadowrocket** (iOS) | ✅ Supported | ⚠️ Limited | Prefers sing-box format |
-| **Surge** (iOS/Mac) | ❌ Limited | ❌ Limited | Proprietary format |
 
 ### How to Switch Core in v2rayN
 
