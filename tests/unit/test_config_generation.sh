@@ -429,6 +429,18 @@ test_build_tls_block_manual_cert() {
     echo -e "${RED}✗${NC} ALPN array length (expected 2, got $alpn_count)"
     FAILED_TESTS=$((FAILED_TESTS + 1))
   fi
+
+  # Manual cert mode must NOT have Chrome Root Store (certificate.store)
+  TOTAL_TESTS=$((TOTAL_TESTS + 1))
+  local has_cert_block
+  has_cert_block=$(echo "$tls_block" | jq 'has("certificate")' 2> /dev/null)
+  if [[ "$has_cert_block" == "false" ]]; then
+    echo -e "${GREEN}✓${NC} No certificate block in manual cert mode"
+    PASSED_TESTS=$((PASSED_TESTS + 1))
+  else
+    echo -e "${RED}✗${NC} Unexpected certificate block in manual cert mode"
+    FAILED_TESTS=$((FAILED_TESTS + 1))
+  fi
 }
 
 test_build_tls_block_acme_http01() {
@@ -484,6 +496,9 @@ test_build_tls_block_acme_http01() {
     echo -e "${RED}✗${NC} Unexpected certificate_path in ACME mode"
     FAILED_TESTS=$((FAILED_TESTS + 1))
   fi
+
+  # Chrome Root Store must be set in ACME mode
+  assert_json_value_equals "Chrome Root Store in ACME HTTP-01" "$tls_block" ".certificate.store" "chrome"
 }
 
 test_build_tls_block_acme_dns01() {
@@ -510,6 +525,9 @@ test_build_tls_block_acme_dns01() {
   assert_json_has_key "Has dns01_challenge" "$tls_block" ".acme.dns01_challenge"
   assert_json_value_equals "DNS provider is cloudflare" "$tls_block" ".acme.dns01_challenge.provider" "cloudflare"
   assert_json_value_equals "API token passed" "$tls_block" ".acme.dns01_challenge.api_token" "fake-cf-api-token-1234567890"
+
+  # Chrome Root Store must be set in DNS-01 ACME mode
+  assert_json_value_equals "Chrome Root Store in ACME DNS-01" "$tls_block" ".certificate.store" "chrome"
 }
 
 test_build_tls_block_caddy_compat() {
@@ -703,6 +721,58 @@ test_error_handling() {
 }
 
 #=============================================================================
+# add_outbound_config() Tests
+#=============================================================================
+
+test_add_outbound_config() {
+  echo ""
+  echo "Testing add_outbound_config() - sing-box 1.13.0 fields"
+  echo "-------------------------------------------------------"
+
+  local base_config
+  base_config=$(create_base_config "false" "warn" 2> /dev/null)
+
+  local config
+  config=$(add_outbound_config "$base_config" 2> /dev/null)
+
+  assert_json_valid "Generates valid JSON" "$config"
+
+  # Existing fields preserved
+  assert_json_value_equals "tcp_fast_open preserved" "$config" ".outbounds[0].tcp_fast_open" "true"
+  assert_json_value_equals "connect_timeout preserved" "$config" ".outbounds[0].connect_timeout" "5s"
+  assert_json_value_equals "udp_fragment preserved" "$config" ".outbounds[0].udp_fragment" "true"
+
+  # New 1.13.0 fields
+  assert_json_value_equals "bind_address_no_port enabled" "$config" ".outbounds[0].bind_address_no_port" "true"
+  assert_json_value_equals "tcp_keep_alive is 5m" "$config" ".outbounds[0].tcp_keep_alive" "5m"
+
+  # kernel_tx: check that it matches the running kernel version
+  TOTAL_TESTS=$((TOTAL_TESTS + 1))
+  local kernel_major="" kernel_minor=""
+  kernel_major=$(uname -r | cut -d. -f1)
+  kernel_minor=$(uname -r | cut -d. -f2)
+  local has_ktls
+  has_ktls=$(echo "$config" | jq '.outbounds[0] | has("kernel_tx")' 2> /dev/null)
+  if [[ "${kernel_major}" -gt 5 ]] || [[ "${kernel_major}" -eq 5 && "${kernel_minor}" -ge 1 ]]; then
+    if [[ "$has_ktls" == "true" ]]; then
+      echo -e "${GREEN}✓${NC} kernel_tx present on kernel $(uname -r) (>= 5.1)"
+      PASSED_TESTS=$((PASSED_TESTS + 1))
+    else
+      echo -e "${RED}✗${NC} kernel_tx missing on kernel $(uname -r) (>= 5.1)"
+      FAILED_TESTS=$((FAILED_TESTS + 1))
+    fi
+  else
+    if [[ "$has_ktls" == "false" ]]; then
+      echo -e "${GREEN}✓${NC} kernel_tx absent on kernel $(uname -r) (< 5.1, correct)"
+      PASSED_TESTS=$((PASSED_TESTS + 1))
+    else
+      echo -e "${RED}✗${NC} kernel_tx should be absent on kernel $(uname -r) (< 5.1)"
+      FAILED_TESTS=$((FAILED_TESTS + 1))
+    fi
+  fi
+}
+
+#=============================================================================
 # Main Test Execution
 #=============================================================================
 
@@ -722,6 +792,7 @@ main() {
     "_build_tls_block"
     "create_ws_inbound"
     "create_hysteria2_inbound"
+    "add_outbound_config"
   )
 
   local missing_functions=0
@@ -771,6 +842,9 @@ main() {
   test_create_ws_inbound_manual_cert
   test_create_hysteria2_inbound_basic
   test_create_hysteria2_inbound_dns01
+
+  # Run test suites — outbound 1.13.0 fields
+  test_add_outbound_config
 
   # Run test suites — error handling
   test_error_handling

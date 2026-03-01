@@ -25,6 +25,8 @@ source "${_LIB_DIR}/config_validator.sh"
 : "${REALITY_FLOW_VISION:?}" "${REALITY_MAX_TIME_DIFF:?}" "${REALITY_ALPN_H2:?}" "${REALITY_ALPN_HTTP11:?}"
 # shellcheck disable=SC2154
 : "${SB_CONF:?}" "${SB_CONF_DIR:?}" "${SB_SVC:?}" "${REALITY_DEFAULT_HANDSHAKE_PORT:?}"
+# shellcheck disable=SC2154
+: "${OUTBOUND_TCP_KEEP_ALIVE:?}" "${ACME_DATA_DIRECTORY:?}"
 # Note: UUID, PRIV, SID, REALITY_PORT_CHOSEN are set dynamically during runtime
 
 #==============================================================================
@@ -240,7 +242,7 @@ _build_tls_block() {
   # ACME mode: build acme block based on cert_mode
   local acme_block=''
   case "${cert_mode}" in
-    acme|caddy)
+    acme | caddy)
       # HTTP-01 challenge (disable TLS-ALPN to avoid port conflict)
       if ! acme_block=$(jq -n \
         --arg domain "${domain}" \
@@ -290,7 +292,8 @@ _build_tls_block() {
       enabled: true,
       server_name: $domain,
       alpn: $alpn,
-      acme: $acme
+      acme: $acme,
+      certificate: { store: "chrome" }
     }' 2> /dev/null); then
     err "Failed to build ACME TLS block"
     return 1
@@ -418,14 +421,30 @@ add_route_config() {
 add_outbound_config() {
   local config="$1"
 
+  # Detect kernel TLS offload support (Linux 5.1+ with TLS 1.3)
+  local kernel_tls="false"
+  local kernel_major="" kernel_minor=""
+  kernel_major=$(uname -r | cut -d. -f1)
+  kernel_minor=$(uname -r | cut -d. -f2)
+  if [[ "${kernel_major}" -gt 5 ]] || [[ "${kernel_major}" -eq 5 && "${kernel_minor}" -ge 1 ]]; then
+    kernel_tls="true"
+  fi
+
   msg "  - Configuring outbound connection parameters"
+  [[ "${kernel_tls}" == "true" ]] && msg "  - Kernel TLS offload enabled (kernel $(uname -r))"
 
   local updated_config=''
-  if ! updated_config=$(echo "${config}" | jq '.outbounds[0] += {
-    "connect_timeout": "5s",
-    "tcp_fast_open": true,
-    "udp_fragment": true
-  }' 2> /dev/null); then
+  if ! updated_config=$(echo "${config}" | jq \
+    --arg tcp_keep_alive "${OUTBOUND_TCP_KEEP_ALIVE}" \
+    --argjson kernel_tls "${kernel_tls}" \
+    '.outbounds[0] += {
+      "connect_timeout": "5s",
+      "tcp_fast_open": true,
+      "udp_fragment": true,
+      "bind_address_no_port": true,
+      "tcp_keep_alive": $tcp_keep_alive
+    } + if $kernel_tls then {"kernel_tx": true} else {} end' \
+    2> /dev/null); then
     warn "Failed to add outbound parameters, continuing with default configuration"
     echo "${config}"
     return 0
