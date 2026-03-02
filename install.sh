@@ -1145,12 +1145,17 @@ _configure_cloudflare_mode() {
 # Validate protocol configuration
 _validate_protocol_config() {
   if [[ "${REALITY_ONLY_MODE:-0}" == "1" ]]; then
-    [[ "${ENABLE_REALITY}" != "1" ]] && die "Reality protocol must be enabled in IP-only mode (no domain provided)"
-  else
-    if [[ "${ENABLE_REALITY}" != "1" && "${ENABLE_WS}" != "1" && "${ENABLE_HY2}" != "1" ]]; then
-      die "At least one protocol must be enabled. Set ENABLE_REALITY=1, ENABLE_WS=1, or ENABLE_HY2=1"
+    if [[ "${ENABLE_REALITY}" != "1" ]]; then
+      die "Reality protocol must be enabled in IP-only mode (no domain provided)"
     fi
+    return 0
   fi
+
+  if [[ "${ENABLE_REALITY}" != "1" && "${ENABLE_WS}" != "1" && "${ENABLE_HY2}" != "1" ]]; then
+    die "At least one protocol must be enabled. Set ENABLE_REALITY=1, ENABLE_WS=1, or ENABLE_HY2=1"
+  fi
+
+  return 0
 }
 
 # Generate cryptographic credentials

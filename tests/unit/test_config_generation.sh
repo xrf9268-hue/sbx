@@ -746,33 +746,16 @@ test_add_outbound_config() {
   assert_json_value_equals "bind_address_no_port enabled" "$config" ".outbounds[0].bind_address_no_port" "true"
   assert_json_value_equals "tcp_keep_alive is 5m" "$config" ".outbounds[0].tcp_keep_alive" "5m"
 
-  # kernel_tx: check that it matches the running kernel version
+  # kernel_tx/kernel_rx apply to TLS inbound, not outbound.
   TOTAL_TESTS=$((TOTAL_TESTS + 1))
-  local kernel_release=""
-  local kernel_major=0 kernel_minor=0
-  kernel_release=$(uname -r 2> /dev/null || echo "")
-  if [[ "${kernel_release}" =~ ^([0-9]+)\.([0-9]+) ]]; then
-    kernel_major="${BASH_REMATCH[1]}"
-    kernel_minor="${BASH_REMATCH[2]}"
-  fi
   local has_ktls
   has_ktls=$(echo "$config" | jq '.outbounds[0] | has("kernel_tx")' 2> /dev/null)
-  if (( kernel_major > 5 || (kernel_major == 5 && kernel_minor >= 1) )); then
-    if [[ "$has_ktls" == "true" ]]; then
-      echo -e "${GREEN}✓${NC} kernel_tx present on kernel ${kernel_release} (>= 5.1)"
-      PASSED_TESTS=$((PASSED_TESTS + 1))
-    else
-      echo -e "${RED}✗${NC} kernel_tx missing on kernel ${kernel_release} (>= 5.1)"
-      FAILED_TESTS=$((FAILED_TESTS + 1))
-    fi
+  if [[ "$has_ktls" == "false" ]]; then
+    echo -e "${GREEN}✓${NC} kernel_tx absent in outbound config"
+    PASSED_TESTS=$((PASSED_TESTS + 1))
   else
-    if [[ "$has_ktls" == "false" ]]; then
-      echo -e "${GREEN}✓${NC} kernel_tx absent on kernel ${kernel_release} (< 5.1, correct)"
-      PASSED_TESTS=$((PASSED_TESTS + 1))
-    else
-      echo -e "${RED}✗${NC} kernel_tx should be absent on kernel ${kernel_release} (< 5.1)"
-      FAILED_TESTS=$((FAILED_TESTS + 1))
-    fi
+    echo -e "${RED}✗${NC} kernel_tx should be absent in outbound config"
+    FAILED_TESTS=$((FAILED_TESTS + 1))
   fi
 }
 
@@ -810,7 +793,14 @@ test_add_outbound_config_kernel_release_suffix() {
     return 0
   fi
 
-  assert_json_value_equals "kernel_tx enabled for 5.15-rc1" "$config" ".outbounds[0].kernel_tx" "true"
+  TOTAL_TESTS=$((TOTAL_TESTS + 1))
+  if [[ "$(echo "$config" | jq '.outbounds[0] | has("kernel_tx")' 2> /dev/null)" == "false" ]]; then
+    echo -e "${GREEN}✓${NC} kernel_tx absent for 5.15-rc1 outbound config"
+    PASSED_TESTS=$((PASSED_TESTS + 1))
+  else
+    echo -e "${RED}✗${NC} kernel_tx should be absent for 5.15-rc1 outbound config"
+    FAILED_TESTS=$((FAILED_TESTS + 1))
+  fi
 }
 
 #=============================================================================

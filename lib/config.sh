@@ -421,36 +421,18 @@ add_route_config() {
 add_outbound_config() {
   local config="$1"
 
-  # Detect kernel TLS offload support (Linux 5.1+ with TLS 1.3)
-  local kernel_tls="false"
-  local kernel_release=""
-  local kernel_major=0 kernel_minor=0
-  kernel_release=$(uname -r 2> /dev/null || echo "")
-
-  # Parse numeric major/minor only (e.g. 5.15-rc1 -> 5.15) for safe integer comparison.
-  if [[ "${kernel_release}" =~ ^([0-9]+)\.([0-9]+) ]]; then
-    kernel_major="${BASH_REMATCH[1]}"
-    kernel_minor="${BASH_REMATCH[2]}"
-  fi
-
-  if (( kernel_major > 5 || (kernel_major == 5 && kernel_minor >= 1) )); then
-    kernel_tls="true"
-  fi
-
   msg "  - Configuring outbound connection parameters"
-  [[ "${kernel_tls}" == "true" ]] && msg "  - Kernel TLS offload enabled (kernel ${kernel_release})"
 
   local updated_config=''
   if ! updated_config=$(echo "${config}" | jq \
     --arg tcp_keep_alive "${OUTBOUND_TCP_KEEP_ALIVE}" \
-    --argjson kernel_tls "${kernel_tls}" \
     '.outbounds[0] += {
       "connect_timeout": "5s",
       "tcp_fast_open": true,
       "udp_fragment": true,
       "bind_address_no_port": true,
       "tcp_keep_alive": $tcp_keep_alive
-    } + if $kernel_tls then {"kernel_tx": true} else {} end' \
+    }' \
     2> /dev/null); then
     warn "Failed to add outbound parameters, continuing with default configuration"
     echo "${config}"
