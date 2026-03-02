@@ -423,15 +423,22 @@ add_outbound_config() {
 
   # Detect kernel TLS offload support (Linux 5.1+ with TLS 1.3)
   local kernel_tls="false"
-  local kernel_major="" kernel_minor=""
-  kernel_major=$(uname -r | cut -d. -f1)
-  kernel_minor=$(uname -r | cut -d. -f2)
-  if [[ "${kernel_major}" -gt 5 ]] || [[ "${kernel_major}" -eq 5 && "${kernel_minor}" -ge 1 ]]; then
+  local kernel_release=""
+  local kernel_major=0 kernel_minor=0
+  kernel_release=$(uname -r 2> /dev/null || echo "")
+
+  # Parse numeric major/minor only (e.g. 5.15-rc1 -> 5.15) for safe integer comparison.
+  if [[ "${kernel_release}" =~ ^([0-9]+)\.([0-9]+) ]]; then
+    kernel_major="${BASH_REMATCH[1]}"
+    kernel_minor="${BASH_REMATCH[2]}"
+  fi
+
+  if (( kernel_major > 5 || (kernel_major == 5 && kernel_minor >= 1) )); then
     kernel_tls="true"
   fi
 
   msg "  - Configuring outbound connection parameters"
-  [[ "${kernel_tls}" == "true" ]] && msg "  - Kernel TLS offload enabled (kernel $(uname -r))"
+  [[ "${kernel_tls}" == "true" ]] && msg "  - Kernel TLS offload enabled (kernel ${kernel_release})"
 
   local updated_config=''
   if ! updated_config=$(echo "${config}" | jq \

@@ -748,28 +748,69 @@ test_add_outbound_config() {
 
   # kernel_tx: check that it matches the running kernel version
   TOTAL_TESTS=$((TOTAL_TESTS + 1))
-  local kernel_major="" kernel_minor=""
-  kernel_major=$(uname -r | cut -d. -f1)
-  kernel_minor=$(uname -r | cut -d. -f2)
+  local kernel_release=""
+  local kernel_major=0 kernel_minor=0
+  kernel_release=$(uname -r 2> /dev/null || echo "")
+  if [[ "${kernel_release}" =~ ^([0-9]+)\.([0-9]+) ]]; then
+    kernel_major="${BASH_REMATCH[1]}"
+    kernel_minor="${BASH_REMATCH[2]}"
+  fi
   local has_ktls
   has_ktls=$(echo "$config" | jq '.outbounds[0] | has("kernel_tx")' 2> /dev/null)
-  if [[ "${kernel_major}" -gt 5 ]] || [[ "${kernel_major}" -eq 5 && "${kernel_minor}" -ge 1 ]]; then
+  if (( kernel_major > 5 || (kernel_major == 5 && kernel_minor >= 1) )); then
     if [[ "$has_ktls" == "true" ]]; then
-      echo -e "${GREEN}✓${NC} kernel_tx present on kernel $(uname -r) (>= 5.1)"
+      echo -e "${GREEN}✓${NC} kernel_tx present on kernel ${kernel_release} (>= 5.1)"
       PASSED_TESTS=$((PASSED_TESTS + 1))
     else
-      echo -e "${RED}✗${NC} kernel_tx missing on kernel $(uname -r) (>= 5.1)"
+      echo -e "${RED}✗${NC} kernel_tx missing on kernel ${kernel_release} (>= 5.1)"
       FAILED_TESTS=$((FAILED_TESTS + 1))
     fi
   else
     if [[ "$has_ktls" == "false" ]]; then
-      echo -e "${GREEN}✓${NC} kernel_tx absent on kernel $(uname -r) (< 5.1, correct)"
+      echo -e "${GREEN}✓${NC} kernel_tx absent on kernel ${kernel_release} (< 5.1, correct)"
       PASSED_TESTS=$((PASSED_TESTS + 1))
     else
-      echo -e "${RED}✗${NC} kernel_tx should be absent on kernel $(uname -r) (< 5.1)"
+      echo -e "${RED}✗${NC} kernel_tx should be absent on kernel ${kernel_release} (< 5.1)"
       FAILED_TESTS=$((FAILED_TESTS + 1))
     fi
   fi
+}
+
+test_add_outbound_config_kernel_release_suffix() {
+  echo ""
+  echo "Testing add_outbound_config() - kernel release suffix parsing"
+  echo "-------------------------------------------------------------"
+
+  local base_config
+  base_config=$(create_base_config "false" "warn" 2> /dev/null)
+
+  local config=""
+  local status=0
+
+  config=$(
+    (
+      uname() {
+        if [[ "${1:-}" == "-r" ]]; then
+          echo "5.15-rc1"
+        else
+          command uname "$@"
+        fi
+      }
+      add_outbound_config "$base_config"
+    ) 2>/dev/null
+  ) || status=$?
+
+  TOTAL_TESTS=$((TOTAL_TESTS + 1))
+  if [[ $status -eq 0 ]]; then
+    echo -e "${GREEN}✓${NC} add_outbound_config handles 5.15-rc1 without arithmetic errors"
+    PASSED_TESTS=$((PASSED_TESTS + 1))
+  else
+    echo -e "${RED}✗${NC} add_outbound_config fails on 5.15-rc1 (exit: $status)"
+    FAILED_TESTS=$((FAILED_TESTS + 1))
+    return 0
+  fi
+
+  assert_json_value_equals "kernel_tx enabled for 5.15-rc1" "$config" ".outbounds[0].kernel_tx" "true"
 }
 
 #=============================================================================
@@ -845,6 +886,7 @@ main() {
 
   # Run test suites — outbound 1.13.0 fields
   test_add_outbound_config
+  test_add_outbound_config_kernel_release_suffix
 
   # Run test suites — error handling
   test_error_handling

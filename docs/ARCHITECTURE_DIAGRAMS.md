@@ -227,7 +227,7 @@ flowchart TD
     end
 
     subgraph CF_MODE["Cloudflare Proxy Mode"]
-        C1["Reality: OFF"]
+        C1["Reality: OFF by default (optional direct fallback)"]
         C2["WS-TLS: ON (port 443)"]
         C3["Hy2: OFF"]
         C4["Traffic via CF CDN"]
@@ -326,7 +326,9 @@ flowchart TD
         subgraph FILES["Backup Contents"]
             F1["/etc/sing-box/config.json"]
             F2["/etc/sing-box/client-info.txt"]
-            F3["/usr/local/lib/sbx/*.sh"]
+            F3["TLS certs (if present)"]
+            F4["sing-box.service (if present)"]
+            F5["binary version + metadata"]
         end
         BC2 --> FILES
 
