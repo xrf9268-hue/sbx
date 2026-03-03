@@ -1361,14 +1361,26 @@ SNI="${SNI:-${SNI_DEFAULT}}"
 REALITY_PORT="${REALITY_PORT_CHOSEN}"
 EOF
 
-  if [[ "${REALITY_ONLY_MODE:-0}" != "1" && -n "${CERT_FULLCHAIN:-}" ]]; then
-    cat >> "${CLIENT_INFO}" << EOF
+  if [[ "${REALITY_ONLY_MODE:-0}" != "1" ]]; then
+    if [[ "${ENABLE_WS:-0}" == "1" ]]; then
+      cat >> "${CLIENT_INFO}" << EOF
 WS_PORT="${WS_PORT_CHOSEN}"
+EOF
+    fi
+
+    if [[ "${ENABLE_HY2:-0}" == "1" ]]; then
+      cat >> "${CLIENT_INFO}" << EOF
 HY2_PORT="${HY2_PORT_CHOSEN}"
 HY2_PASS="${HY2_PASS}"
+EOF
+    fi
+
+    if [[ -n "${CERT_FULLCHAIN:-}" || -n "${CERT_KEY:-}" ]]; then
+      cat >> "${CLIENT_INFO}" << EOF
 CERT_FULLCHAIN="${CERT_FULLCHAIN}"
 CERT_KEY="${CERT_KEY}"
 EOF
+    fi
   fi
 
   chmod "${SECURE_FILE_PERMISSIONS}" "${CLIENT_INFO}"
@@ -1403,14 +1415,26 @@ save_state_info() {
     server_domain="${DOMAIN}"
   fi
 
-  if [[ "${REALITY_ONLY_MODE:-0}" != "1" && -n "${CERT_FULLCHAIN:-}" ]]; then
-    ws_enabled=true
-    hy2_enabled=true
+  if [[ "${REALITY_ONLY_MODE:-0}" != "1" ]]; then
+    local enable_ws="${ENABLE_WS:-}"
+    local enable_hy2="${ENABLE_HY2:-}"
+
+    [[ -z "${enable_ws}" && -n "${WS_PORT_CHOSEN:-}" ]] && enable_ws="1"
+    [[ -z "${enable_hy2}" && -n "${HY2_PORT_CHOSEN:-}" ]] && enable_hy2="1"
+
+    if [[ "${enable_ws}" == "1" ]]; then
+      ws_enabled=true
+      ws_port="${WS_PORT_CHOSEN:-}"
+    fi
+
+    if [[ "${enable_hy2}" == "1" ]]; then
+      hy2_enabled=true
+      hy2_port="${HY2_PORT_CHOSEN:-}"
+      hy2_pass="${HY2_PASS:-}"
+    fi
+
     cert_path="${CERT_FULLCHAIN:-}"
     cert_key="${CERT_KEY:-}"
-    ws_port="${WS_PORT_CHOSEN:-}"
-    hy2_port="${HY2_PORT_CHOSEN:-}"
-    hy2_pass="${HY2_PASS:-}"
   fi
 
   jq -n \

@@ -187,6 +187,18 @@ parse_client_info_file() {
         printf -v "$key" '%s' "${client_info_map[$key]}"
     done
 
+    if [[ -v client_info_map[WS_PORT] ]]; then
+        WS_ENABLED="true"
+    else
+        WS_ENABLED="false"
+    fi
+
+    if [[ -v client_info_map[HY2_PORT] || -v client_info_map[HY2_PASS] ]]; then
+        HY2_ENABLED="true"
+    else
+        HY2_ENABLED="false"
+    fi
+
     # Set defaults for missing variables
     local default_reality="${REALITY_PORT_DEFAULT:-443}"
     local default_sni="${SNI_DEFAULT:-www.microsoft.com}"
@@ -201,6 +213,7 @@ parse_client_info_file() {
 
 parse_state_info_file() {
     local file="$1"
+    local ws_enabled_raw='' hy2_enabled_raw=''
 
     DOMAIN=$(jq -r '.server.domain // .server.ip // empty' "$file")
     UUID=$(jq -r '.protocols.reality.uuid // empty' "$file")
@@ -213,6 +226,24 @@ parse_state_info_file() {
     HY2_PASS=$(jq -r '.protocols.hysteria2.password // empty' "$file")
     CERT_FULLCHAIN=$(jq -r '.protocols.ws_tls.certificate // empty' "$file")
     CERT_KEY=$(jq -r '.protocols.ws_tls.key // empty' "$file")
+    ws_enabled_raw=$(jq -r '.protocols.ws_tls.enabled // empty' "$file")
+    hy2_enabled_raw=$(jq -r '.protocols.hysteria2.enabled // empty' "$file")
+
+    case "${ws_enabled_raw}" in
+        true | 1 | yes | on) WS_ENABLED="true" ;;
+        false | 0 | no | off) WS_ENABLED="false" ;;
+        *)
+            [[ -n "${WS_PORT:-}" ]] && WS_ENABLED="true" || WS_ENABLED="false"
+            ;;
+    esac
+
+    case "${hy2_enabled_raw}" in
+        true | 1 | yes | on) HY2_ENABLED="true" ;;
+        false | 0 | no | off) HY2_ENABLED="false" ;;
+        *)
+            [[ -n "${HY2_PORT:-}" || -n "${HY2_PASS:-}" ]] && HY2_ENABLED="true" || HY2_ENABLED="false"
+            ;;
+    esac
 
     local default_reality="${REALITY_PORT_DEFAULT:-443}"
     local default_sni="${SNI_DEFAULT:-www.microsoft.com}"
@@ -549,8 +580,15 @@ output_info_json() {
         uri_hy2="hysteria2://${HY2_PASS}@${DOMAIN:-}:${HY2_PORT}/?sni=${DOMAIN:-}&alpn=h3&insecure=0#Hysteria2-${DOMAIN:-}"
     fi
 
-    if [[ -n "${CERT_FULLCHAIN:-}" && -n "${CERT_KEY:-}" ]]; then
+    if [[ "${WS_ENABLED:-false}" == "true" ]]; then
         has_ws=true
+    elif [[ -n "${CERT_FULLCHAIN:-}" && -n "${CERT_KEY:-}" ]]; then
+        has_ws=true
+    fi
+
+    if [[ "${HY2_ENABLED:-false}" == "true" ]]; then
+        has_hy2=true
+    elif [[ -n "${CERT_FULLCHAIN:-}" && -n "${CERT_KEY:-}" ]]; then
         has_hy2=true
     fi
 
