@@ -96,7 +96,7 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
 
           set +e
-          shfmt -d "${scripts[@]}" | tee /tmp/shfmt.diff
+          shfmt -i 2 -ci -d "${scripts[@]}" | tee /tmp/shfmt.diff
           shfmt_status=${PIPESTATUS[0]}
           set -e
 
@@ -106,7 +106,7 @@ jobs:
           fi
 
           if [[ -s /tmp/shfmt.diff ]]; then
-            echo "❌ Formatting differences detected. Run: shfmt -w install.sh lib/*.sh bin/*.sh" >> $GITHUB_STEP_SUMMARY
+            echo "❌ Formatting differences detected. Run: shfmt -i 2 -ci -w install.sh lib/*.sh bin/*.sh" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo '```diff' >> $GITHUB_STEP_SUMMARY
             cat /tmp/shfmt.diff >> $GITHUB_STEP_SUMMARY

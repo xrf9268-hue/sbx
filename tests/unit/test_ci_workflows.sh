@@ -73,7 +73,8 @@ main() {
   assert_contains "$shellcheck_content" 'sha256sum -c /tmp/shfmt.sha256' 'format-check verifies shfmt checksum'
   assert_contains "$shellcheck_content" 'git diff --name-only' 'format-check scopes to changed files'
   assert_contains "$shellcheck_content" 'No changed shell scripts to format-check.' 'format-check skips when no shell files changed'
-  assert_contains "$shellcheck_content" 'shfmt -d' 'format-check enforces diff-based style validation'
+  assert_contains "$shellcheck_content" 'shfmt -i 2 -ci -d' 'format-check uses repository shfmt style options'
+  assert_contains "$shellcheck_content" '-d "${scripts[@]}"' 'format-check enforces diff-based style validation'
 
   echo ""
   echo "=== Summary ==="
