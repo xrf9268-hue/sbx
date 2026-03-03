@@ -52,11 +52,22 @@ EOF
 set -euo pipefail
 EOF
 
-    cat >"${LIB_DIR_STUB}/export.sh" <<'EOF'
+cat >"${LIB_DIR_STUB}/export.sh" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 load_client_info() {
+  unset WS_ENABLED HY2_ENABLED WS_PORT HY2_PORT HY2_PASS CERT_FULLCHAIN CERT_KEY
   source "${TEST_CLIENT_INFO:?}"
+  if [[ -n "${WS_PORT+x}" ]]; then
+    WS_ENABLED="true"
+  else
+    WS_ENABLED="false"
+  fi
+  if [[ -n "${HY2_PORT+x}" || -n "${HY2_PASS+x}" ]]; then
+    HY2_ENABLED="true"
+  else
+    HY2_ENABLED="false"
+  fi
   REALITY_PORT="${REALITY_PORT:-443}"
   SNI="${SNI:-www.microsoft.com}"
   WS_PORT="${WS_PORT:-8444}"
@@ -198,6 +209,27 @@ test_json_output_commands() {
     assert_success "printf '%s' \"\$backup_json\" | jq empty" "backup list --json returns valid JSON"
     assert_equals "2" "$(echo "$backup_json" | jq -r '.count')" "backup list --json includes backup count"
     assert_equals "true" "$(echo "$backup_json" | jq -r '.backups | any(.encrypted == true)')" "backup list --json includes encrypted entry"
+
+    # info --json in ACME mode (no manual CERT_FULLCHAIN/CERT_KEY)
+    cat >"${CLIENT_INFO_FILE}" <<'EOF'
+DOMAIN="example.com"
+UUID="11111111-2222-3333-4444-555555555555"
+PUBLIC_KEY="pubkey123"
+SHORT_ID="abcd1234"
+SNI="www.microsoft.com"
+REALITY_PORT="443"
+WS_PORT="8444"
+HY2_PORT="8443"
+HY2_PASS="hy2pass123"
+EOF
+    chmod 600 "${CLIENT_INFO_FILE}"
+
+    info_json_acme=$(run_sbx_json info --json 2>/dev/null)
+    assert_success "printf '%s' \"\$info_json_acme\" | jq empty" "info --json ACME returns valid JSON"
+    assert_equals "true" "$(echo "$info_json_acme" | jq -r '.protocols.ws_tls.enabled')" "info --json ACME marks ws enabled"
+    assert_equals "true" "$(echo "$info_json_acme" | jq -r '.protocols.hysteria2.enabled')" "info --json ACME marks hy2 enabled"
+    assert_equals "vless://ws-uri" "$(echo "$info_json_acme" | jq -r '.protocols.ws_tls.uri')" "info --json ACME includes ws URI"
+    assert_equals "hysteria2://hy2-uri" "$(echo "$info_json_acme" | jq -r '.protocols.hysteria2.uri')" "info --json ACME includes hy2 URI"
 }
 
 main() {

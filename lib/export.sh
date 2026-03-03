@@ -39,6 +39,7 @@ _export_die() {
 # Load client info from saved configuration with strict validation
 load_client_info() {
   local client_info_file='' state_file='' resolved='' owner='' perm='' invalid_line=''
+  local ws_enabled_raw='' hy2_enabled_raw=''
   local allowed_keys_regex="^(DOMAIN|UUID|PUBLIC_KEY|SHORT_ID|SNI|REALITY_PORT|WS_PORT|HY2_PORT|HY2_PASS|CERT_FULLCHAIN|CERT_KEY)$"
 
   # Prefer structured state file when available, with compatibility fallback.
@@ -82,6 +83,24 @@ load_client_info() {
     HY2_PASS=$(jq -r '.protocols.hysteria2.password // empty' "${resolved}")
     CERT_FULLCHAIN=$(jq -r '.protocols.ws_tls.certificate // empty' "${resolved}")
     CERT_KEY=$(jq -r '.protocols.ws_tls.key // empty' "${resolved}")
+    ws_enabled_raw=$(jq -r '.protocols.ws_tls.enabled // empty' "${resolved}")
+    hy2_enabled_raw=$(jq -r '.protocols.hysteria2.enabled // empty' "${resolved}")
+
+    case "${ws_enabled_raw}" in
+      true | 1 | yes | on) WS_ENABLED="true" ;;
+      false | 0 | no | off) WS_ENABLED="false" ;;
+      *)
+        [[ -n "${WS_PORT:-}" ]] && WS_ENABLED="true" || WS_ENABLED="false"
+        ;;
+    esac
+
+    case "${hy2_enabled_raw}" in
+      true | 1 | yes | on) HY2_ENABLED="true" ;;
+      false | 0 | no | off) HY2_ENABLED="false" ;;
+      *)
+        [[ -n "${HY2_PORT:-}" || -n "${HY2_PASS:-}" ]] && HY2_ENABLED="true" || HY2_ENABLED="false"
+        ;;
+    esac
 
     REALITY_PORT="${REALITY_PORT:-${REALITY_PORT_DEFAULT:-443}}"
     SNI="${SNI:-${SNI_DEFAULT:-www.microsoft.com}}"
@@ -160,6 +179,18 @@ load_client_info() {
   for key in "${!client_info_map[@]}"; do
     printf -v "${key}" '%s' "${client_info_map[${key}]}"
   done
+
+  if [[ -v client_info_map[WS_PORT] ]]; then
+    WS_ENABLED="true"
+  else
+    WS_ENABLED="false"
+  fi
+
+  if [[ -v client_info_map[HY2_PORT] || -v client_info_map[HY2_PASS] ]]; then
+    HY2_ENABLED="true"
+  else
+    HY2_ENABLED="false"
+  fi
 
   # Set defaults for missing variables to ensure valid URIs
   REALITY_PORT="${REALITY_PORT:-${REALITY_PORT_DEFAULT:-443}}"
