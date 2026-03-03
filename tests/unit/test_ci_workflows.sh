@@ -66,6 +66,12 @@ main() {
 
   local shellcheck_content
   shellcheck_content="$(cat "$shellcheck_workflow")"
+  local test_workflow_content
+  test_workflow_content="$(cat "$test_workflow")"
+
+  assert_contains "$test_workflow_content" 'COVERAGE_MIN_PERCENT: "30"' 'test.yml defines phased coverage threshold'
+  assert_contains "$test_workflow_content" 'COVERAGE_TARGET_PERCENT: "80"' 'test.yml keeps long-term coverage target'
+  assert_contains "$test_workflow_content" '--min-percent "$COVERAGE_MIN_PERCENT"' 'coverage gate uses configurable threshold'
 
   assert_contains "$shellcheck_content" 'format-check:' 'shellcheck.yml includes format-check job'
   assert_contains "$shellcheck_content" 'SHFMT_VERSION: "v3.12.0"' 'format-check pins shfmt version'

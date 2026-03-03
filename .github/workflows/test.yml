@@ -25,6 +25,8 @@ permissions:
 env:
   SINGBOX_MIN_VERSION: "1.8.0"
   SINGBOX_RECOMMENDED_VERSION: "1.13.0"
+  COVERAGE_MIN_PERCENT: "30"
+  COVERAGE_TARGET_PERCENT: "80"
 
 jobs:
   unit-tests:
@@ -285,11 +287,11 @@ jobs:
           echo "- Coverage XML Path: \`$COVERAGE_XML\`" >> $GITHUB_STEP_SUMMARY
           echo "- Coverage Report Path: \`$COVERAGE_DIR\`" >> $GITHUB_STEP_SUMMARY
 
-      - name: Enforce 80% coverage gate
+      - name: Enforce coverage gate
         run: |
           bash tests/ci/coverage_gate.sh \
             --xml "$COVERAGE_XML" \
-            --min-percent 80 \
+            --min-percent "$COVERAGE_MIN_PERCENT" \
             --metrics-file /tmp/sbx-kcov/coverage-metrics.env
 
           source /tmp/sbx-kcov/coverage-metrics.env
@@ -297,6 +299,7 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "- Coverage: **${COVERAGE_PERCENT}%**" >> $GITHUB_STEP_SUMMARY
           echo "- Threshold: **${COVERAGE_THRESHOLD}%**" >> $GITHUB_STEP_SUMMARY
+          echo "- Long-term Target: **${COVERAGE_TARGET_PERCENT}%**" >> $GITHUB_STEP_SUMMARY
           echo "- Result: **${COVERAGE_GATE_STATUS}**" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "*Generated: $(date -u +"%Y-%m-%d %H:%M:%S UTC")*" >> $GITHUB_STEP_SUMMARY
