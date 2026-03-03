@@ -253,7 +253,7 @@ test_validate_cert_files_missing() {
 
 test_validate_singbox_config_handles_missing_binary() {
     echo ""
-    echo "Testing validate_singbox_config() with missing binary..."
+    echo "Testing validate_singbox_config() binary handling..."
 
     if ! declare -f validate_singbox_config >/dev/null 2>&1; then
         test_result "validate_singbox_config available" "fail"
@@ -264,14 +264,28 @@ test_validate_singbox_config_handles_missing_binary() {
     temp_dir=$(mktemp -d)
     local config_file="${temp_dir}/config.json"
 
-    cat > "$config_file" <<'EOF'
+    # CI coverage jobs install sing-box, while local/unit jobs may not.
+    # Assert the expected failure mode for the current environment.
+    if [[ -f "${SB_BIN}" ]]; then
+        cat > "$config_file" <<'EOF'
+{"inbounds":[}
+EOF
+
+        if validate_singbox_config "$config_file" 2>/dev/null; then
+            test_result "validate_singbox_config rejects invalid config when binary exists" "fail"
+        else
+            test_result "validate_singbox_config rejects invalid config when binary exists" "pass"
+        fi
+    else
+        cat > "$config_file" <<'EOF'
 {"log":{"level":"warn"}}
 EOF
 
-    if validate_singbox_config "$config_file" 2>/dev/null; then
-        test_result "validate_singbox_config warns on missing binary" "fail"
-    else
-        test_result "validate_singbox_config warns on missing binary" "pass"
+        if validate_singbox_config "$config_file" 2>/dev/null; then
+            test_result "validate_singbox_config fails when binary is missing" "fail"
+        else
+            test_result "validate_singbox_config fails when binary is missing" "pass"
+        fi
     fi
 
     rm -rf "$temp_dir"

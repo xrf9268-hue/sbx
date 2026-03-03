@@ -128,9 +128,9 @@ test-docker-smoke:
 
 # Generate code coverage report
 coverage:
-	@echo "→ Generating coverage report..."
-	@bash tests/coverage.sh generate
-	@echo "✓ Coverage report generated"
+	@echo "→ Generating kcov coverage report..."
+	@bash tests/ci/coverage_suite.sh --out-dir "$${COVERAGE_DIR:-/tmp/sbx-kcov}"
+	@echo "✓ Coverage report generated at $${COVERAGE_DIR:-/tmp/sbx-kcov}/merged"
 
 # Run performance benchmarks
 benchmark:
