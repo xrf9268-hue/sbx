@@ -51,7 +51,10 @@ main() {
 
   assert_contains 'run_case "reality" "$SCRIPT_DIR/tests/test_reality.sh"' "reality suite runs script directly"
   assert_contains 'run_case "bootstrap" "$SCRIPT_DIR/tests/unit/test_bootstrap_constants.sh"' "bootstrap suite runs script directly"
-  assert_contains 'run_case "unit" "$SCRIPT_DIR/tests/test-runner.sh" unit' "unit suite runs test-runner directly"
+  assert_contains 'run_unit_cases() {' "unit suite has dedicated per-file runner"
+  assert_contains "find \"\$unit_dir\" -maxdepth 1 -type f -name 'test_*.sh'" "unit suite discovers test files directly"
+  assert_contains 'run_case "unit-${case_name}" "$unit_script"' "unit suite runs each test file directly"
+  assert_not_contains 'run_case "unit" "$SCRIPT_DIR/tests/test-runner.sh" unit' "unit suite no longer wraps test-runner"
   assert_contains 'run_case "integration" "$SCRIPT_DIR/tests/ci/integration_checks.sh"' "integration suite runs script directly"
   assert_contains 'run_case "advanced" "$SCRIPT_DIR/tests/ci/advanced_features_checks.sh"' "advanced suite runs script directly"
   assert_contains 'run_case "docker" "$SCRIPT_DIR/tests/integration/test_docker_lifecycle_smoke.sh"' "docker suite runs script directly"

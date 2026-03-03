@@ -30,6 +30,16 @@ run_case() {
   "$SCRIPT_DIR/tests/ci/run_with_kcov.sh" "$case_dir" --kcov-bin "$KCOV_BIN" -- "$@"
 }
 
+run_unit_cases() {
+  local unit_dir="$SCRIPT_DIR/tests/unit"
+  local unit_script case_name
+
+  while IFS= read -r unit_script; do
+    case_name="$(basename "${unit_script%.sh}")"
+    run_case "unit-${case_name}" "$unit_script"
+  done < <(find "$unit_dir" -maxdepth 1 -type f -name 'test_*.sh' | LC_ALL=C sort)
+}
+
 resolve_coverage_report_dir() {
   local merged_dir="$1"
 
@@ -103,7 +113,7 @@ main() {
 
   run_case "reality" "$SCRIPT_DIR/tests/test_reality.sh"
   run_case "bootstrap" "$SCRIPT_DIR/tests/unit/test_bootstrap_constants.sh"
-  run_case "unit" "$SCRIPT_DIR/tests/test-runner.sh" unit
+  run_unit_cases
   run_case "integration" "$SCRIPT_DIR/tests/ci/integration_checks.sh"
   run_case "advanced" "$SCRIPT_DIR/tests/ci/advanced_features_checks.sh"
 
