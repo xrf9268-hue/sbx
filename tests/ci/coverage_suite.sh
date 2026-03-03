@@ -101,13 +101,13 @@ main() {
   rm -rf "$OUT_DIR"
   mkdir -p "$OUT_DIR"
 
-  run_case "reality" bash "$SCRIPT_DIR/tests/test_reality.sh"
-  run_case "bootstrap" bash "$SCRIPT_DIR/tests/unit/test_bootstrap_constants.sh"
-  run_case "integration" bash "$SCRIPT_DIR/tests/ci/integration_checks.sh"
-  run_case "advanced" bash "$SCRIPT_DIR/tests/ci/advanced_features_checks.sh"
+  run_case "reality" "$SCRIPT_DIR/tests/test_reality.sh"
+  run_case "bootstrap" "$SCRIPT_DIR/tests/unit/test_bootstrap_constants.sh"
+  run_case "integration" "$SCRIPT_DIR/tests/ci/integration_checks.sh"
+  run_case "advanced" "$SCRIPT_DIR/tests/ci/advanced_features_checks.sh"
 
   if [[ "$INCLUDE_DOCKER" -eq 1 ]]; then
-    run_case "docker" bash "$SCRIPT_DIR/tests/integration/test_docker_lifecycle_smoke.sh"
+    run_case "docker" "$SCRIPT_DIR/tests/integration/test_docker_lifecycle_smoke.sh"
   else
     echo "Skipping docker lifecycle smoke in coverage suite (covered by dedicated CI job)."
   fi
@@ -130,8 +130,8 @@ main() {
 
   summary "## kcov Coverage"
   summary ""
-  summary "- Coverage XML: `$coverage_xml`"
-  summary "- Coverage HTML: `$coverage_html`"
+  summary "- Coverage XML: \`$coverage_xml\`"
+  summary "- Coverage HTML: \`$coverage_html\`"
   summary ""
 
   echo "COVERAGE_XML=$coverage_xml"
