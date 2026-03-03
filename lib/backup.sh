@@ -29,6 +29,20 @@ source "${_LIB_DIR}/common.sh"
 BACKUP_DIR="${BACKUP_DIR:-/var/backups/sbx}"
 # BACKUP_RETENTION_DAYS is defined in lib/common.sh as readonly constant
 
+# Emit structured backup failures when available.
+_backup_die() {
+  local code="$1"
+  local reason="$2"
+  local resolution="${3:-}"
+  local example="${4:-}"
+
+  if declare -f die_with_code >/dev/null 2>&1; then
+    die_with_code "${code}" "${reason}" "${resolution}" "${example}"
+  fi
+
+  die "${reason}"
+}
+
 #==============================================================================
 # Backup Creation
 #==============================================================================
@@ -105,7 +119,8 @@ EOF
   mkdir -p "${BACKUP_DIR}"
   local archive_path="${BACKUP_DIR}/${backup_name}.tar.gz"
 
-  tar -czf "${archive_path}" -C "${temp_dir}" "${backup_name}" || die "Failed to create archive"
+  tar -czf "${archive_path}" -C "${temp_dir}" "${backup_name}" || _backup_die "SBX-BACKUP-001" "Failed to create archive" \
+    "Check backup directory permissions and available disk space."
 
   # Encrypt if requested
   if [[ "${encrypt}" == "true" ]]; then
@@ -121,7 +136,8 @@ EOF
 
       # Validate password strength (minimum BACKUP_PASSWORD_MIN_LENGTH=32)
       if [[ ${#password} -lt "${BACKUP_PASSWORD_MIN_LENGTH}" ]]; then
-        die "Failed to generate strong encryption password (insufficient entropy)"
+        _backup_die "SBX-BACKUP-002" "Failed to generate strong encryption password (insufficient entropy)" \
+          "Ensure openssl random source is available."
       fi
 
       # Save password to secure key file
@@ -144,7 +160,8 @@ EOF
     fi
 
     openssl enc -aes-256-cbc -salt -pbkdf2 -in "${archive_path}" \
-      -out "${archive_path}.enc" -k "${password}" || die "Encryption failed"
+      -out "${archive_path}.enc" -k "${password}" || _backup_die "SBX-BACKUP-003" "Encryption failed" \
+        "Verify openssl works and backup file is readable."
 
     rm "${archive_path}"
     archive_path="${archive_path}.enc"
@@ -196,7 +213,8 @@ _decrypt_backup() {
 
     if [[ -f "${key_file}" ]]; then
       msg "  - Found password key file: ${key_file}"
-      password=$(cat "${key_file}") || die "Failed to read password from key file"
+      password=$(cat "${key_file}") || _backup_die "SBX-BACKUP-004" "Failed to read password from key file" \
+        "Check key file readability and permissions."
     elif [[ -n "${BACKUP_PASSWORD:-}" ]]; then
       password="${BACKUP_PASSWORD}"
       msg "  - Using password from BACKUP_PASSWORD environment variable"
@@ -207,13 +225,15 @@ _decrypt_backup() {
     fi
   fi
 
-  [[ -n "${password}" ]] || die "No password provided for encrypted backup"
+  [[ -n "${password}" ]] || _backup_die "SBX-BACKUP-005" "No password provided for encrypted backup" \
+    "Set BACKUP_PASSWORD or provide the matching key file."
 
   local decrypted_path="${temp_dir}/decrypted.tar.gz"
   openssl enc -aes-256-cbc -d -pbkdf2 -in "${backup_file}" \
     -out "${decrypted_path}" -k "${password}" || {
       rm -rf "${temp_dir}"
-      die "Decryption failed (wrong password?)"
+      _backup_die "SBX-BACKUP-006" "Decryption failed (wrong password?)" \
+        "Use the correct backup password or key file."
     }
 
   success "  ✓ Backup decrypted"
@@ -233,12 +253,14 @@ _validate_backup_archive() {
   msg "Validating backup archive integrity..."
   if ! tar -tzf "${archive_to_extract}" >/dev/null 2>&1; then
     rm -rf "${temp_dir}"
-    die "Backup archive is corrupted or not a valid tar file"
+    _backup_die "SBX-BACKUP-007" "Backup archive is corrupted or not a valid tar file" \
+      "Verify backup file integrity and source."
   fi
   success "  ✓ Archive integrity validated"
 
   # Extract archive
-  tar -xzf "${archive_to_extract}" -C "${temp_dir}" || die "Failed to extract archive"
+  tar -xzf "${archive_to_extract}" -C "${temp_dir}" || _backup_die "SBX-BACKUP-008" "Failed to extract archive" \
+    "Check free disk space and archive readability."
 
   # Find backup root directory (securely)
   local backup_dirname=''
@@ -248,7 +270,8 @@ _validate_backup_archive() {
   # Validate directory name exists
   if [[ -z "${backup_dirname}" ]]; then
     rm -rf "${temp_dir}"
-    die "Invalid backup structure: no backup directory found"
+    _backup_die "SBX-BACKUP-009" "Invalid backup structure: no backup directory found" \
+      "Ensure archive was created by sbx backup."
   fi
 
   # Flexible validation: allow expected format with optional suffixes (prevents path traversal)
@@ -256,7 +279,8 @@ _validate_backup_archive() {
   # Allows timezone variations and system-generated suffixes
   if [[ ! "${backup_dirname}" =~ ^sbx-backup-[0-9]{8}-[0-9]{6}[a-zA-Z0-9._-]*$ ]]; then
     rm -rf "${temp_dir}"
-    die "Invalid backup directory name: ${backup_dirname} (possible path traversal attempt)"
+    _backup_die "SBX-BACKUP-010" "Invalid backup directory name: ${backup_dirname} (possible path traversal attempt)" \
+      "Use trusted backup archives only."
   fi
 
   # Reconstruct full path safely (no user-controlled path components)
@@ -265,11 +289,13 @@ _validate_backup_archive() {
   # Final validation
   if [[ ! -d "${backup_root}" ]]; then
     rm -rf "${temp_dir}"
-    die "Backup directory not found: ${backup_root}"
+    _backup_die "SBX-BACKUP-011" "Backup directory not found: ${backup_root}" \
+      "Ensure archive extraction completed successfully."
   fi
 
   local required_config="${backup_root}/config/config.json"
-  [[ -f "${required_config}" ]] || die "Backup is missing required configuration file"
+  [[ -f "${required_config}" ]] || _backup_die "SBX-BACKUP-012" "Backup is missing required configuration file" \
+    "Backup must contain config/config.json."
 
   echo "${backup_root}"
 }
@@ -308,14 +334,16 @@ _apply_restored_config() {
   mkdir -p "${SB_CONF_DIR}"
 
   # Restore configuration atomically
-  config_tmp=$(create_temp_file_in_dir "${SB_CONF_DIR}" "config.json") || die "Failed to create temp config file"
+  config_tmp=$(create_temp_file_in_dir "${SB_CONF_DIR}" "config.json") || _backup_die "SBX-BACKUP-013" "Failed to create temp config file" \
+    "Check ${SB_CONF_DIR} permissions and free disk space."
   cp "${stage_dir}/config/config.json" "${config_tmp}"
   mv -f "${config_tmp}" "${SB_CONF}"
   success "  ✓ Restored configuration"
 
   # Restore client info if present
   if [[ -f "${stage_dir}/config/client-info.txt" ]]; then
-    client_tmp=$(create_temp_file_in_dir "${SB_CONF_DIR}" "client-info.txt") || die "Failed to create temp client info file"
+    client_tmp=$(create_temp_file_in_dir "${SB_CONF_DIR}" "client-info.txt") || _backup_die "SBX-BACKUP-014" "Failed to create temp client info file" \
+      "Check ${SB_CONF_DIR} permissions and free disk space."
     cp "${stage_dir}/config/client-info.txt" "${client_tmp}"
     mv -f "${client_tmp}" "${CLIENT_INFO}"
     success "  ✓ Restored client info"
@@ -327,7 +355,8 @@ _apply_restored_config() {
     for domain in "${cert_domains_ref[@]}"; do
       local domain_target="${CERT_DIR_BASE}/${domain}"
       local domain_tmp=''
-      domain_tmp=$(create_temp_dir_in_dir "${CERT_DIR_BASE}" "${domain}") || die "Failed to create temp certificate directory for ${domain}"
+      domain_tmp=$(create_temp_dir_in_dir "${CERT_DIR_BASE}" "${domain}") || _backup_die "SBX-BACKUP-015" "Failed to create temp certificate directory for ${domain}" \
+        "Check certificate directory permissions."
       cp "${stage_dir}/certificates/${domain}"/*.pem "${domain_tmp}/"
       chmod 600 "${domain_tmp}"/*.pem
       rm -rf "${domain_target}"
@@ -340,7 +369,8 @@ _apply_restored_config() {
   if [[ -f "${stage_dir}/service/sing-box.service" ]]; then
     service_dir="$(dirname "${SB_SVC}")"
     mkdir -p "${service_dir}"
-    service_tmp=$(create_temp_file_in_dir "${service_dir}" "sing-box.service") || die "Failed to create temp service file"
+    service_tmp=$(create_temp_file_in_dir "${service_dir}" "sing-box.service") || _backup_die "SBX-BACKUP-016" "Failed to create temp service file" \
+      "Check systemd directory permissions."
     cp "${stage_dir}/service/sing-box.service" "${service_tmp}"
     chmod 644 "${service_tmp}"
     mv -f "${service_tmp}" "${SB_SVC}"
@@ -376,10 +406,15 @@ _restore_service_state() {
 
 # Restore from backup
 backup_restore() {
+  with_flock "${SBX_LOCK_TIMEOUT_SEC:-30}" _backup_restore_impl "$@"
+}
+
+_backup_restore_impl() {
   local backup_file="$1"
   local password="${2:-}"
 
-  [[ -f "${backup_file}" ]] || die "Backup file not found: ${backup_file}"
+  [[ -f "${backup_file}" ]] || _backup_die "SBX-BACKUP-017" "Backup file not found: ${backup_file}" \
+    "Use sbx backup list to select an existing backup."
 
   msg "Restoring from backup: ${backup_file}"
 
@@ -387,7 +422,8 @@ backup_restore() {
   if [[ "${FORCE:-0}" != "1" ]]; then
     warn "This will OVERWRITE current configuration!"
     read -rp "Continue? [y/N]: " confirm
-    [[ "${confirm}" =~ ^[Yy]$ ]] || die "Restore cancelled"
+    [[ "${confirm}" =~ ^[Yy]$ ]] || _backup_die "SBX-BACKUP-018" "Restore cancelled" \
+      "Re-run with confirmation or FORCE=1."
   fi
 
   # Setup temporary directories
@@ -478,7 +514,8 @@ backup_restore() {
       domain_name=$(basename "${domain_dir}")
 
       if [[ ! -f "${domain_dir}/fullchain.pem" || ! -f "${domain_dir}/privkey.pem" ]]; then
-        die "Certificate set incomplete for domain: ${domain_name}"
+        _backup_die "SBX-BACKUP-019" "Certificate set incomplete for domain: ${domain_name}" \
+          "Ensure both fullchain.pem and privkey.pem are present."
       fi
 
       cert_domains+=("${domain_name}")
@@ -486,7 +523,8 @@ backup_restore() {
   fi
 
   if [[ -n "${service_source}" && -f "${service_source}" && ! -s "${service_source}" ]]; then
-    die "Service file in backup is empty"
+    _backup_die "SBX-BACKUP-020" "Service file in backup is empty" \
+      "Use a valid backup containing a non-empty service file."
   fi
 
   # Stage all files for restoration
@@ -503,7 +541,8 @@ backup_restore() {
   # Validate staged configuration
   if [[ -x "${SB_BIN}" ]]; then
     msg "Validating configuration..."
-    ${SB_BIN} check -c "${stage_dir}/config/config.json" || die "Configuration validation failed"
+    ${SB_BIN} check -c "${stage_dir}/config/config.json" || _backup_die "SBX-BACKUP-021" "Configuration validation failed" \
+      "Inspect staged config and fix errors before restore."
   else
     warn "Cannot validate configuration: ${SB_BIN} not executable"
   fi

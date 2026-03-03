@@ -52,6 +52,7 @@ ${B}Service Management:${N}
   restart             Restart sing-box service
   log|logs            Show live logs (Ctrl+C to exit)
   check               Validate configuration file
+  health              Comprehensive health report
 
 ${B}Configuration:${N}
   info|show           Show configuration and URIs
@@ -86,7 +87,23 @@ EOF
 }
 
 CLIENT_INFO_PATH="${CLIENT_INFO:-/etc/sing-box/client-info.txt}"
+STATE_INFO_PATH="${STATE_FILE:-/etc/sing-box/state.json}"
 CLIENT_INFO_ALLOWED_KEYS_REGEX="^(DOMAIN|UUID|PUBLIC_KEY|SHORT_ID|SNI|REALITY_PORT|WS_PORT|HY2_PORT|HY2_PASS|CERT_FULLCHAIN|CERT_KEY)$"
+SBX_BIN="${SBX_BIN:-${SB_BIN:-/usr/local/bin/sing-box}}"
+SBX_CONFIG_PATH="${SBX_CONFIG_PATH:-${SB_CONF:-/etc/sing-box/config.json}}"
+HEALTH_CERT_WARNING_DAYS="${HEALTH_CERT_WARNING_DAYS:-30}"
+
+# Global output flags
+JSON_OUTPUT=0
+ARGS=()
+for arg in "$@"; do
+    if [[ "$arg" == "--json" ]]; then
+        JSON_OUTPUT=1
+    else
+        ARGS+=("$arg")
+    fi
+done
+set -- "${ARGS[@]}"
 
 error_exit() {
     echo -e "${R}[ERR]${N} $1" >&2
@@ -107,6 +124,29 @@ validate_client_info_file() {
     [[ "$owner" -eq 0 ]] || error_exit "Client info must be owned by root (uid 0)."
     [[ "$perm" == "600" ]] || error_exit "Client info permissions must be 600 (found $perm)."
     [[ -s "$resolved" ]] || error_exit "Client info is empty."
+
+    echo "$resolved"
+}
+
+validate_state_info_file() {
+    local state_file="$1"
+    [[ -n "$state_file" ]] || error_exit "State file path is empty."
+    [[ -f "$state_file" ]] || error_exit "State file not found: $state_file"
+    [[ ! -L "$state_file" ]] || error_exit "Refusing to load state file from symlink: $state_file"
+
+    local resolved owner perm
+    resolved=$(readlink -f "$state_file") || error_exit "Failed to resolve state file path: $state_file"
+    perm=$(stat -c '%a' "$resolved" 2>/dev/null || stat -f '%Lp' "$resolved" 2>/dev/null) || error_exit "Unable to read state file permissions."
+    [[ "$perm" == "600" ]] || error_exit "State file permissions must be 600 (found $perm)."
+    [[ -s "$resolved" ]] || error_exit "State file is empty."
+
+    if [[ -z "${TEST_STATE_FILE:-}" ]]; then
+        owner=$(stat -c '%u' "$resolved" 2>/dev/null || stat -f '%u' "$resolved" 2>/dev/null) || error_exit "Unable to read state file ownership."
+        [[ "$owner" -eq 0 ]] || error_exit "State file must be owned by root (uid 0)."
+    fi
+
+    command -v jq >/dev/null 2>&1 || error_exit "jq is required to parse state file."
+    jq empty < "$resolved" 2>/dev/null || error_exit "State file is not valid JSON: $resolved"
 
     echo "$resolved"
 }
@@ -159,9 +199,43 @@ parse_client_info_file() {
     HY2_PORT="${HY2_PORT:-$default_hy2}"
 }
 
+parse_state_info_file() {
+    local file="$1"
+
+    DOMAIN=$(jq -r '.server.domain // .server.ip // empty' "$file")
+    UUID=$(jq -r '.protocols.reality.uuid // empty' "$file")
+    PUBLIC_KEY=$(jq -r '.protocols.reality.public_key // empty' "$file")
+    SHORT_ID=$(jq -r '.protocols.reality.short_id // empty' "$file")
+    SNI=$(jq -r '.protocols.reality.sni // empty' "$file")
+    REALITY_PORT=$(jq -r '.protocols.reality.port // empty' "$file")
+    WS_PORT=$(jq -r '.protocols.ws_tls.port // empty' "$file")
+    HY2_PORT=$(jq -r '.protocols.hysteria2.port // empty' "$file")
+    HY2_PASS=$(jq -r '.protocols.hysteria2.password // empty' "$file")
+    CERT_FULLCHAIN=$(jq -r '.protocols.ws_tls.certificate // empty' "$file")
+    CERT_KEY=$(jq -r '.protocols.ws_tls.key // empty' "$file")
+
+    local default_reality="${REALITY_PORT_DEFAULT:-443}"
+    local default_sni="${SNI_DEFAULT:-www.microsoft.com}"
+    local default_ws="${WS_PORT_DEFAULT:-8444}"
+    local default_hy2="${HY2_PORT_DEFAULT:-8443}"
+
+    REALITY_PORT="${REALITY_PORT:-$default_reality}"
+    SNI="${SNI:-$default_sni}"
+    WS_PORT="${WS_PORT:-$default_ws}"
+    HY2_PORT="${HY2_PORT:-$default_hy2}"
+}
+
 fallback_load_client_info() {
+    local state_file="${TEST_STATE_FILE:-$STATE_INFO_PATH}"
     local target_file="${TEST_CLIENT_INFO:-$CLIENT_INFO_PATH}"
     local resolved
+
+    if [[ -f "$state_file" ]]; then
+        resolved=$(validate_state_info_file "$state_file")
+        parse_state_info_file "$resolved"
+        return 0
+    fi
+
     resolved=$(validate_client_info_file "$target_file")
     parse_client_info_file "$resolved"
 }
@@ -174,19 +248,447 @@ ensure_client_info_loaded() {
     fi
 }
 
+require_jq_for_json() {
+    if [[ "${JSON_OUTPUT}" == "1" ]] && ! command -v jq >/dev/null 2>&1; then
+        error_exit "jq is required for --json output"
+    fi
+}
+
+health_ok() {
+    HEALTH_ITEMS+=("OK|$1")
+    if [[ "${JSON_OUTPUT}" != "1" ]]; then
+        echo "  [OK] $1"
+    fi
+}
+
+health_warn() {
+    HEALTH_ITEMS+=("WARN|$1")
+    if [[ "${JSON_OUTPUT}" != "1" ]]; then
+        echo "  [WARN] $1"
+    fi
+    HEALTH_WARNINGS=$((HEALTH_WARNINGS + 1))
+}
+
+health_fail() {
+    HEALTH_ITEMS+=("FAIL|$1")
+    if [[ "${JSON_OUTPUT}" != "1" ]]; then
+        echo "  [FAIL] $1"
+    fi
+    HEALTH_FAILURES=$((HEALTH_FAILURES + 1))
+}
+
+health_output_json() {
+    local overall="$1"
+    local checks_json='[]'
+
+    if [[ ${#HEALTH_ITEMS[@]} -gt 0 ]]; then
+        checks_json=$(printf '%s\n' "${HEALTH_ITEMS[@]}" | jq -R -s '
+            split("\n")
+            | map(select(length > 0))
+            | map(capture("^(?<level>[^|]+)\\|(?<message>.*)$"))
+            | map({
+                level: (.level | ascii_downcase),
+                message: .message
+            })
+        ')
+    fi
+
+    jq -n \
+      --arg command "health" \
+      --arg overall "${overall}" \
+      --argjson failures "${HEALTH_FAILURES}" \
+      --argjson warnings "${HEALTH_WARNINGS}" \
+      --argjson checks "${checks_json}" \
+      '{
+        command: $command,
+        overall: $overall,
+        failures: $failures,
+        warnings: $warnings,
+        checks: $checks
+      }'
+}
+
+is_port_listening() {
+    local port="$1"
+    local proto="$2"
+    local ss_output=''
+
+    if [[ "$proto" == "udp" ]]; then
+        ss_output=$(ss -lnup 2>/dev/null || true)
+        grep -q ":${port}[[:space:]]" <<< "${ss_output}"
+        return $?
+    fi
+
+    ss_output=$(ss -lntp 2>/dev/null || true)
+    grep -q ":${port}[[:space:]]" <<< "${ss_output}"
+    return $?
+}
+
+discover_health_ports() {
+    local config_file="$1"
+    local entries=''
+
+    command -v jq >/dev/null 2>&1 || return 1
+    [[ -f "$config_file" ]] || return 1
+
+    entries=$(jq -r '.inbounds[]? | select(.listen_port != null) | [(.tag // .type // "inbound"), (.type // ""), (.listen_port | tostring)] | @tsv' "$config_file" 2>/dev/null) || return 1
+    [[ -n "$entries" ]] || return 1
+
+    local tag type port proto label
+    while IFS=$'\t' read -r tag type port; do
+        [[ "$port" =~ ^[0-9]+$ ]] || continue
+        if [[ "$type" == "hysteria2" ]]; then
+            proto="udp"
+        else
+            proto="tcp"
+        fi
+        label="${tag:-${type:-inbound}}"
+        echo "${port}|${proto}|${label}"
+    done <<< "$entries"
+}
+
+run_health_check() {
+    local config_file="${SBX_CONFIG_PATH}"
+    local cert_warning_sec=$((HEALTH_CERT_WARNING_DAYS * 86400))
+    local cert_path=''
+    local port_entries=''
+
+    HEALTH_FAILURES=0
+    HEALTH_WARNINGS=0
+    HEALTH_ITEMS=()
+
+    if [[ "${JSON_OUTPUT}" != "1" ]]; then
+        echo -e "${B}sbx health report:${N}"
+    fi
+
+    # 1) Service state
+    if systemctl is-active --quiet sing-box 2>/dev/null; then
+        health_ok "Service: active"
+    else
+        health_fail "Service: inactive"
+    fi
+
+    # 2) Configuration validity
+    if [[ ! -f "$config_file" ]]; then
+        health_fail "Config: not found (${config_file})"
+    elif [[ ! -x "$SBX_BIN" ]]; then
+        health_fail "Config check unavailable (sing-box binary not executable: ${SBX_BIN})"
+    elif "$SBX_BIN" check -c "$config_file" >/dev/null 2>&1; then
+        health_ok "Config: valid"
+    else
+        health_fail "Config: invalid"
+    fi
+
+    # 3) Port listening checks (from configured inbounds)
+    if ! command -v ss >/dev/null 2>&1; then
+        health_warn "Ports: skipped (ss command not available)"
+    else
+        port_entries=$(discover_health_ports "$config_file" 2>/dev/null || true)
+        if [[ -z "$port_entries" ]]; then
+            health_warn "Ports: skipped (no parseable inbound listen_port entries)"
+        else
+            declare -A seen_ports=()
+            local port proto label key
+            while IFS='|' read -r port proto label; do
+                [[ -n "$port" && -n "$proto" ]] || continue
+                key="${port}/${proto}"
+                [[ -n "${seen_ports[${key}]:-}" ]] && continue
+                seen_ports["${key}"]=1
+
+                if is_port_listening "$port" "$proto"; then
+                    health_ok "Port ${port}/${proto}: listening (${label})"
+                else
+                    health_fail "Port ${port}/${proto}: not listening (${label})"
+                fi
+            done <<< "$port_entries"
+        fi
+    fi
+
+    # 4) Certificate expiry checks (manual cert path only)
+    if [[ -n "${CERT_FULLCHAIN:-}" ]]; then
+        cert_path="${CERT_FULLCHAIN}"
+    elif command -v jq >/dev/null 2>&1 && [[ -f "$config_file" ]]; then
+        cert_path=$(jq -r '.inbounds[]? | .tls.certificate_path? // empty' "$config_file" 2>/dev/null | head -1)
+    fi
+
+    if [[ -n "$cert_path" ]]; then
+        if [[ ! -f "$cert_path" ]]; then
+            health_warn "Certificate: path not found (${cert_path})"
+        elif ! command -v openssl >/dev/null 2>&1; then
+            health_warn "Certificate: cannot check expiry (openssl not available)"
+        elif openssl x509 -in "$cert_path" -checkend "$cert_warning_sec" -noout >/dev/null 2>&1; then
+            health_ok "Certificate: valid (${cert_path})"
+        else
+            health_warn "Certificate: expires within ${HEALTH_CERT_WARNING_DAYS} days (${cert_path})"
+        fi
+    else
+        health_ok "Certificate: not configured"
+    fi
+
+    # 5) Deprecated field checks
+    if command -v jq >/dev/null 2>&1 && [[ -f "$config_file" ]]; then
+        local deprecated_inbounds=''
+        deprecated_inbounds=$(jq -r '.inbounds[]? | select(.sniff != null or .sniff_override_destination != null) | (.tag // .type // "unknown")' "$config_file" 2>/dev/null | paste -sd "," -)
+        if [[ -n "$deprecated_inbounds" ]]; then
+            health_warn "Deprecated fields detected in inbounds: ${deprecated_inbounds}"
+        else
+            health_ok "Deprecated fields: none"
+        fi
+    else
+        health_warn "Deprecated field check skipped (jq or config unavailable)"
+    fi
+
+    if [[ ${HEALTH_FAILURES} -gt 0 ]]; then
+        if [[ "${JSON_OUTPUT}" == "1" ]]; then
+            health_output_json "fail"
+        else
+            echo
+            echo "Health result: FAIL (${HEALTH_FAILURES} failed, ${HEALTH_WARNINGS} warnings)"
+        fi
+        return 1
+    fi
+
+    if [[ ${HEALTH_WARNINGS} -gt 0 ]]; then
+        if [[ "${JSON_OUTPUT}" == "1" ]]; then
+            health_output_json "pass_with_warnings"
+        else
+            echo
+            echo "Health result: PASS (with warnings)"
+        fi
+    else
+        if [[ "${JSON_OUTPUT}" == "1" ]]; then
+            health_output_json "pass"
+        else
+            echo
+            echo "Health result: PASS"
+        fi
+    fi
+    return 0
+}
+
+output_status_json() {
+    local active=false
+    local pid='0'
+
+    if systemctl is-active --quiet sing-box 2>/dev/null; then
+        active=true
+    fi
+    pid=$(systemctl show -p MainPID --value sing-box 2>/dev/null || echo "0")
+
+    jq -n \
+      --arg command "status" \
+      --arg service "sing-box" \
+      --argjson active "${active}" \
+      --arg pid "${pid}" \
+      '{
+        command: $command,
+        service: $service,
+        active: $active,
+        pid: ($pid | tonumber? // 0)
+      }'
+}
+
+output_check_json() {
+    local valid=false
+    local error_message=''
+
+    if [[ ! -x "${SBX_BIN}" ]]; then
+        error_message="sing-box binary not executable: ${SBX_BIN}"
+    elif "${SBX_BIN}" check -c "${SBX_CONFIG_PATH}" >/dev/null 2>&1; then
+        valid=true
+    else
+        error_message="configuration validation failed"
+    fi
+
+    jq -n \
+      --arg command "check" \
+      --arg config "${SBX_CONFIG_PATH}" \
+      --argjson valid "${valid}" \
+      --arg error "${error_message}" \
+      '{
+        command: $command,
+        config: $config,
+        valid: $valid,
+        error: (if $error == "" then null else $error end)
+      }'
+}
+
+output_info_json() {
+    local missing_fields=()
+    local warnings_text=''
+    local warnings_json='[]'
+    local has_ws=false
+    local has_hy2=false
+    local uri_real='' uri_ws='' uri_hy2=''
+
+    ensure_client_info_loaded
+
+    [[ -z "${PUBLIC_KEY:-}" ]] && missing_fields+=("PUBLIC_KEY")
+    [[ -z "${UUID:-}" ]] && missing_fields+=("UUID")
+    [[ -z "${SHORT_ID:-}" ]] && missing_fields+=("SHORT_ID")
+    [[ -z "${DOMAIN:-}" ]] && missing_fields+=("DOMAIN")
+
+    local field
+    for field in "${missing_fields[@]}"; do
+        warnings_text+="Missing required field: ${field}"$'\n'
+    done
+
+    REALITY_PORT="${REALITY_PORT:-443}"
+    SNI="${SNI:-www.microsoft.com}"
+    WS_PORT="${WS_PORT:-8444}"
+    HY2_PORT="${HY2_PORT:-8443}"
+    HY2_PASS="${HY2_PASS:-}"
+
+    if command -v export_uri >/dev/null 2>&1; then
+        uri_real=$(export_uri reality)
+        uri_ws=$(export_uri ws 2>/dev/null || true)
+        uri_hy2=$(export_uri hy2 2>/dev/null || true)
+    else
+        uri_real="vless://${UUID:-}@${DOMAIN:-}:${REALITY_PORT}?encryption=none&security=reality&flow=xtls-rprx-vision&sni=${SNI}&pbk=${PUBLIC_KEY:-}&sid=${SHORT_ID:-}&type=tcp&fp=chrome#Reality-${DOMAIN:-}"
+        uri_ws="vless://${UUID:-}@${DOMAIN:-}:${WS_PORT}?encryption=none&security=tls&type=ws&host=${DOMAIN:-}&path=/ws&sni=${DOMAIN:-}&fp=chrome#WS-TLS-${DOMAIN:-}"
+        uri_hy2="hysteria2://${HY2_PASS}@${DOMAIN:-}:${HY2_PORT}/?sni=${DOMAIN:-}&alpn=h3&insecure=0#Hysteria2-${DOMAIN:-}"
+    fi
+
+    if [[ -n "${CERT_FULLCHAIN:-}" && -n "${CERT_KEY:-}" ]]; then
+        has_ws=true
+        has_hy2=true
+    fi
+
+    if echo "${uri_real}" | grep -qE 'pbk=&|pbk=$|@:|//:'; then
+        warnings_text+="Reality URI has empty parameters"$'\n'
+    fi
+
+    if [[ -n "${warnings_text}" ]]; then
+        warnings_json=$(printf '%s' "${warnings_text}" | jq -R -s 'split("\n") | map(select(length > 0))')
+    fi
+
+    jq -n \
+      --arg command "info" \
+      --arg domain "${DOMAIN:-}" \
+      --arg binary "${SBX_BIN}" \
+      --arg config "${SBX_CONFIG_PATH}" \
+      --arg uuid "${UUID:-}" \
+      --arg public_key "${PUBLIC_KEY:-}" \
+      --arg short_id "${SHORT_ID:-}" \
+      --arg sni "${SNI}" \
+      --arg reality_port "${REALITY_PORT}" \
+      --arg uri_real "${uri_real}" \
+      --arg ws_port "${WS_PORT}" \
+      --arg uri_ws "${uri_ws}" \
+      --arg hy2_port "${HY2_PORT}" \
+      --arg hy2_pass "${HY2_PASS}" \
+      --arg uri_hy2 "${uri_hy2}" \
+      --arg cert_fullchain "${CERT_FULLCHAIN:-}" \
+      --arg cert_key "${CERT_KEY:-}" \
+      --argjson ws_enabled "${has_ws}" \
+      --argjson hy2_enabled "${has_hy2}" \
+      --argjson warnings "${warnings_json}" \
+      '{
+        command: $command,
+        domain: (if $domain == "" then null else $domain end),
+        binary: $binary,
+        config: $config,
+        warnings: $warnings,
+        protocols: {
+          reality: {
+            enabled: true,
+            port: ($reality_port | tonumber? // null),
+            uuid: (if $uuid == "" then null else $uuid end),
+            public_key: (if $public_key == "" then null else $public_key end),
+            short_id: (if $short_id == "" then null else $short_id end),
+            sni: (if $sni == "" then null else $sni end),
+            uri: $uri_real
+          },
+          ws_tls: {
+            enabled: $ws_enabled,
+            port: ($ws_port | tonumber? // null),
+            certificate: (if $cert_fullchain == "" then null else $cert_fullchain end),
+            uri: (if $ws_enabled then $uri_ws else null end)
+          },
+          hysteria2: {
+            enabled: $hy2_enabled,
+            port: ($hy2_port | tonumber? // null),
+            password: (if $hy2_enabled and $hy2_pass != "" then $hy2_pass else null end),
+            uri: (if $hy2_enabled then $uri_hy2 else null end)
+          }
+        }
+      }'
+}
+
+output_backup_list_json() {
+    local backup_dir="${BACKUP_DIR:-/var/backups/sbx}"
+    local file_lines=''
+
+    if [[ ! -d "${backup_dir}" ]]; then
+        jq -n --arg command "backup list" '{command: $command, count: 0, backups: []}'
+        return 0
+    fi
+
+    while IFS= read -r backup_file; do
+        local filename size encrypted mtime
+        filename=$(basename "${backup_file}")
+        size=$(stat -c%s "${backup_file}" 2>/dev/null || stat -f%z "${backup_file}" 2>/dev/null || echo "0")
+        if command -v get_file_mtime >/dev/null 2>&1; then
+            mtime=$(get_file_mtime "${backup_file}" 2>/dev/null || echo "")
+        else
+            mtime=$(stat -c %y "${backup_file}" 2>/dev/null | cut -d' ' -f1,2 | cut -d'.' -f1 \
+                || stat -f %Sm "${backup_file}" 2>/dev/null \
+                || echo "")
+        fi
+        encrypted="false"
+        [[ "${filename}" =~ \.enc$ ]] && encrypted="true"
+        file_lines+="${filename}"$'\t'"${backup_file}"$'\t'"${size}"$'\t'"${encrypted}"$'\t'"${mtime}"$'\n'
+    done < <(find "${backup_dir}" -name "sbx-backup-*.tar.gz*" -type f 2>/dev/null | sort -r)
+
+    if [[ -z "${file_lines}" ]]; then
+        jq -n --arg command "backup list" '{command: $command, count: 0, backups: []}'
+        return 0
+    fi
+
+    printf '%s' "${file_lines}" | jq -R -s '
+      split("\n")
+      | map(select(length > 0))
+      | map(
+          capture("^(?<name>[^\t]+)\t(?<path>[^\t]+)\t(?<size>[^\t]+)\t(?<encrypted>[^\t]+)\t(?<mtime>.*)$")
+          | {
+              name: .name,
+              path: .path,
+              size_bytes: (.size | tonumber? // 0),
+              encrypted: (.encrypted == "true"),
+              modified_at: (if .mtime == "" then null else .mtime end)
+            }
+        ) as $backups
+      | {
+          command: "backup list",
+          count: ($backups | length),
+          backups: $backups
+        }'
+}
+
+require_jq_for_json
+
 case "${1:-}" in
     status)
-        echo -e "${B}=== Service Status ===${N}"
-        echo "[sing-box]"
-        systemctl is-active --quiet sing-box && echo -e "Status: ${G}Running${N}" || echo -e "Status: ${R}Stopped${N}"
-        echo "PID: $(systemctl show -p MainPID --value sing-box)"
-        echo
-        # Use || true to ensure status command always returns success
-        # (systemctl status returns 3 for inactive services)
-        systemctl status sing-box --no-pager | head -10 || true
+        if [[ "${JSON_OUTPUT}" == "1" ]]; then
+            output_status_json
+        else
+            echo -e "${B}=== Service Status ===${N}"
+            echo "[sing-box]"
+            systemctl is-active --quiet sing-box && echo -e "Status: ${G}Running${N}" || echo -e "Status: ${R}Stopped${N}"
+            echo "PID: $(systemctl show -p MainPID --value sing-box)"
+            echo
+            # Use || true to ensure status command always returns success
+            # (systemctl status returns 3 for inactive services)
+            systemctl status sing-box --no-pager | head -10 || true
+        fi
         ;;
 
     info|show)
+        if [[ "${JSON_OUTPUT}" == "1" ]]; then
+            output_info_json
+            exit 0
+        fi
+
         ensure_client_info_loaded
         show_sbx_logo
 
@@ -345,7 +847,11 @@ case "${1:-}" in
                 backup_create "${encrypt_flag}"
                 ;;
             list)
-                backup_list
+                if [[ "${JSON_OUTPUT}" == "1" ]]; then
+                    output_backup_list_json
+                else
+                    backup_list
+                fi
                 ;;
             restore)
                 [[ -n "${3:-}" ]] || {
@@ -447,10 +953,18 @@ case "${1:-}" in
         ;;
 
     check)
-        echo -e "${CYAN}Checking configuration...${N}"
-        /usr/local/bin/sing-box check -c /etc/sing-box/config.json && \
-            echo -e "${G}✓ Configuration valid${N}" || \
-            echo -e "${R}✗ Configuration invalid${N}"
+        if [[ "${JSON_OUTPUT}" == "1" ]]; then
+            output_check_json
+        else
+            echo -e "${CYAN}Checking configuration...${N}"
+            "${SBX_BIN}" check -c "${SBX_CONFIG_PATH}" && \
+                echo -e "${G}✓ Configuration valid${N}" || \
+                echo -e "${R}✗ Configuration invalid${N}"
+        fi
+        ;;
+
+    health)
+        run_health_check
         ;;
 
     uninstall|remove)

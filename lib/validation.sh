@@ -35,6 +35,20 @@ source "${_LIB_DIR}/tools.sh"
 # MD5 hash constant for empty input (indicates openssl extraction failure)
 readonly EMPTY_MD5_HASH="d41d8cd98f00b204e9800998ecf8427e"
 
+# Emit structured validation/config failures when available.
+_validation_die() {
+  local code="$1"
+  local reason="$2"
+  local resolution="${3:-}"
+  local example="${4:-}"
+
+  if declare -f die_with_code >/dev/null 2>&1; then
+    die_with_code "${code}" "${reason}" "${resolution}" "${example}"
+  fi
+
+  die "${reason}"
+}
+
 #==============================================================================
 # Input Sanitization
 #==============================================================================
@@ -246,7 +260,9 @@ validate_env_vars() {
     elif validate_domain "${DOMAIN}"; then
       msg "Using domain mode: ${DOMAIN}"
     else
-      die "Invalid DOMAIN format: ${DOMAIN}"
+      _validation_die "SBX-CONFIG-001" "Invalid DOMAIN format: ${DOMAIN}" \
+        "Use a valid public domain name or public IP address." \
+        "DOMAIN=example.com bash install.sh"
     fi
   fi
 
@@ -259,8 +275,11 @@ validate_env_vars() {
           export CF_API_TOKEN="${CF_Token}"
           warn "CF_Token is deprecated, use CF_API_TOKEN instead"
         fi
-        [[ -n "${CF_API_TOKEN:-}" ]] || die "CF_API_TOKEN required for Cloudflare DNS-01 challenge"
-        validate_cf_api_token "${CF_API_TOKEN}" || die "Invalid CF_API_TOKEN format (must be ${CF_API_TOKEN_MIN_LENGTH}-${CF_API_TOKEN_MAX_LENGTH} alphanumeric characters)"
+        [[ -n "${CF_API_TOKEN:-}" ]] || _validation_die "SBX-CERT-001" "CF_API_TOKEN required for Cloudflare DNS-01 challenge" \
+          "Set a valid Cloudflare API token before using CERT_MODE=cf_dns." \
+          "export CF_API_TOKEN=your_token_here"
+        validate_cf_api_token "${CF_API_TOKEN}" || _validation_die "SBX-CERT-004" "Invalid CF_API_TOKEN format (must be ${CF_API_TOKEN_MIN_LENGTH}-${CF_API_TOKEN_MAX_LENGTH} alphanumeric characters)" \
+          "Use a token containing only letters, numbers, underscores, or dashes."
         ;;
       acme)
         # No additional validation needed for HTTP-01 challenge (sing-box native ACME)
@@ -271,7 +290,8 @@ validate_env_vars() {
         export CERT_MODE="acme"
         ;;
       *)
-        die "Invalid CERT_MODE: ${CERT_MODE} (must be acme, cf_dns, or manual via CERT_FULLCHAIN/CERT_KEY)"
+        _validation_die "SBX-CERT-005" "Invalid CERT_MODE: ${CERT_MODE} (must be acme, cf_dns, or manual via CERT_FULLCHAIN/CERT_KEY)" \
+          "Use CERT_MODE=acme or CERT_MODE=cf_dns, or provide CERT_FULLCHAIN/CERT_KEY."
         ;;
     esac
   fi
@@ -279,29 +299,35 @@ validate_env_vars() {
   # Validate certificate files if provided
   if [[ -n "${CERT_FULLCHAIN}" || -n "${CERT_KEY}" ]]; then
     [[ -n "${CERT_FULLCHAIN}" && -n "${CERT_KEY}" ]] \
-      || die "Both CERT_FULLCHAIN and CERT_KEY must be specified together"
+      || _validation_die "SBX-CERT-006" "Both CERT_FULLCHAIN and CERT_KEY must be specified together" \
+        "Provide both certificate and private key paths."
 
     validate_cert_files "${CERT_FULLCHAIN}" "${CERT_KEY}" \
-      || die "Certificate file validation failed"
+      || _validation_die "SBX-CERT-002" "Certificate file validation failed" \
+        "Ensure certificate/key files are valid and match."
   fi
 
   # Validate port numbers if custom values provided
   if [[ -n "${REALITY_PORT}" && "${REALITY_PORT}" != "${REALITY_PORT_DEFAULT}" ]]; then
-    validate_port "${REALITY_PORT}" || die "Invalid REALITY_PORT: ${REALITY_PORT}"
+    validate_port "${REALITY_PORT}" || _validation_die "SBX-CONFIG-020" "Invalid REALITY_PORT: ${REALITY_PORT}" \
+      "Use a numeric port between 1 and 65535."
   fi
 
   if [[ -n "${WS_PORT}" && "${WS_PORT}" != "${WS_PORT_DEFAULT}" ]]; then
-    validate_port "${WS_PORT}" || die "Invalid WS_PORT: ${WS_PORT}"
+    validate_port "${WS_PORT}" || _validation_die "SBX-CONFIG-021" "Invalid WS_PORT: ${WS_PORT}" \
+      "Use a numeric port between 1 and 65535."
   fi
 
   if [[ -n "${HY2_PORT}" && "${HY2_PORT}" != "${HY2_PORT_DEFAULT}" ]]; then
-    validate_port "${HY2_PORT}" || die "Invalid HY2_PORT: ${HY2_PORT}"
+    validate_port "${HY2_PORT}" || _validation_die "SBX-CONFIG-022" "Invalid HY2_PORT: ${HY2_PORT}" \
+      "Use a numeric port between 1 and 65535."
   fi
 
   # Validate version string if provided
   if [[ -n "${SINGBOX_VERSION}" ]]; then
     [[ "${SINGBOX_VERSION}" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]] \
-      || die "Invalid SINGBOX_VERSION format: ${SINGBOX_VERSION}"
+      || _validation_die "SBX-CONFIG-023" "Invalid SINGBOX_VERSION format: ${SINGBOX_VERSION}" \
+        "Use semantic version format like 1.12.0 or v1.12.0."
   fi
 
   return 0
@@ -377,6 +403,97 @@ validate_reality_sni() {
   fi
 
   return 0
+}
+
+# Validate SNI domain reachability and TLS capability for Reality handshake.
+# Checks:
+#   1) Domain format via validate_reality_sni
+#   2) TLS 1.3 handshake support on :443
+#   3) HTTP/2 ALPN negotiation (h2) capability
+# Args:
+#   $1 - SNI domain
+#   $2 - timeout seconds (optional, default: 5)
+validate_sni_domain() {
+  local domain="${1:-}"
+  local timeout_sec="${2:-5}"
+  local output=''
+  local rc=0
+
+  validate_reality_sni "${domain}" || return 1
+
+  if ! command -v openssl >/dev/null 2>&1; then
+    err "Cannot validate SNI domain '${domain}': openssl not found"
+    return 1
+  fi
+
+  if command -v timeout >/dev/null 2>&1; then
+    output=$(timeout "${timeout_sec}" \
+      openssl s_client -connect "${domain}:443" -servername "${domain}" \
+      -tls1_3 -alpn "h2,http/1.1" </dev/null 2>&1) || rc=$?
+  else
+    output=$(openssl s_client -connect "${domain}:443" -servername "${domain}" \
+      -tls1_3 -alpn "h2,http/1.1" </dev/null 2>&1) || rc=$?
+  fi
+
+  if [[ ${rc} -ne 0 ]]; then
+    warn "SNI probe failed for ${domain} (exit ${rc})"
+    return 1
+  fi
+
+  if ! echo "${output}" | grep -qi "TLSv1.3"; then
+    warn "SNI domain ${domain} does not appear to support TLS 1.3"
+    return 1
+  fi
+
+  if ! echo "${output}" | grep -Eqi "ALPN protocol:[[:space:]]*h2|ALPN protocols?:.*\\<h2\\>"; then
+    warn "SNI domain ${domain} does not advertise ALPN h2"
+    return 1
+  fi
+
+  return 0
+}
+
+# Select a working Reality SNI domain from preferred + fallback list.
+# Args:
+#   $1 - preferred domain
+#   $2 - fallback domains as comma-separated list (optional)
+#   $3 - timeout seconds for each probe (optional, default: 5)
+# Output:
+#   Prints selected domain to stdout
+select_reality_sni_domain() {
+  local preferred="${1:-${SNI_DEFAULT:-www.microsoft.com}}"
+  local fallback_csv="${2:-www.apple.com,www.amazon.com}"
+  local timeout_sec="${3:-${SNI_VALIDATION_TIMEOUT_SEC:-5}}"
+  local candidate=''
+  local -a candidates=()
+  local -a fallbacks=()
+  declare -A seen=()
+
+  if [[ -n "${preferred}" ]]; then
+    candidates+=("${preferred}")
+  fi
+
+  if [[ -n "${fallback_csv}" ]]; then
+    IFS=',' read -r -a fallbacks <<< "${fallback_csv}"
+    for candidate in "${fallbacks[@]}"; do
+      candidate="${candidate#"${candidate%%[![:space:]]*}"}"
+      candidate="${candidate%"${candidate##*[![:space:]]}"}"
+      [[ -n "${candidate}" ]] && candidates+=("${candidate}")
+    done
+  fi
+
+  for candidate in "${candidates[@]}"; do
+    [[ -n "${candidate}" ]] || continue
+    [[ -n "${seen[${candidate}]:-}" ]] && continue
+    seen["${candidate}"]=1
+
+    if validate_sni_domain "${candidate}" "${timeout_sec}"; then
+      echo "${candidate}"
+      return 0
+    fi
+  done
+
+  return 1
 }
 
 # Validate Reality keypair (X25519 private and public keys)
@@ -868,5 +985,6 @@ export -f sanitize_input validate_port validate_domain validate_cert_files valid
 export -f validate_short_id validate_reality_sni validate_menu_choice validate_yes_no
 export -f validate_singbox_config validate_json_syntax validate_transport_security_pairing
 export -f validate_cf_api_token
+export -f validate_sni_domain select_reality_sni_domain
 export -f require require_all require_valid
 export -f validate_file_integrity validate_files_integrity

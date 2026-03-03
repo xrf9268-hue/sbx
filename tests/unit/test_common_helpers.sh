@@ -144,6 +144,21 @@ test_safe_rm_temp() {
 }
 
 #==============================================================================
+# Test: File Locking Helpers
+#==============================================================================
+
+test_with_flock_function() {
+    echo ""
+    echo "Testing with_flock..."
+
+    if declare -f with_flock >/dev/null 2>&1; then
+        test_result "with_flock function exists" "pass"
+    else
+        test_result "with_flock function exists" "fail"
+    fi
+}
+
+#==============================================================================
 # Test: Die Function
 #==============================================================================
 
@@ -174,6 +189,7 @@ test_get_file_mtime
 test_create_temp_file
 test_create_temp_dir
 test_safe_rm_temp
+test_with_flock_function
 test_die_function
 
 # Print summary

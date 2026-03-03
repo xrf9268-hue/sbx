@@ -93,6 +93,97 @@ test_validate_reality_sni_long_domain() {
     validate_reality_sni "subdomain.example.com" > /dev/null 2>&1
 }
 
+setup_sni_probe_mocks() {
+    local mock_dir="$1"
+    mkdir -p "${mock_dir}"
+
+cat > "${mock_dir}/openssl" <<'EOF'
+#!/usr/bin/env bash
+if [[ "$1" == "s_client" ]]; then
+  connect_target=''
+  while [[ $# -gt 0 ]]; do
+    if [[ "$1" == "-connect" && -n "${2:-}" ]]; then
+      connect_target="${2}"
+      break
+    fi
+    shift
+  done
+
+  if [[ -n "${MOCK_FAIL_DOMAIN:-}" && "${connect_target}" == "${MOCK_FAIL_DOMAIN}:443" ]]; then
+    exit 1
+  fi
+
+  if [[ "${MOCK_OPENSSL_EXIT:-0}" != "0" ]]; then
+    exit "${MOCK_OPENSSL_EXIT}"
+  fi
+  [[ "${MOCK_TLS13:-1}" == "1" ]] && echo "Protocol  : TLSv1.3"
+  [[ "${MOCK_ALPN_H2:-1}" == "1" ]] && echo "ALPN protocol: h2"
+  exit 0
+fi
+exit 0
+EOF
+
+    cat > "${mock_dir}/timeout" <<'EOF'
+#!/usr/bin/env bash
+if [[ "$1" =~ ^[0-9]+$ ]]; then
+  shift
+fi
+"$@"
+EOF
+
+    chmod +x "${mock_dir}/openssl" "${mock_dir}/timeout"
+}
+
+test_validate_sni_domain_probe_success() {
+    local mock_dir=''
+    mock_dir=$(mktemp -d /tmp/sbx-sni-probe.XXXXXX)
+    setup_sni_probe_mocks "${mock_dir}"
+
+    local old_path="${PATH}"
+    export PATH="${mock_dir}:${PATH}"
+    export MOCK_TLS13=1 MOCK_ALPN_H2=1 MOCK_OPENSSL_EXIT=0
+    validate_sni_domain "www.microsoft.com" 1 > /dev/null 2>&1
+    local rc=$?
+    export PATH="${old_path}"
+    rm -rf "${mock_dir}"
+    [[ ${rc} -eq 0 ]]
+}
+
+test_validate_sni_domain_probe_tls13_missing_fails() {
+    local mock_dir=''
+    mock_dir=$(mktemp -d /tmp/sbx-sni-probe.XXXXXX)
+    setup_sni_probe_mocks "${mock_dir}"
+
+    local old_path="${PATH}"
+    export PATH="${mock_dir}:${PATH}"
+    export MOCK_TLS13=0 MOCK_ALPN_H2=1 MOCK_OPENSSL_EXIT=0
+    ! validate_sni_domain "www.microsoft.com" 1 > /dev/null 2>&1
+    local rc=$?
+    export PATH="${old_path}"
+    rm -rf "${mock_dir}"
+    [[ ${rc} -eq 0 ]]
+}
+
+test_select_reality_sni_domain_fallback() {
+    local mock_dir=''
+    mock_dir=$(mktemp -d /tmp/sbx-sni-probe.XXXXXX)
+    setup_sni_probe_mocks "${mock_dir}"
+
+    local old_path="${PATH}"
+    export PATH="${mock_dir}:${PATH}"
+    export MOCK_TLS13=1 MOCK_ALPN_H2=1 MOCK_OPENSSL_EXIT=0
+    export MOCK_FAIL_DOMAIN="www.microsoft.com"
+
+    # shellcheck disable=SC2312
+    local selected
+    selected=$(select_reality_sni_domain "www.microsoft.com" "www.apple.com,www.amazon.com" 1)
+    local rc=$?
+    export PATH="${old_path}"
+    rm -rf "${mock_dir}"
+
+    [[ ${rc} -eq 0 ]] && [[ "${selected}" == "www.apple.com" ]]
+}
+
 #==============================================================================
 # Tests for validate_reality_keypair()
 #==============================================================================
@@ -228,6 +319,9 @@ run_test "Empty SNI fails" test_validate_reality_sni_empty_fails
 run_test "Consecutive dots fails" test_validate_reality_sni_consecutive_dots_fails
 run_test "Hyphen start fails" test_validate_reality_sni_hyphen_start_fails
 run_test "Long domain accepted" test_validate_reality_sni_long_domain
+run_test "SNI probe success with TLS1.3+h2" test_validate_sni_domain_probe_success
+run_test "SNI probe fails without TLS1.3" test_validate_sni_domain_probe_tls13_missing_fails
+run_test "SNI selector supports fallback list" test_select_reality_sni_domain_fallback
 
 echo ""
 echo "Testing validate_reality_keypair..."

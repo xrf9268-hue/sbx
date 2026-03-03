@@ -13,6 +13,37 @@
 
 set -euo pipefail
 
+# Error context handler for unexpected exits under strict mode.
+# Provides actionable line/function/command information for issue reports.
+_error_handler() {
+  local exit_code=$?
+
+  # Recursion guard: avoid trap loops if handler itself hits an error.
+  [[ "${_SBX_IN_ERROR_HANDLER:-0}" == "1" ]] && return "${exit_code}"
+  _SBX_IN_ERROR_HANDLER=1
+  export _SBX_ERROR_CONTEXT_EMITTED=1
+
+  local line_no="${BASH_LINENO[0]:-unknown}"
+  local cmd="${BASH_COMMAND:-unknown}"
+  local func="${FUNCNAME[1]:-main}"
+  local src="${BASH_SOURCE[1]:-${BASH_SOURCE[0]:-install.sh}}"
+
+  echo "" >&2
+  echo "[ERROR] Command failed (exit ${exit_code})" >&2
+  echo "  Location: ${src}:${line_no} in ${func}()" >&2
+  echo "  Command:  ${cmd}" >&2
+  echo "  Report:   https://github.com/xrf9268-hue/sbx/issues" >&2
+
+  _SBX_IN_ERROR_HANDLER=0
+  return "${exit_code}"
+}
+
+# Enable ERR trap only when running as a script (not when sourced by tests).
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  set -o errtrace
+  trap '_error_handler' ERR
+fi
+
 # Track whether the user explicitly set WS_PORT (before lib/common.sh applies defaults).
 # This lets CF_MODE reliably switch the default WS port to 443 while still respecting overrides.
 WS_PORT_USER_SPECIFIED=0
@@ -114,11 +145,13 @@ sbx-lite sing-box installer
 Usage:
   bash install.sh                  Interactive install
   AUTO_INSTALL=1 bash install.sh   Non-interactive install
+  bash install.sh --dry-run        Preview actions without making changes
   bash install.sh uninstall        Uninstall
   bash install.sh --help           Show this help
 
 Environment (common):
   DOMAIN=example.com               Configure domain/certs if supported
+  SNI_DOMAIN=www.microsoft.com     Override Reality handshake SNI domain
   DEBUG=1                          Enable debug output
 EOF
 }
@@ -646,6 +679,7 @@ _load_modules
 : "${SB_CONF:=${SB_CONF_DIR}/config.json}"
 : "${SB_SVC:=/etc/systemd/system/sing-box.service}"
 : "${CLIENT_INFO:=${SB_CONF_DIR}/client-info.txt}"
+: "${STATE_FILE:=${SB_CONF_DIR}/state.json}"
 : "${REALITY_PORT:=443}"
 : "${REALITY_PORT_FALLBACK:=24443}"
 : "${WS_PORT:=8444}"
@@ -672,7 +706,9 @@ detect_arch() {
     x86_64 | amd64) detected_arch="amd64" ;;
     aarch64 | arm64) detected_arch="arm64" ;;
     armv7l) detected_arch="armv7" ;;
-    *) die "Unsupported architecture: ${arch}" ;;
+    *) die_with_code "SBX-SYSTEM-010" "Unsupported architecture: ${arch}." \
+      "Use a supported architecture: amd64, arm64, or armv7." \
+      "uname -m" ;;
   esac
 
   msg "Detected system architecture: ${detected_arch} (uname: ${arch})"
@@ -838,7 +874,8 @@ check_existing_installation() {
     set -e
 
     if [[ ${prompt_result} -ne 0 ]]; then
-      die "Invalid choice. Exiting."
+      die_with_code "SBX-UI-010" "Invalid menu choice." \
+        "Select a number shown in the menu and retry installation."
     fi
 
     case "${choice}" in
@@ -881,7 +918,8 @@ check_existing_installation() {
         exit 0
         ;;
       *) # Invalid choice (should not happen due to earlier validation)
-        die "Invalid choice. Exiting."
+        die_with_code "SBX-UI-011" "Invalid menu choice." \
+          "Select a number shown in the menu and retry installation."
         ;;
     esac
   fi
@@ -920,7 +958,9 @@ ensure_tools() {
     elif have yum; then
       yum install -y "${missing[@]}"
     else
-      die "Cannot install missing tools automatically. Please install: ${missing[*]}"
+      die_with_code "SBX-SYSTEM-011" "Cannot install missing tools automatically: ${missing[*]}." \
+        "Install required tools manually, then rerun installer." \
+        "apt install -y ${missing[*]}"
     fi
   fi
 
@@ -948,13 +988,18 @@ download_singbox() {
   local arch libc_suffix tmp api url="" tag raw
   arch="$(detect_arch)"
   libc_suffix="$(detect_libc)" # "-musl" or ""
-  tmp=$(create_temp_dir "download") || die "Failed to create temporary directory"
+  tmp=$(create_temp_dir "download") || die_with_code "SBX-DOWNLOAD-000" \
+    "Failed to create temporary directory for download workflow." \
+    "Ensure /tmp has free space and is writable." \
+    "df -h /tmp && ls -ld /tmp"
 
   # Resolve version using modular version resolver
   # Supports: stable (default), latest, vX.Y.Z, X.Y.Z
   tag=$(resolve_singbox_version) || {
     rm -rf "${tmp}"
-    die "Failed to resolve sing-box version"
+    die_with_code "SBX-DOWNLOAD-001" "Failed to resolve sing-box version." \
+      "Check network connectivity and verify GitHub API access." \
+      "curl -I https://api.github.com/repos/SagerNet/sing-box/releases"
   }
 
   # Get release information for the resolved version
@@ -963,7 +1008,9 @@ download_singbox() {
   msg "Fetching sing-box ${tag} release info for ${arch}${libc_suffix}..."
   raw=$(safe_http_get "${api}") || {
     rm -rf "${tmp}"
-    die "Failed to fetch release information from GitHub"
+    die_with_code "SBX-DOWNLOAD-002" "Failed to fetch release information from GitHub." \
+      "Check outbound HTTPS access and retry." \
+      "curl -I ${api}"
   }
 
   # Extract download URL (try libc-specific first, then generic)
@@ -985,14 +1032,18 @@ download_singbox() {
 
   if [[ -z "${url}" ]]; then
     rm -rf "${tmp}"
-    die "Failed to find download URL for architecture: ${arch}"
+    die_with_code "SBX-DOWNLOAD-003" "No compatible release asset found for architecture: ${arch}." \
+      "Use a supported architecture or pin a compatible SINGBOX_VERSION." \
+      "SINGBOX_VERSION=stable bash install.sh"
   fi
 
   msg "Downloading sing-box ${tag}..."
   local pkg="${tmp}/sb.tgz"
   safe_http_get "${url}" "${pkg}" || {
     rm -rf "${tmp}"
-    die "Failed to download sing-box package"
+    die_with_code "SBX-DOWNLOAD-004" "Failed to download sing-box package." \
+      "Check network route, DNS, and TLS interception settings." \
+      "curl -I ${url}"
   }
 
   # ==================== SHA256 Checksum Verification ====================
@@ -1003,7 +1054,9 @@ download_singbox() {
     local platform="linux-${arch}${libc_suffix}"
     if ! verify_singbox_binary "${pkg}" "${tag}" "${platform}"; then
       rm -rf "${tmp}"
-      die "Binary verification failed, aborting installation"
+      die_with_code "SBX-DOWNLOAD-005" "Binary checksum verification failed." \
+        "Re-download package from official source and do not skip checksum in production." \
+        "SKIP_CHECKSUM=0 bash install.sh"
     fi
   else
     warn "⚠ SKIP_CHECKSUM is set, bypassing SHA256 verification"
@@ -1014,7 +1067,9 @@ download_singbox() {
   msg "Extracting package..."
   tar -xzf "${pkg}" -C "${tmp}" || {
     rm -rf "${tmp}"
-    die "Failed to extract package"
+    die_with_code "SBX-DOWNLOAD-006" "Failed to extract downloaded package." \
+      "Verify archive integrity and available disk space." \
+      "tar -tzf ${pkg} | head"
   }
 
   # Find and install binary
@@ -1023,7 +1078,9 @@ download_singbox() {
 
   if [[ -z "${extracted_bin}" ]]; then
     rm -rf "${tmp}"
-    die "sing-box binary not found in package"
+    die_with_code "SBX-DOWNLOAD-007" "sing-box binary not found in extracted package." \
+      "Release asset may be incompatible or corrupted." \
+      "find ${tmp} -name sing-box -type f"
   fi
 
   msg "Installing sing-box binary..."
@@ -1041,7 +1098,9 @@ download_singbox() {
     rm -rf "${tmp}"
     # Try to restart service if we stopped it
     [[ "${service_was_running}" -eq 1 ]] && start_service_with_retry 2> /dev/null
-    die "Failed to install sing-box binary"
+    die_with_code "SBX-DOWNLOAD-008" "Failed to install sing-box binary to target path." \
+      "Check filesystem permissions and mount flags for /usr/local/bin." \
+      "ls -ld /usr/local/bin && id"
   }
   chmod +x "${SB_BIN}"
 
@@ -1059,7 +1118,9 @@ _configure_server_address() {
   if [[ -z "${DOMAIN:-}" ]]; then
     if [[ "${AUTO_INSTALL:-0}" == "1" ]]; then
       msg "Auto-install mode: detecting server IP..."
-      DOMAIN=$(get_public_ip) || die "Failed to detect server IP"
+      DOMAIN=$(get_public_ip) || die_with_code "SBX-NETWORK-002" "Failed to detect server IP." \
+        "Check outbound connectivity or set DOMAIN manually." \
+        "DOMAIN=example.com bash install.sh"
       success "Detected server IP: ${DOMAIN}"
       export REALITY_ONLY_MODE=1
     else
@@ -1081,7 +1142,9 @@ _configure_server_address() {
 
       if [[ -z "${input}" ]]; then
         msg "Auto-detecting server IP..."
-        DOMAIN=$(get_public_ip) || die "Failed to detect server IP"
+        DOMAIN=$(get_public_ip) || die_with_code "SBX-NETWORK-002" "Failed to detect server IP." \
+          "Check outbound connectivity or provide DOMAIN/IP manually." \
+          "DOMAIN=example.com bash install.sh"
         success "Detected server IP: ${DOMAIN}"
         export REALITY_ONLY_MODE=1
       elif validate_ip_address "${input}"; then
@@ -1093,7 +1156,9 @@ _configure_server_address() {
         success "Using domain: ${DOMAIN}"
         export REALITY_ONLY_MODE=0
       else
-        die "Invalid domain or IP address: ${input}"
+        die_with_code "SBX-CONFIG-001" "Invalid domain or IP address: ${input}" \
+          "Provide a valid public domain (example.com) or public IP address." \
+          "DOMAIN=example.com bash install.sh"
       fi
     fi
   else
@@ -1111,7 +1176,11 @@ _configure_cloudflare_mode() {
   export CF_MODE="${CF_MODE:-0}"
 
   if [[ "${CF_MODE}" == "1" ]]; then
-    [[ "${REALITY_ONLY_MODE}" == "1" ]] && die "CF_MODE requires a domain name, not an IP address"
+    if [[ "${REALITY_ONLY_MODE}" == "1" ]]; then
+      die_with_code "SBX-CONFIG-002" "CF_MODE requires a domain name, not an IP address." \
+        "Set DOMAIN to a valid DNS name when enabling CF_MODE." \
+        "DOMAIN=example.com CF_MODE=1 bash install.sh"
+    fi
 
     ENABLE_REALITY="${ENABLE_REALITY:-0}"
     ENABLE_WS="${ENABLE_WS:-1}"
@@ -1146,15 +1215,61 @@ _configure_cloudflare_mode() {
 _validate_protocol_config() {
   if [[ "${REALITY_ONLY_MODE:-0}" == "1" ]]; then
     if [[ "${ENABLE_REALITY}" != "1" ]]; then
-      die "Reality protocol must be enabled in IP-only mode (no domain provided)"
+      die_with_code "SBX-CONFIG-003" "Reality must stay enabled in IP-only mode." \
+        "Set ENABLE_REALITY=1 when DOMAIN is an IP or omitted." \
+        "ENABLE_REALITY=1 bash install.sh"
     fi
     return 0
   fi
 
   if [[ "${ENABLE_REALITY}" != "1" && "${ENABLE_WS}" != "1" && "${ENABLE_HY2}" != "1" ]]; then
-    die "At least one protocol must be enabled. Set ENABLE_REALITY=1, ENABLE_WS=1, or ENABLE_HY2=1"
+    die_with_code "SBX-CONFIG-004" "All protocols are disabled." \
+      "Enable at least one of ENABLE_REALITY, ENABLE_WS, or ENABLE_HY2." \
+      "ENABLE_REALITY=1 bash install.sh"
   fi
 
+  return 0
+}
+
+# Configure Reality SNI domain with active validation and fallback probing.
+# Sets: SNI
+_configure_reality_sni() {
+  local explicit_sni="${SNI_DOMAIN:-${SNI:-}}"
+  local preferred_sni="${explicit_sni:-${SNI_DEFAULT}}"
+  local fallback_sni_csv="${SNI_FALLBACK_DOMAINS:-www.apple.com,www.amazon.com}"
+  local timeout_sec="${SNI_VALIDATION_TIMEOUT_SEC:-5}"
+  local selected_sni=''
+
+  # Keep default when Reality protocol is disabled.
+  if [[ "${ENABLE_REALITY}" != "1" ]]; then
+    export SNI="${preferred_sni}"
+    return 0
+  fi
+
+  if ! command -v select_reality_sni_domain >/dev/null 2>&1; then
+    warn "SNI probe helper unavailable, using ${preferred_sni}"
+    export SNI="${preferred_sni}"
+    return 0
+  fi
+
+  if selected_sni=$(select_reality_sni_domain "${preferred_sni}" "${fallback_sni_csv}" "${timeout_sec}"); then
+    export SNI="${selected_sni}"
+    if [[ "${selected_sni}" != "${preferred_sni}" ]]; then
+      warn "Reality SNI fallback selected: ${selected_sni} (preferred ${preferred_sni} failed)"
+    else
+      success "  ✓ Reality SNI: ${selected_sni}"
+    fi
+    return 0
+  fi
+
+  if [[ -n "${explicit_sni}" ]]; then
+    die_with_code "SBX-CONFIG-005" "Configured SNI domain failed validation: ${explicit_sni}." \
+      "Provide a reachable TLS1.3-capable SNI domain." \
+      "SNI_DOMAIN=www.microsoft.com bash install.sh"
+  fi
+
+  warn "All SNI probes failed, using default ${preferred_sni}"
+  export SNI="${preferred_sni}"
   return 0
 }
 
@@ -1166,14 +1281,17 @@ _generate_credentials() {
   success "  ✓ UUID generated"
 
   local keypair=''
-  keypair=$(generate_reality_keypair) || die "Failed to generate Reality keypair"
+  keypair=$(generate_reality_keypair) || die_with_code "SBX-CONFIG-006" "Failed to generate Reality keypair." \
+    "Ensure openssl is available and retry." \
+    "openssl rand -hex 32"
   export PRIV PUB
   read -r PRIV PUB <<< "${keypair}"
   success "  ✓ Reality keypair generated"
 
   export SID
   SID=$(openssl rand -hex 4)
-  validate_short_id "${SID}" || die "Generated invalid short ID: ${SID}"
+  validate_short_id "${SID}" || die_with_code "SBX-CONFIG-007" "Generated invalid short ID: ${SID}." \
+    "Regenerate short ID with 1-8 hex chars."
   success "  ✓ Short ID generated: ${SID}"
 }
 
@@ -1184,7 +1302,9 @@ _allocate_ports() {
 
   if [[ "${ENABLE_REALITY}" == "1" ]]; then
     export REALITY_PORT_CHOSEN
-    REALITY_PORT_CHOSEN=$(allocate_port "${REALITY_PORT}" "${REALITY_PORT_FALLBACK}" "Reality") || die "Failed to allocate Reality port"
+    REALITY_PORT_CHOSEN=$(allocate_port "${REALITY_PORT}" "${REALITY_PORT_FALLBACK}" "Reality") || die_with_code "SBX-NETWORK-003" "Failed to allocate Reality port." \
+      "Free occupied ports or set REALITY_PORT to an available one." \
+      "REALITY_PORT=30443 bash install.sh"
     success "  ✓ Reality port: ${REALITY_PORT_CHOSEN}"
   else
     export REALITY_PORT_CHOSEN=""
@@ -1194,12 +1314,16 @@ _allocate_ports() {
     export WS_PORT_CHOSEN="" HY2_PORT_CHOSEN="" HY2_PASS=""
 
     if [[ "${ENABLE_WS}" == "1" ]]; then
-      WS_PORT_CHOSEN=$(allocate_port "${WS_PORT}" "${WS_PORT_FALLBACK}" "WS-TLS") || die "Failed to allocate WS port"
+      WS_PORT_CHOSEN=$(allocate_port "${WS_PORT}" "${WS_PORT_FALLBACK}" "WS-TLS") || die_with_code "SBX-NETWORK-004" "Failed to allocate WS port." \
+        "Free occupied ports or set WS_PORT to an available one." \
+        "WS_PORT=30444 bash install.sh"
       success "  ✓ WS-TLS port: ${WS_PORT_CHOSEN}"
     fi
 
     if [[ "${ENABLE_HY2}" == "1" ]]; then
-      HY2_PORT_CHOSEN=$(allocate_port "${HY2_PORT}" "${HY2_PORT_FALLBACK}" "Hysteria2") || die "Failed to allocate Hysteria2 port"
+      HY2_PORT_CHOSEN=$(allocate_port "${HY2_PORT}" "${HY2_PORT_FALLBACK}" "Hysteria2") || die_with_code "SBX-NETWORK-005" "Failed to allocate Hysteria2 port." \
+        "Free occupied ports or set HY2_PORT to an available one." \
+        "HY2_PORT=30445 bash install.sh"
       HY2_PASS=$(generate_hex_string 16)
       success "  ✓ Hysteria2 port: ${HY2_PORT_CHOSEN}"
     fi
@@ -1214,6 +1338,7 @@ gen_materials() {
   _configure_server_address
   _configure_cloudflare_mode
   _validate_protocol_config
+  _configure_reality_sni
   _generate_credentials
   _allocate_ports
 
@@ -1232,7 +1357,7 @@ DOMAIN="${DOMAIN}"
 UUID="${UUID}"
 PUBLIC_KEY="${PUB}"
 SHORT_ID="${SID}"
-SNI="${SNI_DEFAULT}"
+SNI="${SNI:-${SNI_DEFAULT}}"
 REALITY_PORT="${REALITY_PORT_CHOSEN}"
 EOF
 
@@ -1250,6 +1375,99 @@ EOF
   success "  ✓ Client info saved to: ${CLIENT_INFO}"
 }
 
+# Save structured state for future compatibility and typed access.
+save_state_info() {
+  msg "Saving structured state..."
+
+  local state_file="${TEST_STATE_FILE:-${STATE_FILE}}"
+  local mode="multi_protocol"
+  local installed_at=''
+  local resolved_version=''
+  local server_domain=''
+  local server_ip=''
+  local ws_enabled=false
+  local hy2_enabled=false
+  local cert_path=''
+  local cert_key=''
+  local ws_port=''
+  local hy2_port=''
+  local hy2_pass=''
+
+  [[ "${REALITY_ONLY_MODE:-0}" == "1" ]] && mode="reality_only"
+  installed_at=$(date -Iseconds 2>/dev/null || date)
+  resolved_version=$(get_installed_version 2>/dev/null || echo "")
+
+  if validate_ip_address "${DOMAIN}" >/dev/null 2>&1; then
+    server_ip="${DOMAIN}"
+  else
+    server_domain="${DOMAIN}"
+  fi
+
+  if [[ "${REALITY_ONLY_MODE:-0}" != "1" && -n "${CERT_FULLCHAIN:-}" ]]; then
+    ws_enabled=true
+    hy2_enabled=true
+    cert_path="${CERT_FULLCHAIN:-}"
+    cert_key="${CERT_KEY:-}"
+    ws_port="${WS_PORT_CHOSEN:-}"
+    hy2_port="${HY2_PORT_CHOSEN:-}"
+    hy2_pass="${HY2_PASS:-}"
+  fi
+
+  jq -n \
+    --arg version "1.0" \
+    --arg installed_at "${installed_at}" \
+    --arg singbox_version "${resolved_version}" \
+    --arg mode "${mode}" \
+    --arg server_domain "${server_domain}" \
+    --arg server_ip "${server_ip}" \
+    --arg reality_uuid "${UUID}" \
+    --arg reality_public_key "${PUB}" \
+    --arg reality_short_id "${SID}" \
+    --arg reality_sni "${SNI:-${SNI_DEFAULT}}" \
+    --argjson reality_port "${REALITY_PORT_CHOSEN:-0}" \
+    --argjson ws_enabled "${ws_enabled}" \
+    --argjson ws_port "${ws_port:-0}" \
+    --arg cert_path "${cert_path}" \
+    --arg cert_key "${cert_key}" \
+    --argjson hy2_enabled "${hy2_enabled}" \
+    --argjson hy2_port "${hy2_port:-0}" \
+    --arg hy2_pass "${hy2_pass}" \
+    '{
+      version: $version,
+      installed_at: $installed_at,
+      singbox_version: (if $singbox_version == "" then null else $singbox_version end),
+      mode: $mode,
+      server: {
+        domain: (if $server_domain == "" then null else $server_domain end),
+        ip: (if $server_ip == "" then null else $server_ip end)
+      },
+      protocols: {
+        reality: {
+          enabled: true,
+          port: (if $reality_port == 0 then null else $reality_port end),
+          uuid: $reality_uuid,
+          public_key: $reality_public_key,
+          short_id: $reality_short_id,
+          sni: $reality_sni
+        },
+        ws_tls: {
+          enabled: $ws_enabled,
+          port: (if $ws_enabled and $ws_port != 0 then $ws_port else null end),
+          certificate: (if $ws_enabled and $cert_path != "" then $cert_path else null end),
+          key: (if $ws_enabled and $cert_key != "" then $cert_key else null end)
+        },
+        hysteria2: {
+          enabled: $hy2_enabled,
+          port: (if $hy2_enabled and $hy2_port != 0 then $hy2_port else null end),
+          password: (if $hy2_enabled and $hy2_pass != "" then $hy2_pass else null end)
+        }
+      }
+    }' > "${state_file}"
+
+  chmod "${SECURE_FILE_PERMISSIONS}" "${state_file}"
+  success "  ✓ State saved to: ${state_file}"
+}
+
 # Install sbx-manager script
 install_manager_script() {
   msg "Installing management script..."
@@ -1264,7 +1482,8 @@ install_manager_script() {
   if [[ -f "${manager_template}" ]]; then
     # Safely handle existing manager binary
     if [[ -e "${manager_path}" && ! -f "${manager_path}" ]]; then
-      die "${manager_path} exists but is not a regular file"
+      die_with_code "SBX-SYSTEM-020" "${manager_path} exists but is not a regular file." \
+        "Remove or rename the path before installing sbx-manager."
     fi
 
     # Safely handle existing symlink
@@ -1280,22 +1499,26 @@ install_manager_script() {
     fi
 
     # Install manager using temporary file + atomic move
-    temp_manager=$(create_temp_file "manager") || die "Failed to create temporary file"
+    temp_manager=$(create_temp_file "manager") || die_with_code "SBX-SYSTEM-021" "Failed to create temporary file for manager installation." \
+      "Check temporary directory permissions and free disk space."
     chmod 755 "${temp_manager}" # Manager needs executable permission
     cp "${manager_template}" "${temp_manager}" || {
       rm -f "${temp_manager}"
-      die "Failed to copy manager template"
+      die_with_code "SBX-SYSTEM-022" "Failed to copy manager template." \
+        "Verify installer files are intact and readable."
     }
 
     # Atomic move to final location
-    mv "${temp_manager}" "${manager_path}" || die "Failed to install manager"
+    mv "${temp_manager}" "${manager_path}" || die_with_code "SBX-SYSTEM-023" "Failed to install manager." \
+      "Check write permission for /usr/local/bin."
 
     # Create symlink safely
     ln -sf "${manager_path}" "${symlink_path}"
 
     # Safely install library modules
     if [[ -e "${lib_path}" && ! -d "${lib_path}" ]]; then
-      die "${lib_path} exists but is not a directory"
+      die_with_code "SBX-SYSTEM-024" "${lib_path} exists but is not a directory." \
+        "Remove or rename the path before installation."
     fi
 
     mkdir -p "${lib_path}"
@@ -1315,7 +1538,10 @@ install_manager_script() {
     cat > /usr/local/bin/sbx-manager << 'EOF'
 #!/bin/bash
 case "$1" in
-    info) [[ -f /etc/sing-box/client-info.txt ]] && cat /etc/sing-box/client-info.txt ;;
+    info)
+      [[ -f /etc/sing-box/state.json ]] && cat /etc/sing-box/state.json
+      [[ -f /etc/sing-box/client-info.txt ]] && cat /etc/sing-box/client-info.txt
+      ;;
     status) systemctl status sing-box ;;
     restart) systemctl restart sing-box ;;
     *) echo "Usage: sbx {info|status|restart}"; exit 1 ;;
@@ -1414,7 +1640,8 @@ print_summary() {
 
   # Reality URI (if enabled)
   if [[ "${enable_reality}" == "1" && -n "${REALITY_PORT_CHOSEN:-}" ]]; then
-    local uri_real="vless://${UUID}@${DOMAIN}:${REALITY_PORT_CHOSEN}?encryption=none&security=reality&flow=xtls-rprx-vision&sni=${SNI_DEFAULT}&pbk=${PUB}&sid=${SID}&type=tcp&fp=chrome#Reality-${DOMAIN}"
+    local reality_sni="${SNI:-${SNI_DEFAULT}}"
+    local uri_real="vless://${UUID}@${DOMAIN}:${REALITY_PORT_CHOSEN}?encryption=none&security=reality&flow=xtls-rprx-vision&sni=${reality_sni}&pbk=${PUB}&sid=${SID}&type=tcp&fp=chrome#Reality-${DOMAIN}"
     echo -e "${G}VLESS-Reality:${N}"
     echo "  ${uri_real}"
   fi
@@ -1453,6 +1680,91 @@ print_summary() {
 #==============================================================================
 # Main Installation Flow
 #==============================================================================
+
+dry_run_flow() {
+  show_logo
+
+  local mode_desc=''
+  local display_domain="${DOMAIN:-}"
+  local reality_port_preview=''
+  local ws_port_preview=''
+  local hy2_port_preview=''
+  local sni_preview="${SNI_DOMAIN:-${SNI:-${SNI_DEFAULT}}}"
+  local cert_desc=''
+  local arch_desc=''
+  local -a preview_ports=()
+
+  if [[ -z "${DOMAIN:-}" ]]; then
+    export REALITY_ONLY_MODE=1
+    mode_desc="Reality-only (no domain specified)"
+    display_domain="<auto-detect during install>"
+  elif validate_ip_address "${DOMAIN}" >/dev/null 2>&1; then
+    export REALITY_ONLY_MODE=1
+    mode_desc="Reality-only (ip: ${DOMAIN})"
+    display_domain="${DOMAIN}"
+  elif validate_domain "${DOMAIN}"; then
+    export REALITY_ONLY_MODE=0
+    mode_desc="Multi-protocol (domain: ${DOMAIN})"
+    display_domain="${DOMAIN}"
+  else
+    die_with_code "SBX-CONFIG-001" "Invalid domain or IP address: ${DOMAIN}" \
+      "Provide a valid public domain (example.com) or public IP address." \
+      "DOMAIN=example.com bash install.sh"
+  fi
+
+  _configure_cloudflare_mode
+  _validate_protocol_config
+  reality_port_preview="${REALITY_PORT:-${REALITY_PORT_DEFAULT}}"
+  ws_port_preview="${WS_PORT:-${WS_PORT_DEFAULT}}"
+  hy2_port_preview="${HY2_PORT:-${HY2_PORT_DEFAULT}}"
+
+  echo
+  echo "sbx dry-run preview:"
+  echo "  Mode: ${mode_desc}"
+  echo "  Server: ${display_domain}"
+  echo "  Protocols:"
+
+  if [[ "${ENABLE_REALITY}" == "1" ]]; then
+    echo "    - VLESS-REALITY on port ${reality_port_preview}/tcp"
+    preview_ports+=("${reality_port_preview}/tcp")
+  fi
+
+  if [[ "${REALITY_ONLY_MODE:-0}" != "1" ]]; then
+    if [[ "${ENABLE_WS}" == "1" ]]; then
+      echo "    - VLESS-WS-TLS on port ${ws_port_preview}/tcp"
+      preview_ports+=("${ws_port_preview}/tcp")
+    fi
+    if [[ "${ENABLE_HY2}" == "1" ]]; then
+      echo "    - Hysteria2 on port ${hy2_port_preview}/udp"
+      preview_ports+=("${hy2_port_preview}/udp")
+    fi
+  fi
+
+  if [[ "${REALITY_ONLY_MODE:-0}" != "1" ]]; then
+    if [[ -n "${CERT_FULLCHAIN:-}" && -n "${CERT_KEY:-}" ]]; then
+      cert_desc="Manual certificate files"
+    elif [[ "${CERT_MODE:-}" == "cf_dns" ]]; then
+      cert_desc="ACME DNS-01 (Cloudflare API)"
+    else
+      cert_desc="ACME HTTP-01 (port 80 required)"
+    fi
+    echo "  Certificates: ${cert_desc}"
+  fi
+
+  arch_desc=$(uname -m 2>/dev/null || echo "unknown")
+  echo "  SNI: ${sni_preview} (validated during real install)"
+  echo "  Binary: sing-box ${SINGBOX_VERSION:-stable} (${arch_desc})"
+  echo "  Config: ${SB_CONF}"
+  echo "  Service: ${SB_SVC}"
+
+  if [[ ${#preview_ports[@]} -gt 0 ]]; then
+    echo "  Firewall: open ${preview_ports[*]}"
+  else
+    echo "  Firewall: no protocol ports selected"
+  fi
+
+  echo "  No changes made."
+}
 
 install_flow() {
   show_logo
@@ -1495,6 +1807,7 @@ install_flow() {
 
     # Save client info
     save_client_info
+    save_state_info
 
     # Install manager script
     install_manager_script
@@ -1572,9 +1885,40 @@ uninstall_flow() {
 #==============================================================================
 
 main() {
-  # Parse command line arguments
-  if [[ "${1:-}" == "uninstall" || "${1:-}" == "remove" ]]; then
+  local action="install"
+  local dry_run=0
+  local arg=''
+
+  for arg in "$@"; do
+    case "${arg}" in
+      uninstall|remove)
+        action="uninstall"
+        ;;
+      --dry-run)
+        dry_run=1
+        ;;
+      "")
+        ;;
+      *)
+        die_with_code "SBX-CLI-001" "Unknown argument: ${arg}" \
+          "Use supported arguments only." \
+          "bash install.sh --help"
+        ;;
+    esac
+  done
+
+  if [[ "${action}" == "uninstall" ]]; then
+    if [[ "${dry_run}" == "1" ]]; then
+      die_with_code "SBX-CLI-002" "--dry-run is not supported for uninstall." \
+        "Run dry-run only for install flow, or remove --dry-run for uninstall." \
+        "bash install.sh uninstall"
+    fi
     uninstall_flow
+    return
+  fi
+
+  if [[ "${dry_run}" == "1" ]]; then
+    dry_run_flow
   else
     install_flow
   fi

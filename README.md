@@ -45,6 +45,7 @@ sbx info      # Show connection URIs
 sbx qr        # QR codes for mobile
 sbx status    # Service status
 sbx check     # Validate config
+sbx health    # Comprehensive health report
 sbx help      # All commands
 ```
 
@@ -67,6 +68,7 @@ sbx help      # All commands
 ```bash
 sbx status    # Is service running?
 sbx check     # Config valid?
+sbx health    # Full runtime health checks
 sbx log       # Error messages?
 ```
 

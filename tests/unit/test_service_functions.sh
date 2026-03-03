@@ -242,6 +242,20 @@ test_retry_logic() {
     fi
 }
 
+test_restart_service_uses_with_flock() {
+    echo ""
+    echo "Testing restart_service locking..."
+
+    local restart_func
+    restart_func=$(sed -n '/^restart_service()/,/^}/p' "${PROJECT_ROOT}/lib/service.sh")
+
+    if echo "$restart_func" | grep -q "with_flock"; then
+        test_result "restart_service uses with_flock" "pass"
+    else
+        test_result "restart_service uses with_flock" "fail"
+    fi
+}
+
 #==============================================================================
 # Main Test Runner
 #==============================================================================
@@ -255,6 +269,7 @@ main() {
     test_service_file_generation
     test_service_functions_exist
     test_retry_logic
+    test_restart_service_uses_with_flock
 
     # Print summary
     echo ""

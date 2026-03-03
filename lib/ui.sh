@@ -18,7 +18,18 @@ source "${_LIB_DIR}/common.sh"
 # Note: Color variables may be empty strings if terminal doesn't support colors
 # Use ${var+x} pattern to check if defined (works with empty values)
 # shellcheck disable=SC2154
-[[ -n "${B+x}" ]] || die "Color variable B not defined - colors.sh not loaded"
+[[ -n "${B+x}" ]] || {
+  if declare -f die_with_code >/dev/null 2>&1; then
+    die_with_code "SBX-UI-001" "Color variable B not defined - colors.sh not loaded" \
+      "Load lib/colors.sh before lib/ui.sh."
+  elif declare -f err >/dev/null 2>&1; then
+    err "Color variable B not defined - colors.sh not loaded"
+    return 1
+  else
+    echo "[ERR] Color variable B not defined - colors.sh not loaded" >&2
+    return 1
+  fi
+}
 
 # Declare color variables for ShellCheck (defined in colors.sh, loaded before this module)
 # These variables are exported by colors.sh and available at runtime

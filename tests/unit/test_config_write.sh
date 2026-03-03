@@ -77,6 +77,13 @@ test_write_config_validates_before_write() {
     grep -E "(validate|check|test)" lib/config.sh | grep -q ""
 }
 
+test_write_config_uses_with_flock() {
+    # write_config should be protected by with_flock to avoid concurrent writes
+    local write_impl
+    write_impl=$(sed -n '/^write_config()/,/^}/p' lib/config.sh)
+    echo "${write_impl}" | grep -q "with_flock"
+}
+
 #==============================================================================
 # Tests for _create_all_inbounds()
 #==============================================================================
@@ -104,6 +111,7 @@ run_test "Function exists" test_write_config_function_exists
 run_test "Defined in config module" test_write_config_defined_in_module
 run_test "Uses jq for JSON" test_write_config_uses_jq
 run_test "Validates before write" test_write_config_validates_before_write
+run_test "Uses with_flock for critical section" test_write_config_uses_with_flock
 
 echo ""
 echo "Testing _create_all_inbounds..."
