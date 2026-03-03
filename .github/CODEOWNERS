@@ -1,0 +1,3 @@
+# Require owner review for CI/CD and dependency automation config changes
+/.github/workflows/* @xrf9268-hue
+/.github/dependabot.yml @xrf9268-hue

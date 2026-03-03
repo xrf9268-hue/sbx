@@ -20,7 +20,7 @@ updates:
     commit-message:
       prefix: "ci"
       include: "scope"
-    reviewers:
+    assignees:
       - "xrf9268-hue"
     # Group all action updates into a single PR when possible
     groups:
