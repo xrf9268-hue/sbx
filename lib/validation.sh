@@ -124,7 +124,7 @@ validate_domain() {
   # Note: 'local IFS' creates function-scoped variable, automatically restored on return
   local IFS='.'
   local -a labels
-  read -ra labels <<< "${domain}"
+  read -ra labels <<<"${domain}"
   for label in "${labels[@]}"; do
     # Label must not be empty
     [[ -n "${label}" ]] || return 1
@@ -160,7 +160,7 @@ validate_cert_files() {
   fi
 
   # Step 2: Certificate format validation
-  if ! openssl x509 -in "${fullchain}" -noout 2> /dev/null; then
+  if ! openssl x509 -in "${fullchain}" -noout 2>/dev/null; then
     err "Invalid certificate format (not a valid X.509 certificate)"
     err "  File: ${fullchain}"
     return 1
@@ -168,21 +168,21 @@ validate_cert_files() {
 
   # Step 3: Private key format validation
   # Try to parse as any valid key type (RSA, EC, Ed25519, etc.)
-  if ! openssl pkey -in "${key}" -noout 2> /dev/null; then
+  if ! openssl pkey -in "${key}" -noout 2>/dev/null; then
     err "Invalid private key format (not a valid private key)"
     err "  File: ${key}"
     return 1
   fi
 
   # Step 4: Certificate expiration check (warning only)
-  if ! openssl x509 -in "${fullchain}" -checkend "${CERT_EXPIRY_WARNING_SEC}" -noout 2> /dev/null; then
+  if ! openssl x509 -in "${fullchain}" -checkend "${CERT_EXPIRY_WARNING_SEC}" -noout 2>/dev/null; then
     warn "Certificate will expire within ${CERT_EXPIRY_WARNING_DAYS} days"
   fi
 
   # Step 5: Certificate-Key matching validation
   # Extract public key hash from certificate
   local cert_pubkey=''
-  cert_pubkey=$(openssl x509 -in "${fullchain}" -noout -pubkey 2> /dev/null | openssl md5 2> /dev/null | awk '{print $2}')
+  cert_pubkey=$(openssl x509 -in "${fullchain}" -noout -pubkey 2>/dev/null | openssl md5 2>/dev/null | awk '{print $2}')
 
   if [[ -z "${cert_pubkey}" || "${cert_pubkey}" == "${EMPTY_MD5_HASH}" ]]; then
     err "Failed to extract public key from certificate"
@@ -192,7 +192,7 @@ validate_cert_files() {
 
   # Extract public key hash from private key using generic pkey command
   local key_pubkey=''
-  key_pubkey=$(openssl pkey -in "${key}" -pubout 2> /dev/null | openssl md5 2> /dev/null | awk '{print $2}')
+  key_pubkey=$(openssl pkey -in "${key}" -pubout 2>/dev/null | openssl md5 2>/dev/null | awk '{print $2}')
 
   if [[ -z "${key_pubkey}" || "${key_pubkey}" == "${EMPTY_MD5_HASH}" ]]; then
     err "Failed to extract public key from private key"
@@ -217,7 +217,7 @@ validate_cert_files() {
 
   # Log expiry information if available
   local expiry_date=''
-  expiry_date=$(openssl x509 -in "${fullchain}" -noout -enddate 2> /dev/null | cut -d= -f2)
+  expiry_date=$(openssl x509 -in "${fullchain}" -noout -enddate 2>/dev/null | cut -d= -f2)
   [[ -n "${expiry_date}" ]] && debug "Certificate expires: ${expiry_date}"
 
   return 0
@@ -255,7 +255,7 @@ validate_env_vars() {
   # Validate DOMAIN if provided
   if [[ -n "${DOMAIN}" ]]; then
     # Check if it's an IP address or domain
-    if validate_ip_address "${DOMAIN}" 2> /dev/null; then
+    if validate_ip_address "${DOMAIN}" 2>/dev/null; then
       msg "Using IP address mode: ${DOMAIN}"
     elif validate_domain "${DOMAIN}"; then
       msg "Using domain mode: ${DOMAIN}"
@@ -298,12 +298,12 @@ validate_env_vars() {
 
   # Validate certificate files if provided
   if [[ -n "${CERT_FULLCHAIN}" || -n "${CERT_KEY}" ]]; then
-    [[ -n "${CERT_FULLCHAIN}" && -n "${CERT_KEY}" ]] \
-      || _validation_die "SBX-CERT-006" "Both CERT_FULLCHAIN and CERT_KEY must be specified together" \
+    [[ -n "${CERT_FULLCHAIN}" && -n "${CERT_KEY}" ]] ||
+      _validation_die "SBX-CERT-006" "Both CERT_FULLCHAIN and CERT_KEY must be specified together" \
         "Provide both certificate and private key paths."
 
-    validate_cert_files "${CERT_FULLCHAIN}" "${CERT_KEY}" \
-      || _validation_die "SBX-CERT-002" "Certificate file validation failed" \
+    validate_cert_files "${CERT_FULLCHAIN}" "${CERT_KEY}" ||
+      _validation_die "SBX-CERT-002" "Certificate file validation failed" \
         "Ensure certificate/key files are valid and match."
   fi
 
@@ -325,8 +325,8 @@ validate_env_vars() {
 
   # Validate version string if provided
   if [[ -n "${SINGBOX_VERSION}" ]]; then
-    [[ "${SINGBOX_VERSION}" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]] \
-      || _validation_die "SBX-CONFIG-023" "Invalid SINGBOX_VERSION format: ${SINGBOX_VERSION}" \
+    [[ "${SINGBOX_VERSION}" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]] ||
+      _validation_die "SBX-CONFIG-023" "Invalid SINGBOX_VERSION format: ${SINGBOX_VERSION}" \
         "Use semantic version format like 1.12.0 or v1.12.0."
   fi
 
@@ -474,7 +474,7 @@ select_reality_sni_domain() {
   fi
 
   if [[ -n "${fallback_csv}" ]]; then
-    IFS=',' read -r -a fallbacks <<< "${fallback_csv}"
+    IFS=',' read -r -a fallbacks <<<"${fallback_csv}"
     for candidate in "${fallbacks[@]}"; do
       candidate="${candidate#"${candidate%%[![:space:]]*}"}"
       candidate="${candidate%"${candidate##*[![:space:]]}"}"
@@ -914,7 +914,7 @@ validate_file_integrity() {
     if [[ -d "${file_path}" ]]; then
       err "Type: directory"
     else
-      err "Type: $(file -b "${file_path}" 2> /dev/null || echo "unknown")"
+      err "Type: $(file -b "${file_path}" 2>/dev/null || echo "unknown")"
     fi
     return 1
   fi
@@ -922,7 +922,7 @@ validate_file_integrity() {
   # Check readable
   if [[ ! -r "${file_path}" ]]; then
     err "File not readable: ${file_path}"
-    err "Permissions: $(ls -l "${file_path}" 2> /dev/null | awk '{print $1}' || echo "unknown")"
+    err "Permissions: $(ls -l "${file_path}" 2>/dev/null | awk '{print $1}' || echo "unknown")"
     err "Try: sudo chmod +r \"${file_path}\""
     return 1
   fi

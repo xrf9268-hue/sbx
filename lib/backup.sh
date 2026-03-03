@@ -62,7 +62,7 @@ backup_create() {
   mkdir -p "${backup_root}"/{config,certificates,binary,service}
 
   # Backup metadata
-  cat > "${backup_root}/metadata.json" <<EOF
+  cat >"${backup_root}/metadata.json" <<EOF
 {
   "backup_date": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
   "hostname": "$(hostname)",
@@ -111,7 +111,7 @@ EOF
 
   # Record binary version
   if [[ -f "${SB_BIN}" ]]; then
-    ${SB_BIN} version > "${backup_root}/binary/sing-box-version.txt" 2>&1
+    ${SB_BIN} version >"${backup_root}/binary/sing-box-version.txt" 2>&1
     success "  ✓ Recorded binary version"
   fi
 
@@ -146,8 +146,8 @@ EOF
       chmod 700 "${key_dir}"
 
       password_file="${key_dir}/$(basename "${archive_path%.tar.gz}").key"
-      echo "${password}" > "${password_file}"
-      chmod 400 "${password_file}"  # Read-only for owner
+      echo "${password}" >"${password_file}"
+      chmod 400 "${password_file}" # Read-only for owner
       chown root:root "${password_file}" 2>/dev/null || true
 
       echo
@@ -161,7 +161,7 @@ EOF
 
     openssl enc -aes-256-cbc -salt -pbkdf2 -in "${archive_path}" \
       -out "${archive_path}.enc" -k "${password}" || _backup_die "SBX-BACKUP-003" "Encryption failed" \
-        "Verify openssl works and backup file is readable."
+      "Verify openssl works and backup file is readable."
 
     rm "${archive_path}"
     archive_path="${archive_path}.enc"
@@ -231,10 +231,10 @@ _decrypt_backup() {
   local decrypted_path="${temp_dir}/decrypted.tar.gz"
   openssl enc -aes-256-cbc -d -pbkdf2 -in "${backup_file}" \
     -out "${decrypted_path}" -k "${password}" || {
-      rm -rf "${temp_dir}"
-      _backup_die "SBX-BACKUP-006" "Decryption failed (wrong password?)" \
-        "Use the correct backup password or key file."
-    }
+    rm -rf "${temp_dir}"
+    _backup_die "SBX-BACKUP-006" "Decryption failed (wrong password?)" \
+      "Use the correct backup password or key file."
+  }
 
   success "  ✓ Backup decrypted"
   echo "${decrypted_path}"
@@ -471,14 +471,14 @@ _backup_restore_impl() {
 
       if [[ -f "${rollback_dir}/service/sing-box.service" ]]; then
         cp -a "${rollback_dir}/service/sing-box.service" "${SB_SVC}" 2>/dev/null || warn "Failed to restore systemd service file"
-        if (( systemctl_available )); then
+        if ((systemctl_available)); then
           systemctl daemon-reload >/dev/null 2>&1 || warn "Failed to reload systemd during rollback"
         fi
       fi
 
       warn "Restore failed"
 
-      if (( systemctl_available )) && [[ ${service_was_running} -eq 1 ]]; then
+      if ((systemctl_available)) && [[ ${service_was_running} -eq 1 ]]; then
         msg "Restarting sing-box service after rollback..."
         systemctl start sing-box >/dev/null 2>&1 && success "  ✓ Service restarted" || warn "  ✗ Failed to restart service"
       fi
@@ -560,7 +560,7 @@ _backup_restore_impl() {
   _prepare_rollback "${rollback_dir}" cert_domains
 
   # Stop service if it was running
-  if (( systemctl_available )) && [[ ${service_was_running} -eq 1 ]]; then
+  if ((systemctl_available)) && [[ ${service_was_running} -eq 1 ]]; then
     msg "Stopping sing-box service..."
     systemctl stop sing-box >/dev/null 2>&1 || warn "  ✗ Failed to stop service"
   fi
@@ -586,7 +586,10 @@ _backup_restore_impl() {
 
 # List available backups
 backup_list() {
-  [[ -d "${BACKUP_DIR}" ]] || { info "No backups found"; return 0; }
+  [[ -d "${BACKUP_DIR}" ]] || {
+    info "No backups found"
+    return 0
+  }
 
   echo -e "${B}Available Backups:${N}\n"
 

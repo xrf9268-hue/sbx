@@ -106,7 +106,7 @@ create_base_config() {
       outbounds: [
         { type: "direct", tag: "direct" }
       ]
-    }' 2> /dev/null); then
+    }' 2>/dev/null); then
     err "Failed to create base configuration with jq"
     return 1
   fi
@@ -155,13 +155,13 @@ create_reality_inbound() {
   }
 
   # Validate port range
-  if ! validate_port "${port}" 2> /dev/null; then
+  if ! validate_port "${port}" 2>/dev/null; then
     err "Invalid port: ${port} (must be 1-65535)"
     return 1
   fi
 
   # Validate transport+security+flow pairing
-  if ! validate_transport_security_pairing "tcp" "reality" "${REALITY_FLOW_VISION}" 2> /dev/null; then
+  if ! validate_transport_security_pairing "tcp" "reality" "${REALITY_FLOW_VISION}" 2>/dev/null; then
     err "Invalid transport+security+flow combination for Reality"
     return 1
   fi
@@ -245,7 +245,7 @@ _build_tls_block() {
         certificate_path: $cert_path,
         key_path: $key_path,
         alpn: $alpn
-      }' 2> /dev/null); then
+      }' 2>/dev/null); then
       err "Failed to build manual TLS block"
       return 1
     fi
@@ -266,7 +266,7 @@ _build_tls_block() {
           email: "",
           provider: "letsencrypt",
           disable_tls_alpn_challenge: true
-        }' 2> /dev/null); then
+        }' 2>/dev/null); then
         err "Failed to build ACME HTTP-01 block"
         return 1
       fi
@@ -287,7 +287,7 @@ _build_tls_block() {
             provider: "cloudflare",
             api_token: $api_token
           }
-        }' 2> /dev/null); then
+        }' 2>/dev/null); then
         err "Failed to build ACME DNS-01 block"
         return 1
       fi
@@ -308,7 +308,7 @@ _build_tls_block() {
       alpn: $alpn,
       acme: $acme,
       certificate: { store: "chrome" }
-    }' 2> /dev/null); then
+    }' 2>/dev/null); then
     err "Failed to build ACME TLS block"
     return 1
   fi
@@ -349,7 +349,7 @@ create_ws_inbound() {
       },
       tls: $tls,
       transport: { type: "ws", path: "/ws" }
-    }' 2> /dev/null); then
+    }' 2>/dev/null); then
     err "Failed to create WS-TLS configuration with jq"
     return 1
   fi
@@ -381,7 +381,7 @@ create_hysteria2_inbound() {
       up_mbps: 100,
       down_mbps: 100,
       tls: $tls
-    }' 2> /dev/null); then
+    }' 2>/dev/null); then
     err "Failed to create Hysteria2 configuration with jq"
     return 1
   fi
@@ -419,7 +419,7 @@ add_route_config() {
     "default_domain_resolver": {
       "server": "dns-local"
     }
-  }' 2> /dev/null); then
+  }' 2>/dev/null); then
     err "Failed to add route configuration"
     return 1
   fi
@@ -447,7 +447,7 @@ add_outbound_config() {
       "bind_address_no_port": true,
       "tcp_keep_alive": $tcp_keep_alive
     }' \
-    2> /dev/null); then
+    2>/dev/null); then
     warn "Failed to add outbound parameters, continuing with default configuration"
     echo "${config}"
     return 0
@@ -474,7 +474,7 @@ _validate_certificate_config() {
   # Check manual certificate mode
   if [[ -n "${cert_fullchain}" && -n "${cert_key}" && -f "${cert_fullchain}" && -f "${cert_key}" ]]; then
     has_manual_certs="true"
-    validate_cert_files "${cert_fullchain}" "${cert_key}" || \
+    validate_cert_files "${cert_fullchain}" "${cert_key}" ||
       die_with_code "SBX-CERT-002" "Certificate file validation failed." \
         "Ensure fullchain/key paths are correct, readable, and matching." \
         "openssl x509 -in ${cert_fullchain} -noout -text | head"
@@ -485,7 +485,7 @@ _validate_certificate_config() {
     has_acme="true"
     # Validate CF_API_TOKEN for DNS-01 mode
     if [[ "${cert_mode}" == "cf_dns" ]]; then
-      [[ -n "${CF_API_TOKEN:-}" ]] || \
+      [[ -n "${CF_API_TOKEN:-}" ]] ||
         die_with_code "SBX-CERT-001" "CF_API_TOKEN is required for CERT_MODE=cf_dns." \
           "Provide a valid Cloudflare API token with DNS edit permission." \
           "CERT_MODE=cf_dns CF_API_TOKEN=xxxx DOMAIN=example.com bash install.sh"
@@ -498,7 +498,7 @@ _validate_certificate_config() {
   fi
 
   # Validate domain is set
-  [[ -n "${DOMAIN:-}" ]] || \
+  [[ -n "${DOMAIN:-}" ]] ||
     die_with_code "SBX-CERT-003" "Domain is not set for certificate/ACME configuration." \
       "Set DOMAIN when using manual certificates or ACME certificate mode." \
       "DOMAIN=example.com bash install.sh"
@@ -508,18 +508,18 @@ _validate_certificate_config() {
   local enable_hy2="${ENABLE_HY2:-1}"
 
   if [[ "${enable_ws}" == "1" ]]; then
-    [[ -n "${WS_PORT_CHOSEN:-}" ]] || \
+    [[ -n "${WS_PORT_CHOSEN:-}" ]] ||
       die_with_code "SBX-CONFIG-010" "WS port is missing while ENABLE_WS=1." \
         "Set WS_PORT or keep automatic port allocation enabled." \
         "WS_PORT=8444 bash install.sh"
   fi
 
   if [[ "${enable_hy2}" == "1" ]]; then
-    [[ -n "${HY2_PORT_CHOSEN:-}" ]] || \
+    [[ -n "${HY2_PORT_CHOSEN:-}" ]] ||
       die_with_code "SBX-CONFIG-011" "Hysteria2 port is missing while ENABLE_HY2=1." \
         "Set HY2_PORT or keep automatic port allocation enabled." \
         "HY2_PORT=8443 bash install.sh"
-    [[ -n "${HY2_PASS:-}" ]] || \
+    [[ -n "${HY2_PASS:-}" ]] ||
       die_with_code "SBX-CONFIG-012" "Hysteria2 password is missing while ENABLE_HY2=1." \
         "Ensure HY2_PASS is generated or provided before config generation." \
         "HY2_PASS=$(openssl rand -hex 16) bash install.sh"
@@ -551,13 +551,13 @@ _create_all_inbounds() {
   if [[ "${enable_reality}" == "1" && -n "${reality_port}" ]]; then
     local reality_config=''
     reality_config=$(create_reality_inbound "${uuid}" "${reality_port}" "${listen_addr}" \
-      "${sni}" "${priv_key}" "${short_id}") \
-      || _config_die "SBX-CONFIG-030" "Failed to create Reality inbound" \
+      "${sni}" "${priv_key}" "${short_id}") ||
+      _config_die "SBX-CONFIG-030" "Failed to create Reality inbound" \
         "Check Reality parameters (UUID/ports/keys/SNI) and retry."
 
     base_config=$(echo "${base_config}" | jq --argjson reality "${reality_config}" \
-      '.inbounds += [$reality]' 2> /dev/null) \
-      || _config_die "SBX-CONFIG-031" "Failed to add Reality configuration to base config" \
+      '.inbounds += [$reality]' 2>/dev/null) ||
+      _config_die "SBX-CONFIG-031" "Failed to add Reality configuration to base config" \
         "Verify generated Reality JSON is valid."
   fi
 
@@ -581,19 +581,19 @@ _create_all_inbounds() {
     if [[ "${enable_ws}" == "1" && -n "${WS_PORT_CHOSEN:-}" ]]; then
       local ws_tls=''
       ws_tls=$(_build_tls_block "${DOMAIN}" '["h2","http/1.1"]' \
-        "${cert_fullchain}" "${cert_key}" "${cert_mode}" "${CF_API_TOKEN:-}") \
-        || _config_die "SBX-CONFIG-032" "Failed to build WS TLS configuration" \
+        "${cert_fullchain}" "${cert_key}" "${cert_mode}" "${CF_API_TOKEN:-}") ||
+        _config_die "SBX-CONFIG-032" "Failed to build WS TLS configuration" \
           "Check certificate mode and TLS inputs."
 
       local ws_config=''
       ws_config=$(create_ws_inbound "${uuid}" "${WS_PORT_CHOSEN}" "${listen_addr}" \
-        "${DOMAIN}" "${ws_tls}") \
-        || _config_die "SBX-CONFIG-033" "Failed to create WS-TLS inbound" \
+        "${DOMAIN}" "${ws_tls}") ||
+        _config_die "SBX-CONFIG-033" "Failed to create WS-TLS inbound" \
           "Verify WS port/domain/TLS settings."
 
       base_config=$(echo "${base_config}" | jq --argjson ws "${ws_config}" \
-        '.inbounds += [$ws]' 2> /dev/null) \
-        || _config_die "SBX-CONFIG-034" "Failed to add WS-TLS configuration" \
+        '.inbounds += [$ws]' 2>/dev/null) ||
+        _config_die "SBX-CONFIG-034" "Failed to add WS-TLS configuration" \
           "Verify WS inbound JSON generation."
     fi
 
@@ -601,19 +601,19 @@ _create_all_inbounds() {
     if [[ "${enable_hy2}" == "1" && -n "${HY2_PORT_CHOSEN:-}" ]]; then
       local hy2_tls=''
       hy2_tls=$(_build_tls_block "${DOMAIN}" '["h3"]' \
-        "${cert_fullchain}" "${cert_key}" "${cert_mode}" "${CF_API_TOKEN:-}") \
-        || _config_die "SBX-CONFIG-035" "Failed to build Hysteria2 TLS configuration" \
+        "${cert_fullchain}" "${cert_key}" "${cert_mode}" "${CF_API_TOKEN:-}") ||
+        _config_die "SBX-CONFIG-035" "Failed to build Hysteria2 TLS configuration" \
           "Check certificate mode and TLS inputs."
 
       local hy2_config=''
       hy2_config=$(create_hysteria2_inbound "${HY2_PASS}" "${HY2_PORT_CHOSEN}" "${listen_addr}" \
-        "${hy2_tls}") \
-        || _config_die "SBX-CONFIG-036" "Failed to create Hysteria2 inbound" \
+        "${hy2_tls}") ||
+        _config_die "SBX-CONFIG-036" "Failed to create Hysteria2 inbound" \
           "Verify Hysteria2 password/port/TLS settings."
 
       base_config=$(echo "${base_config}" | jq --argjson hy2 "${hy2_config}" \
-        '.inbounds += [$hy2]' 2> /dev/null) \
-        || _config_die "SBX-CONFIG-037" "Failed to add Hysteria2 configuration" \
+        '.inbounds += [$hy2]' 2>/dev/null) ||
+        _config_die "SBX-CONFIG-037" "Failed to add Hysteria2 configuration" \
           "Verify Hysteria2 inbound JSON generation."
     fi
   fi
@@ -663,14 +663,14 @@ _write_config_impl() {
 
   # Setup automatic cleanup on function exit/error
   cleanup_write_config() {
-    [[ -f "${temp_conf}" ]] && rm -f "${temp_conf}" 2> /dev/null || true
+    [[ -f "${temp_conf}" ]] && rm -f "${temp_conf}" 2>/dev/null || true
   }
   trap cleanup_write_config RETURN ERR EXIT INT TERM
 
   # Create base configuration
   local base_config=''
-  base_config=$(create_base_config "${ipv6_supported}" "${LOG_LEVEL:-warn}") \
-    || _config_die "SBX-CONFIG-040" "Failed to create base configuration" \
+  base_config=$(create_base_config "${ipv6_supported}" "${LOG_LEVEL:-warn}") ||
+    _config_die "SBX-CONFIG-040" "Failed to create base configuration" \
       "Check jq availability and base config template logic."
 
   # Create all inbounds (Reality + optional WS-TLS and Hysteria2)
@@ -683,14 +683,14 @@ _write_config_impl() {
   base_config="${inbound_result#*|}"
 
   # Add route and outbound configurations
-  base_config=$(add_route_config "${base_config}" "${has_certs}") \
-    || _config_die "SBX-CONFIG-041" "Failed to add route configuration" \
+  base_config=$(add_route_config "${base_config}" "${has_certs}") ||
+    _config_die "SBX-CONFIG-041" "Failed to add route configuration" \
       "Verify route generation inputs and JSON integrity."
   base_config=$(add_outbound_config "${base_config}")
 
   # Write configuration to temporary file
-  echo "${base_config}" > "${temp_conf}" \
-    || _config_die "SBX-CONFIG-042" "Failed to write configuration to temporary file" \
+  echo "${base_config}" >"${temp_conf}" ||
+    _config_die "SBX-CONFIG-042" "Failed to write configuration to temporary file" \
       "Check filesystem writability for temporary directory."
 
   # Run comprehensive validation pipeline before applying

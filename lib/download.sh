@@ -43,13 +43,13 @@ DOWNLOADER="${DOWNLOADER:-auto}"
 # Returns:
 #   0 if curl supports --retry, 1 otherwise
 check_curl_retry_support() {
-  if ! command -v curl > /dev/null 2>&1; then
+  if ! command -v curl >/dev/null 2>&1; then
     return 1
   fi
 
   # Test if curl accepts --retry flag (without network request)
   # Check help output for --retry flag
-  if curl --help all 2> /dev/null | grep -q -- '--retry'; then
+  if curl --help all 2>/dev/null | grep -q -- '--retry'; then
     return 0
   fi
 
@@ -62,12 +62,12 @@ check_curl_retry_support() {
 # Returns:
 #   0 if curl supports -C -, 1 otherwise
 check_curl_continue_support() {
-  if ! command -v curl > /dev/null 2>&1; then
+  if ! command -v curl >/dev/null 2>&1; then
     return 1
   fi
 
   # Test if curl accepts -C flag
-  if curl -C - --help > /dev/null 2>&1; then
+  if curl -C - --help >/dev/null 2>&1; then
     return 0
   fi
 
@@ -80,9 +80,9 @@ check_curl_continue_support() {
 # Returns:
 #   "curl", "wget", or "none"
 detect_downloader() {
-  if command -v curl > /dev/null 2>&1; then
+  if command -v curl >/dev/null 2>&1; then
     echo "curl"
-  elif command -v wget > /dev/null 2>&1; then
+  elif command -v wget >/dev/null 2>&1; then
     echo "wget"
   else
     echo "none"
@@ -238,7 +238,7 @@ download_file() {
   # Execute download with selected tool
   case "${downloader}" in
     curl)
-      if ! command -v curl > /dev/null 2>&1; then
+      if ! command -v curl >/dev/null 2>&1; then
         err "curl not found. Please install curl or set DOWNLOADER=wget"
         return 1
       fi
@@ -246,7 +246,7 @@ download_file() {
       ;;
 
     wget)
-      if ! command -v wget > /dev/null 2>&1; then
+      if ! command -v wget >/dev/null 2>&1; then
         err "wget not found. Please install wget or set DOWNLOADER=curl"
         return 1
       fi
@@ -316,7 +316,7 @@ verify_downloaded_file() {
 
   # Check file size
   local file_size=0
-  file_size=$(stat -c%s "${file_path}" 2> /dev/null || stat -f%z "${file_path}" 2> /dev/null || echo "0")
+  file_size=$(stat -c%s "${file_path}" 2>/dev/null || stat -f%z "${file_path}" 2>/dev/null || echo "0")
 
   if [[ "${file_size}" -lt "${min_size}" ]]; then
     err "Downloaded file too small: ${file_path} (${file_size} bytes, expected >= ${min_size})"
@@ -374,11 +374,11 @@ get_download_info() {
   echo "  Max retries: ${DOWNLOAD_MAX_RETRIES}"
 
   if [[ "${downloader}" == "curl" ]]; then
-    echo "  Curl version: $(curl --version 2> /dev/null | head -1)"
+    echo "  Curl version: $(curl --version 2>/dev/null | head -1)"
     echo "  Curl retry support: $(check_curl_retry_support && echo "Yes" || echo "No")"
     echo "  Curl continue support: $(check_curl_continue_support && echo "Yes" || echo "No")"
   elif [[ "${downloader}" == "wget" ]]; then
-    echo "  Wget version: $(wget --version 2> /dev/null | head -1)"
+    echo "  Wget version: $(wget --version 2>/dev/null | head -1)"
   fi
 }
 

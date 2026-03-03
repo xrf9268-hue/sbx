@@ -57,7 +57,7 @@ calculate_backoff() {
 
   # Exponential backoff: min((base^attempt), max)
   local backoff=0
-  if command -v bc > /dev/null 2>&1; then
+  if command -v bc >/dev/null 2>&1; then
     # Use bc for precise calculation
     backoff=$(echo "scale=0; e=2^${attempt}; if (e > ${max}) ${max} else e" | bc)
   else
@@ -212,8 +212,8 @@ retry_with_backoff() {
 
     # Calculate backoff in seconds for display (use bc if available)
     local backoff_sec=''
-    if command -v bc > /dev/null 2>&1; then
-      backoff_sec=$(echo "scale=1; ${backoff_ms} / 1000" | bc 2> /dev/null || echo "$((backoff_ms / 1000))")
+    if command -v bc >/dev/null 2>&1; then
+      backoff_sec=$(echo "scale=1; ${backoff_ms} / 1000" | bc 2>/dev/null || echo "$((backoff_ms / 1000))")
     else
       backoff_sec=$((backoff_ms / 1000))
     fi
@@ -222,10 +222,10 @@ retry_with_backoff() {
     warn "Retrying in ${backoff_sec}s..."
 
     # Wait with backoff (supports fractional seconds if sleep supports it)
-    if sleep 0.1 2> /dev/null; then
+    if sleep 0.1 2>/dev/null; then
       # sleep supports fractional seconds
-      if command -v bc > /dev/null 2>&1; then
-        sleep "$(echo "scale=3; ${backoff_ms} / 1000" | bc 2> /dev/null || echo "0.$((backoff_ms / 100))")"
+      if command -v bc >/dev/null 2>&1; then
+        sleep "$(echo "scale=3; ${backoff_ms} / 1000" | bc 2>/dev/null || echo "0.$((backoff_ms / 100))")"
       else
         # Fallback to bash arithmetic with millisecond precision
         local sec=$((backoff_ms / 1000))
@@ -305,8 +305,8 @@ retry_with_custom_backoff() {
 
     # Calculate backoff in seconds for display (use bc if available)
     local backoff_sec=''
-    if command -v bc > /dev/null 2>&1; then
-      backoff_sec=$(echo "scale=1; ${backoff_ms} / 1000" | bc 2> /dev/null || echo "$((backoff_ms / 1000))")
+    if command -v bc >/dev/null 2>&1; then
+      backoff_sec=$(echo "scale=1; ${backoff_ms} / 1000" | bc 2>/dev/null || echo "$((backoff_ms / 1000))")
     else
       backoff_sec=$((backoff_ms / 1000))
     fi
@@ -315,10 +315,10 @@ retry_with_custom_backoff() {
     warn "Retrying in ${backoff_sec}s..."
 
     # Wait with backoff (supports fractional seconds if sleep supports it)
-    if sleep 0.1 2> /dev/null; then
+    if sleep 0.1 2>/dev/null; then
       # sleep supports fractional seconds
-      if command -v bc > /dev/null 2>&1; then
-        sleep "$(echo "scale=3; ${backoff_ms} / 1000" | bc 2> /dev/null || echo "0.$((backoff_ms / 100))")"
+      if command -v bc >/dev/null 2>&1; then
+        sleep "$(echo "scale=3; ${backoff_ms} / 1000" | bc 2>/dev/null || echo "0.$((backoff_ms / 100))")"
       else
         # Fallback to bash arithmetic with millisecond precision
         local sec=$((backoff_ms / 1000))

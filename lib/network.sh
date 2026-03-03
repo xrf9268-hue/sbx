@@ -43,7 +43,7 @@ get_public_ip() {
   if [[ -n "${CUSTOM_IP_SERVICES:-}" ]]; then
     debug "Using custom IP detection services: ${CUSTOM_IP_SERVICES}"
     # Convert space-separated string to array
-    read -ra services <<< "${CUSTOM_IP_SERVICES}"
+    read -ra services <<<"${CUSTOM_IP_SERVICES}"
   else
     services=(
       "https://ipv4.icanhazip.com"
@@ -68,10 +68,10 @@ get_public_ip() {
   for service in "${services[@]}"; do
     case "${downloader}" in
       curl)
-        ip=$(timeout "${NETWORK_TIMEOUT_SEC}" curl -s --max-time "${NETWORK_TIMEOUT_SEC}" "${service}" 2> /dev/null | grep -E '^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$' | head -1)
+        ip=$(timeout "${NETWORK_TIMEOUT_SEC}" curl -s --max-time "${NETWORK_TIMEOUT_SEC}" "${service}" 2>/dev/null | grep -E '^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$' | head -1)
         ;;
       wget)
-        ip=$(timeout "${NETWORK_TIMEOUT_SEC}" wget -qO- --timeout="${NETWORK_TIMEOUT_SEC}" "${service}" 2> /dev/null | grep -E '^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$' | head -1)
+        ip=$(timeout "${NETWORK_TIMEOUT_SEC}" wget -qO- --timeout="${NETWORK_TIMEOUT_SEC}" "${service}" 2>/dev/null | grep -E '^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$' | head -1)
         ;;
     esac
 
@@ -123,7 +123,7 @@ validate_ip_address() {
   # Check each octet is in valid range (0-255)
   local IFS='.'
   local -a octets
-  read -ra octets <<< "${ip}"
+  read -ra octets <<<"${ip}"
   for octet in "${octets[@]}"; do
     # Validate range (0-255)
     [[ ${octet} -le 255 ]] || return 1
@@ -170,8 +170,8 @@ validate_ip_address() {
 # Check if port is in use
 port_in_use() {
   local p="$1"
-  ss -lntp 2> /dev/null | grep -q ":${p} " && return 0
-  lsof -iTCP -sTCP:LISTEN -P -n 2> /dev/null | grep -q ":${p}" && return 0
+  ss -lntp 2>/dev/null | grep -q ":${p} " && return 0
+  lsof -iTCP -sTCP:LISTEN -P -n 2>/dev/null | grep -q ":${p}" && return 0
   return 1
 }
 
@@ -191,7 +191,7 @@ allocate_port() {
 
   # Check if flock is available (Linux has it, macOS doesn't)
   local have_flock=false
-  command -v flock > /dev/null 2>&1 && have_flock=true
+  command -v flock >/dev/null 2>&1 && have_flock=true
 
   # Helper function: atomic port check with file lock (if flock available)
   try_allocate_port() {
@@ -202,7 +202,7 @@ allocate_port() {
       local lock_file="${lock_dir}/sbx-port-${p}.lock"
       (
         # Try to acquire exclusive lock (non-blocking)
-        if ! flock -n 200 2> /dev/null; then
+        if ! flock -n 200 2>/dev/null; then
           # Lock held by another process - port is being allocated
           return 1
         fi
@@ -214,7 +214,7 @@ allocate_port() {
 
         echo "${p}"
         return 0
-      ) 200> "${lock_file}" 2> /dev/null
+      ) 200>"${lock_file}" 2>/dev/null
       return $?
     else
       # Fallback for systems without flock (macOS)
@@ -270,7 +270,7 @@ _require_network_tools() {
   local require_downloader="${2:-true}"
   local -a missing=()
 
-  if ! command -v timeout > /dev/null 2>&1; then
+  if ! command -v timeout >/dev/null 2>&1; then
     missing+=("timeout")
   fi
 
@@ -297,16 +297,16 @@ detect_ipv6_support() {
   # Check 1: Kernel IPv6 support
   if [[ -f /proc/net/if_inet6 ]]; then
     # Check 2: IPv6 routing table
-    if ip -6 route show 2> /dev/null | grep -q "default\|::/0"; then
+    if ip -6 route show 2>/dev/null | grep -q "default\|::/0"; then
       # Check 3: Actual connectivity test to a reliable IPv6 DNS server
-      if timeout "${IPV6_TEST_TIMEOUT_SEC}" ping6 -c 1 -W "${IPV6_PING_WAIT_SEC}" 2001:4860:4860::8888 > /dev/null 2>&1; then
+      if timeout "${IPV6_TEST_TIMEOUT_SEC}" ping6 -c 1 -W "${IPV6_PING_WAIT_SEC}" 2001:4860:4860::8888 >/dev/null 2>&1; then
         ipv6_supported=true
       else
         # Fallback test: check if we can create IPv6 socket
         # Subshell automatically cleans up file descriptors on exit
-        if timeout "${IPV6_TEST_TIMEOUT_SEC}" bash -c 'exec 3<>/dev/tcp/[::1]/22' 2> /dev/null; then
+        if timeout "${IPV6_TEST_TIMEOUT_SEC}" bash -c 'exec 3<>/dev/tcp/[::1]/22' 2>/dev/null; then
           ipv6_supported=true
-        elif [[ -n "$(ip -6 addr show scope global 2> /dev/null)" ]]; then
+        elif [[ -n "$(ip -6 addr show scope global 2>/dev/null)" ]]; then
           # Alternative fallback: Check if any global IPv6 address exists
           ipv6_supported=true
         fi
@@ -377,11 +377,11 @@ safe_http_get() {
       fi
 
       if [[ -n "${output_file}" ]]; then
-        if timeout "${timeout_seconds}" curl "${curl_opts[@]}" "${url}" -o "${output_file}" 2> /dev/null; then
+        if timeout "${timeout_seconds}" curl "${curl_opts[@]}" "${url}" -o "${output_file}" 2>/dev/null; then
           return 0
         fi
       else
-        if timeout "${timeout_seconds}" curl "${curl_opts[@]}" "${url}" 2> /dev/null; then
+        if timeout "${timeout_seconds}" curl "${curl_opts[@]}" "${url}" 2>/dev/null; then
           return 0
         fi
       fi
@@ -401,11 +401,11 @@ safe_http_get() {
       fi
 
       if [[ -n "${output_file}" ]]; then
-        if timeout "${timeout_seconds}" wget "${wget_opts[@]}" -O "${output_file}" "${url}" 2> /dev/null; then
+        if timeout "${timeout_seconds}" wget "${wget_opts[@]}" -O "${output_file}" "${url}" 2>/dev/null; then
           return 0
         fi
       else
-        if timeout "${timeout_seconds}" wget "${wget_opts[@]}" -O- "${url}" 2> /dev/null; then
+        if timeout "${timeout_seconds}" wget "${wget_opts[@]}" -O- "${url}" 2>/dev/null; then
           return 0
         fi
       fi
@@ -436,7 +436,7 @@ check_port_80_for_acme() {
 
   # Check if port 80 is in use
   if port_in_use 80; then
-    port_user=$(ss -lntp 2> /dev/null | grep ':80 ' | awk '{print $NF}' | head -1)
+    port_user=$(ss -lntp 2>/dev/null | grep ':80 ' | awk '{print $NF}' | head -1)
     warn "Port 80 is in use by: ${port_user:-unknown process}"
     warn "ACME HTTP-01 challenge requires port 80 to be accessible"
     return 1

@@ -58,25 +58,25 @@ validate_singbox_schema() {
   # Check required sections using jq
   if have jq; then
     # Check for inbounds section
-    if ! jq -e '.inbounds' "${config_file}" > /dev/null 2>&1; then
+    if ! jq -e '.inbounds' "${config_file}" >/dev/null 2>&1; then
       err "Missing required section 'inbounds' in config"
       return 1
     fi
 
     # Check for outbounds section
-    if ! jq -e '.outbounds' "${config_file}" > /dev/null 2>&1; then
+    if ! jq -e '.outbounds' "${config_file}" >/dev/null 2>&1; then
       err "Missing required section 'outbounds' in config"
       return 1
     fi
 
     # Validate inbounds is an array
-    if ! jq -e '.inbounds | if type == "array" then true else false end' "${config_file}" > /dev/null 2>&1; then
+    if ! jq -e '.inbounds | if type == "array" then true else false end' "${config_file}" >/dev/null 2>&1; then
       err "'inbounds' must be an array"
       return 1
     fi
 
     # Validate outbounds is an array
-    if ! jq -e '.outbounds | if type == "array" then true else false end' "${config_file}" > /dev/null 2>&1; then
+    if ! jq -e '.outbounds | if type == "array" then true else false end' "${config_file}" >/dev/null 2>&1; then
       err "'outbounds' must be an array"
       return 1
     fi
@@ -137,7 +137,7 @@ validate_port_conflicts() {
   if have jq; then
     # Extract all listen_port values
     local ports=''
-    ports=$(jq -r '.inbounds[]?.listen_port // empty' "${config_file}" 2> /dev/null | sort)
+    ports=$(jq -r '.inbounds[]?.listen_port // empty' "${config_file}" 2>/dev/null | sort)
 
     # Check for empty result (no ports configured or no inbounds)
     if [[ -z "${ports}" ]]; then
@@ -210,7 +210,7 @@ validate_tls_config() {
   if have jq; then
     # Check each inbound with TLS enabled
     local tls_inbounds=''
-    tls_inbounds=$(jq -c '.inbounds[]? | select(.tls.enabled == true)' "${config_file}" 2> /dev/null)
+    tls_inbounds=$(jq -c '.inbounds[]? | select(.tls.enabled == true)' "${config_file}" 2>/dev/null)
 
     # If no TLS inbounds, validation passes
     if [[ -z "${tls_inbounds}" ]]; then
@@ -222,7 +222,7 @@ validate_tls_config() {
     while IFS= read -r inbound; do
       # Check if Reality is enabled
       local reality_enabled=''
-      reality_enabled=$(echo "${inbound}" | jq -r '.tls.reality.enabled // false' 2> /dev/null)
+      reality_enabled=$(echo "${inbound}" | jq -r '.tls.reality.enabled // false' 2>/dev/null)
 
       if [[ "${reality_enabled}" == "true" ]]; then
         debug "Reality TLS configuration detected (no certificate paths required)"
@@ -231,14 +231,14 @@ validate_tls_config() {
 
       # For non-Reality TLS, check certificate paths
       local cert_path='' key_path=''
-      cert_path=$(echo "${inbound}" | jq -r '.tls.certificate_path // empty' 2> /dev/null)
-      key_path=$(echo "${inbound}" | jq -r '.tls.key_path // empty' 2> /dev/null)
+      cert_path=$(echo "${inbound}" | jq -r '.tls.certificate_path // empty' 2>/dev/null)
+      key_path=$(echo "${inbound}" | jq -r '.tls.key_path // empty' 2>/dev/null)
 
       if [[ -z "${cert_path}" || -z "${key_path}" ]]; then
         warn "TLS enabled but certificate_path or key_path not specified"
         # Note: Not a fatal error as files might be provided via other means
       fi
-    done <<< "${tls_inbounds}"
+    done <<<"${tls_inbounds}"
 
     debug "TLS configuration check passed"
     return 0
@@ -278,7 +278,7 @@ validate_route_rules() {
   if have jq; then
     # Check for deprecated 'sniff' field in inbounds
     local deprecated_sniff=''
-    deprecated_sniff=$(jq -r '.inbounds[]? | select(.sniff != null) | .tag // .type' "${config_file}" 2> /dev/null)
+    deprecated_sniff=$(jq -r '.inbounds[]? | select(.sniff != null) | .tag // .type' "${config_file}" 2>/dev/null)
 
     if [[ -n "${deprecated_sniff}" ]]; then
       err "Deprecated field 'sniff' found in inbound: ${deprecated_sniff}"
@@ -288,7 +288,7 @@ validate_route_rules() {
 
     # Check for deprecated 'sniff_override_destination' field
     local deprecated_sniff_override=''
-    deprecated_sniff_override=$(jq -r '.inbounds[]? | select(.sniff_override_destination != null) | .tag // .type' "${config_file}" 2> /dev/null)
+    deprecated_sniff_override=$(jq -r '.inbounds[]? | select(.sniff_override_destination != null) | .tag // .type' "${config_file}" 2>/dev/null)
 
     if [[ -n "${deprecated_sniff_override}" ]]; then
       err "Deprecated field 'sniff_override_destination' found in inbound: ${deprecated_sniff_override}"
@@ -298,7 +298,7 @@ validate_route_rules() {
 
     # Check for deprecated 'domain_strategy' in inbounds
     local deprecated_ds_inbound=''
-    deprecated_ds_inbound=$(jq -r '.inbounds[]? | select(.domain_strategy != null) | .tag // .type' "${config_file}" 2> /dev/null)
+    deprecated_ds_inbound=$(jq -r '.inbounds[]? | select(.domain_strategy != null) | .tag // .type' "${config_file}" 2>/dev/null)
 
     if [[ -n "${deprecated_ds_inbound}" ]]; then
       err "Deprecated field 'domain_strategy' found in inbound: ${deprecated_ds_inbound}"
@@ -308,7 +308,7 @@ validate_route_rules() {
 
     # Check for deprecated 'domain_strategy' in outbounds
     local deprecated_ds_outbound=''
-    deprecated_ds_outbound=$(jq -r '.outbounds[]? | select(.domain_strategy != null) | .tag // .type' "${config_file}" 2> /dev/null)
+    deprecated_ds_outbound=$(jq -r '.outbounds[]? | select(.domain_strategy != null) | .tag // .type' "${config_file}" 2>/dev/null)
 
     if [[ -n "${deprecated_ds_outbound}" ]]; then
       err "Deprecated field 'domain_strategy' found in outbound: ${deprecated_ds_outbound}"

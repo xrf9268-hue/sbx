@@ -17,10 +17,10 @@ readonly _SBX_GENERATORS_LOADED=1
 _LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Note: common.sh will source us, so only source if not already loaded
 if [[ -z "${_SBX_COMMON_LOADED:-}" ]]; then
-    source "${_LIB_DIR}/common.sh"
+  source "${_LIB_DIR}/common.sh"
 fi
 if [[ -z "${_SBX_LOGGING_LOADED:-}" ]]; then
-    source "${_LIB_DIR}/logging.sh"
+  source "${_LIB_DIR}/logging.sh"
 fi
 
 # Declare external variables from common.sh
@@ -49,16 +49,16 @@ generate_uuid() {
   fi
 
   # Method 2: uuidgen command (available on most Unix systems)
-  if command -v uuidgen > /dev/null 2>&1; then
+  if command -v uuidgen >/dev/null 2>&1; then
     uuidgen | tr '[:upper:]' '[:lower:]'
     return 0
   fi
 
   # Method 3: Python (widely available)
-  if command -v python3 > /dev/null 2>&1; then
+  if command -v python3 >/dev/null 2>&1; then
     python3 -c 'import uuid; print(str(uuid.uuid4()))'
     return 0
-  elif command -v python > /dev/null 2>&1; then
+  elif command -v python >/dev/null 2>&1; then
     python -c 'import uuid; print(str(uuid.uuid4()))'
     return 0
   fi
@@ -175,7 +175,7 @@ generate_qr_code() {
   success "${name} configuration QR code:"
   echo "┌─────────────────────────────────────┐"
   # Generate ASCII QR code for terminal display
-  if qrencode -t UTF8 -m 0 "${uri}" 2> /dev/null; then
+  if qrencode -t UTF8 -m 0 "${uri}" 2>/dev/null; then
     echo "└─────────────────────────────────────┘"
     info "Scan QR code to import config to client"
   else

@@ -20,12 +20,12 @@ N='\033[0m'
 
 # Load modules if available (graceful degradation)
 if [[ -d "$LIB_DIR" ]]; then
-    # shellcheck source=/dev/null
-    [[ -f "$LIB_DIR/common.sh" ]] && source "$LIB_DIR/common.sh"
-    # shellcheck source=/dev/null
-    [[ -f "$LIB_DIR/backup.sh" ]] && source "$LIB_DIR/backup.sh"
-    # shellcheck source=/dev/null
-    [[ -f "$LIB_DIR/export.sh" ]] && source "$LIB_DIR/export.sh"
+  # shellcheck source=/dev/null
+  [[ -f "$LIB_DIR/common.sh" ]] && source "$LIB_DIR/common.sh"
+  # shellcheck source=/dev/null
+  [[ -f "$LIB_DIR/backup.sh" ]] && source "$LIB_DIR/backup.sh"
+  # shellcheck source=/dev/null
+  [[ -f "$LIB_DIR/export.sh" ]] && source "$LIB_DIR/export.sh"
 fi
 
 # Simple logo for management tool
@@ -39,7 +39,7 @@ show_sbx_logo() {
 
 # Show usage information
 show_usage() {
-    cat <<EOF
+  cat <<EOF
 ${B}sbx-manager${N} - sing-box management tool
 
 ${B}Usage:${N}
@@ -97,223 +97,223 @@ HEALTH_CERT_WARNING_DAYS="${HEALTH_CERT_WARNING_DAYS:-30}"
 JSON_OUTPUT=0
 ARGS=()
 for arg in "$@"; do
-    if [[ "$arg" == "--json" ]]; then
-        JSON_OUTPUT=1
-    else
-        ARGS+=("$arg")
-    fi
+  if [[ "$arg" == "--json" ]]; then
+    JSON_OUTPUT=1
+  else
+    ARGS+=("$arg")
+  fi
 done
 set -- "${ARGS[@]}"
 
 error_exit() {
-    echo -e "${R}[ERR]${N} $1" >&2
-    exit "${2:-1}"
+  echo -e "${R}[ERR]${N} $1" >&2
+  exit "${2:-1}"
 }
 
 validate_client_info_file() {
-    local client_info_file="$1"
-    [[ -n "$client_info_file" ]] || error_exit "Client info path is empty."
-    [[ -f "$client_info_file" ]] || error_exit "Client info not found: $client_info_file"
-    [[ ! -L "$client_info_file" ]] || error_exit "Refusing to load client info from symlink: $client_info_file"
+  local client_info_file="$1"
+  [[ -n "$client_info_file" ]] || error_exit "Client info path is empty."
+  [[ -f "$client_info_file" ]] || error_exit "Client info not found: $client_info_file"
+  [[ ! -L "$client_info_file" ]] || error_exit "Refusing to load client info from symlink: $client_info_file"
 
-    local resolved owner perm
-    resolved=$(readlink -f "$client_info_file") || error_exit "Failed to resolve client info path: $client_info_file"
-    owner=$(stat -c '%u' "$resolved") || error_exit "Unable to read client info ownership."
-    perm=$(stat -c '%a' "$resolved") || error_exit "Unable to read client info permissions."
+  local resolved owner perm
+  resolved=$(readlink -f "$client_info_file") || error_exit "Failed to resolve client info path: $client_info_file"
+  owner=$(stat -c '%u' "$resolved") || error_exit "Unable to read client info ownership."
+  perm=$(stat -c '%a' "$resolved") || error_exit "Unable to read client info permissions."
 
-    [[ "$owner" -eq 0 ]] || error_exit "Client info must be owned by root (uid 0)."
-    [[ "$perm" == "600" ]] || error_exit "Client info permissions must be 600 (found $perm)."
-    [[ -s "$resolved" ]] || error_exit "Client info is empty."
+  [[ "$owner" -eq 0 ]] || error_exit "Client info must be owned by root (uid 0)."
+  [[ "$perm" == "600" ]] || error_exit "Client info permissions must be 600 (found $perm)."
+  [[ -s "$resolved" ]] || error_exit "Client info is empty."
 
-    echo "$resolved"
+  echo "$resolved"
 }
 
 validate_state_info_file() {
-    local state_file="$1"
-    [[ -n "$state_file" ]] || error_exit "State file path is empty."
-    [[ -f "$state_file" ]] || error_exit "State file not found: $state_file"
-    [[ ! -L "$state_file" ]] || error_exit "Refusing to load state file from symlink: $state_file"
+  local state_file="$1"
+  [[ -n "$state_file" ]] || error_exit "State file path is empty."
+  [[ -f "$state_file" ]] || error_exit "State file not found: $state_file"
+  [[ ! -L "$state_file" ]] || error_exit "Refusing to load state file from symlink: $state_file"
 
-    local resolved owner perm
-    resolved=$(readlink -f "$state_file") || error_exit "Failed to resolve state file path: $state_file"
-    perm=$(stat -c '%a' "$resolved" 2>/dev/null || stat -f '%Lp' "$resolved" 2>/dev/null) || error_exit "Unable to read state file permissions."
-    [[ "$perm" == "600" ]] || error_exit "State file permissions must be 600 (found $perm)."
-    [[ -s "$resolved" ]] || error_exit "State file is empty."
+  local resolved owner perm
+  resolved=$(readlink -f "$state_file") || error_exit "Failed to resolve state file path: $state_file"
+  perm=$(stat -c '%a' "$resolved" 2>/dev/null || stat -f '%Lp' "$resolved" 2>/dev/null) || error_exit "Unable to read state file permissions."
+  [[ "$perm" == "600" ]] || error_exit "State file permissions must be 600 (found $perm)."
+  [[ -s "$resolved" ]] || error_exit "State file is empty."
 
-    if [[ -z "${TEST_STATE_FILE:-}" ]]; then
-        owner=$(stat -c '%u' "$resolved" 2>/dev/null || stat -f '%u' "$resolved" 2>/dev/null) || error_exit "Unable to read state file ownership."
-        [[ "$owner" -eq 0 ]] || error_exit "State file must be owned by root (uid 0)."
-    fi
+  if [[ -z "${TEST_STATE_FILE:-}" ]]; then
+    owner=$(stat -c '%u' "$resolved" 2>/dev/null || stat -f '%u' "$resolved" 2>/dev/null) || error_exit "Unable to read state file ownership."
+    [[ "$owner" -eq 0 ]] || error_exit "State file must be owned by root (uid 0)."
+  fi
 
-    command -v jq >/dev/null 2>&1 || error_exit "jq is required to parse state file."
-    jq empty < "$resolved" 2>/dev/null || error_exit "State file is not valid JSON: $resolved"
+  command -v jq >/dev/null 2>&1 || error_exit "jq is required to parse state file."
+  jq empty <"$resolved" 2>/dev/null || error_exit "State file is not valid JSON: $resolved"
 
-    echo "$resolved"
+  echo "$resolved"
 }
 
 parse_client_info_file() {
-    local file="$1"
-    local invalid_line checksum line key value
-    declare -A client_info_map=()
+  local file="$1"
+  local invalid_line checksum line key value
+  declare -A client_info_map=()
 
-    # Accept both KEY="value" (quoted) and KEY=value (unquoted) formats
-    invalid_line=$(grep -nEv '^[[:space:]]*(#.*)?$|^[A-Z0-9_]+=(\"[^\"]*\"|[^[:space:]]*)[[:space:]]*$' "$file" | head -n1 || true)
-    [[ -z "$invalid_line" ]] || error_exit "Invalid client info format at ${invalid_line%%:*}: ${invalid_line#*:}"
+  # Accept both KEY="value" (quoted) and KEY=value (unquoted) formats
+  invalid_line=$(grep -nEv '^[[:space:]]*(#.*)?$|^[A-Z0-9_]+=(\"[^\"]*\"|[^[:space:]]*)[[:space:]]*$' "$file" | head -n1 || true)
+  [[ -z "$invalid_line" ]] || error_exit "Invalid client info format at ${invalid_line%%:*}: ${invalid_line#*:}"
 
-    checksum=$(sha256sum "$file" | awk '{print $1}')
-    CLIENT_INFO_CHECKSUM="$checksum"
+  checksum=$(sha256sum "$file" | awk '{print $1}')
+  CLIENT_INFO_CHECKSUM="$checksum"
 
-    while IFS= read -r line || [[ -n "$line" ]]; do
-        [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]] && continue
-        # Match quoted format: KEY="value"
-        if [[ "$line" =~ ^([A-Z0-9_]+)=\"([^\"]*)\"[[:space:]]*$ ]]; then
-            key="${BASH_REMATCH[1]}"
-            value="${BASH_REMATCH[2]}"
-        # Match unquoted format: KEY=value
-        elif [[ "$line" =~ ^([A-Z0-9_]+)=([^[:space:]]*)[[:space:]]*$ ]]; then
-            key="${BASH_REMATCH[1]}"
-            value="${BASH_REMATCH[2]}"
-        else
-            error_exit "Invalid client info entry: $line"
-        fi
-
-        [[ "$key" =~ $CLIENT_INFO_ALLOWED_KEYS_REGEX ]] || error_exit "Unexpected key '${key}' in client info."
-        { [[ "$value" == *'$('* ]] || [[ "$value" == *\`* ]]; } && error_exit "Suspicious characters in value for ${key}."
-
-        client_info_map["$key"]="$value"
-    done < "$file"
-
-    for key in "${!client_info_map[@]}"; do
-        printf -v "$key" '%s' "${client_info_map[$key]}"
-    done
-
-    if [[ -v client_info_map[WS_PORT] ]]; then
-        WS_ENABLED="true"
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]] && continue
+    # Match quoted format: KEY="value"
+    if [[ "$line" =~ ^([A-Z0-9_]+)=\"([^\"]*)\"[[:space:]]*$ ]]; then
+      key="${BASH_REMATCH[1]}"
+      value="${BASH_REMATCH[2]}"
+    # Match unquoted format: KEY=value
+    elif [[ "$line" =~ ^([A-Z0-9_]+)=([^[:space:]]*)[[:space:]]*$ ]]; then
+      key="${BASH_REMATCH[1]}"
+      value="${BASH_REMATCH[2]}"
     else
-        WS_ENABLED="false"
+      error_exit "Invalid client info entry: $line"
     fi
 
-    if [[ -v client_info_map[HY2_PORT] || -v client_info_map[HY2_PASS] ]]; then
-        HY2_ENABLED="true"
-    else
-        HY2_ENABLED="false"
-    fi
+    [[ "$key" =~ $CLIENT_INFO_ALLOWED_KEYS_REGEX ]] || error_exit "Unexpected key '${key}' in client info."
+    { [[ "$value" == *'$('* ]] || [[ "$value" == *\`* ]]; } && error_exit "Suspicious characters in value for ${key}."
 
-    # Set defaults for missing variables
-    local default_reality="${REALITY_PORT_DEFAULT:-443}"
-    local default_sni="${SNI_DEFAULT:-www.microsoft.com}"
-    local default_ws="${WS_PORT_DEFAULT:-8444}"
-    local default_hy2="${HY2_PORT_DEFAULT:-8443}"
+    client_info_map["$key"]="$value"
+  done <"$file"
 
-    REALITY_PORT="${REALITY_PORT:-$default_reality}"
-    SNI="${SNI:-$default_sni}"
-    WS_PORT="${WS_PORT:-$default_ws}"
-    HY2_PORT="${HY2_PORT:-$default_hy2}"
+  for key in "${!client_info_map[@]}"; do
+    printf -v "$key" '%s' "${client_info_map[$key]}"
+  done
+
+  if [[ -v client_info_map[WS_PORT] ]]; then
+    WS_ENABLED="true"
+  else
+    WS_ENABLED="false"
+  fi
+
+  if [[ -v client_info_map[HY2_PORT] || -v client_info_map[HY2_PASS] ]]; then
+    HY2_ENABLED="true"
+  else
+    HY2_ENABLED="false"
+  fi
+
+  # Set defaults for missing variables
+  local default_reality="${REALITY_PORT_DEFAULT:-443}"
+  local default_sni="${SNI_DEFAULT:-www.microsoft.com}"
+  local default_ws="${WS_PORT_DEFAULT:-8444}"
+  local default_hy2="${HY2_PORT_DEFAULT:-8443}"
+
+  REALITY_PORT="${REALITY_PORT:-$default_reality}"
+  SNI="${SNI:-$default_sni}"
+  WS_PORT="${WS_PORT:-$default_ws}"
+  HY2_PORT="${HY2_PORT:-$default_hy2}"
 }
 
 parse_state_info_file() {
-    local file="$1"
-    local ws_enabled_raw='' hy2_enabled_raw=''
+  local file="$1"
+  local ws_enabled_raw='' hy2_enabled_raw=''
 
-    DOMAIN=$(jq -r '.server.domain // .server.ip // empty' "$file")
-    UUID=$(jq -r '.protocols.reality.uuid // empty' "$file")
-    PUBLIC_KEY=$(jq -r '.protocols.reality.public_key // empty' "$file")
-    SHORT_ID=$(jq -r '.protocols.reality.short_id // empty' "$file")
-    SNI=$(jq -r '.protocols.reality.sni // empty' "$file")
-    REALITY_PORT=$(jq -r '.protocols.reality.port // empty' "$file")
-    WS_PORT=$(jq -r '.protocols.ws_tls.port // empty' "$file")
-    HY2_PORT=$(jq -r '.protocols.hysteria2.port // empty' "$file")
-    HY2_PASS=$(jq -r '.protocols.hysteria2.password // empty' "$file")
-    CERT_FULLCHAIN=$(jq -r '.protocols.ws_tls.certificate // empty' "$file")
-    CERT_KEY=$(jq -r '.protocols.ws_tls.key // empty' "$file")
-    ws_enabled_raw=$(jq -r '.protocols.ws_tls.enabled // empty' "$file")
-    hy2_enabled_raw=$(jq -r '.protocols.hysteria2.enabled // empty' "$file")
+  DOMAIN=$(jq -r '.server.domain // .server.ip // empty' "$file")
+  UUID=$(jq -r '.protocols.reality.uuid // empty' "$file")
+  PUBLIC_KEY=$(jq -r '.protocols.reality.public_key // empty' "$file")
+  SHORT_ID=$(jq -r '.protocols.reality.short_id // empty' "$file")
+  SNI=$(jq -r '.protocols.reality.sni // empty' "$file")
+  REALITY_PORT=$(jq -r '.protocols.reality.port // empty' "$file")
+  WS_PORT=$(jq -r '.protocols.ws_tls.port // empty' "$file")
+  HY2_PORT=$(jq -r '.protocols.hysteria2.port // empty' "$file")
+  HY2_PASS=$(jq -r '.protocols.hysteria2.password // empty' "$file")
+  CERT_FULLCHAIN=$(jq -r '.protocols.ws_tls.certificate // empty' "$file")
+  CERT_KEY=$(jq -r '.protocols.ws_tls.key // empty' "$file")
+  ws_enabled_raw=$(jq -r '.protocols.ws_tls.enabled // empty' "$file")
+  hy2_enabled_raw=$(jq -r '.protocols.hysteria2.enabled // empty' "$file")
 
-    case "${ws_enabled_raw}" in
-        true | 1 | yes | on) WS_ENABLED="true" ;;
-        false | 0 | no | off) WS_ENABLED="false" ;;
-        *)
-            [[ -n "${WS_PORT:-}" ]] && WS_ENABLED="true" || WS_ENABLED="false"
-            ;;
-    esac
+  case "${ws_enabled_raw}" in
+    true | 1 | yes | on) WS_ENABLED="true" ;;
+    false | 0 | no | off) WS_ENABLED="false" ;;
+    *)
+      [[ -n "${WS_PORT:-}" ]] && WS_ENABLED="true" || WS_ENABLED="false"
+      ;;
+  esac
 
-    case "${hy2_enabled_raw}" in
-        true | 1 | yes | on) HY2_ENABLED="true" ;;
-        false | 0 | no | off) HY2_ENABLED="false" ;;
-        *)
-            [[ -n "${HY2_PORT:-}" || -n "${HY2_PASS:-}" ]] && HY2_ENABLED="true" || HY2_ENABLED="false"
-            ;;
-    esac
+  case "${hy2_enabled_raw}" in
+    true | 1 | yes | on) HY2_ENABLED="true" ;;
+    false | 0 | no | off) HY2_ENABLED="false" ;;
+    *)
+      [[ -n "${HY2_PORT:-}" || -n "${HY2_PASS:-}" ]] && HY2_ENABLED="true" || HY2_ENABLED="false"
+      ;;
+  esac
 
-    local default_reality="${REALITY_PORT_DEFAULT:-443}"
-    local default_sni="${SNI_DEFAULT:-www.microsoft.com}"
-    local default_ws="${WS_PORT_DEFAULT:-8444}"
-    local default_hy2="${HY2_PORT_DEFAULT:-8443}"
+  local default_reality="${REALITY_PORT_DEFAULT:-443}"
+  local default_sni="${SNI_DEFAULT:-www.microsoft.com}"
+  local default_ws="${WS_PORT_DEFAULT:-8444}"
+  local default_hy2="${HY2_PORT_DEFAULT:-8443}"
 
-    REALITY_PORT="${REALITY_PORT:-$default_reality}"
-    SNI="${SNI:-$default_sni}"
-    WS_PORT="${WS_PORT:-$default_ws}"
-    HY2_PORT="${HY2_PORT:-$default_hy2}"
+  REALITY_PORT="${REALITY_PORT:-$default_reality}"
+  SNI="${SNI:-$default_sni}"
+  WS_PORT="${WS_PORT:-$default_ws}"
+  HY2_PORT="${HY2_PORT:-$default_hy2}"
 }
 
 fallback_load_client_info() {
-    local state_file="${TEST_STATE_FILE:-$STATE_INFO_PATH}"
-    local target_file="${TEST_CLIENT_INFO:-$CLIENT_INFO_PATH}"
-    local resolved
+  local state_file="${TEST_STATE_FILE:-$STATE_INFO_PATH}"
+  local target_file="${TEST_CLIENT_INFO:-$CLIENT_INFO_PATH}"
+  local resolved
 
-    if [[ -f "$state_file" ]]; then
-        resolved=$(validate_state_info_file "$state_file")
-        parse_state_info_file "$resolved"
-        return 0
-    fi
+  if [[ -f "$state_file" ]]; then
+    resolved=$(validate_state_info_file "$state_file")
+    parse_state_info_file "$resolved"
+    return 0
+  fi
 
-    resolved=$(validate_client_info_file "$target_file")
-    parse_client_info_file "$resolved"
+  resolved=$(validate_client_info_file "$target_file")
+  parse_client_info_file "$resolved"
 }
 
 ensure_client_info_loaded() {
-    if command -v load_client_info >/dev/null 2>&1; then
-        load_client_info
-    else
-        fallback_load_client_info
-    fi
+  if command -v load_client_info >/dev/null 2>&1; then
+    load_client_info
+  else
+    fallback_load_client_info
+  fi
 }
 
 require_jq_for_json() {
-    if [[ "${JSON_OUTPUT}" == "1" ]] && ! command -v jq >/dev/null 2>&1; then
-        error_exit "jq is required for --json output"
-    fi
+  if [[ "${JSON_OUTPUT}" == "1" ]] && ! command -v jq >/dev/null 2>&1; then
+    error_exit "jq is required for --json output"
+  fi
 }
 
 health_ok() {
-    HEALTH_ITEMS+=("OK|$1")
-    if [[ "${JSON_OUTPUT}" != "1" ]]; then
-        echo "  [OK] $1"
-    fi
+  HEALTH_ITEMS+=("OK|$1")
+  if [[ "${JSON_OUTPUT}" != "1" ]]; then
+    echo "  [OK] $1"
+  fi
 }
 
 health_warn() {
-    HEALTH_ITEMS+=("WARN|$1")
-    if [[ "${JSON_OUTPUT}" != "1" ]]; then
-        echo "  [WARN] $1"
-    fi
-    HEALTH_WARNINGS=$((HEALTH_WARNINGS + 1))
+  HEALTH_ITEMS+=("WARN|$1")
+  if [[ "${JSON_OUTPUT}" != "1" ]]; then
+    echo "  [WARN] $1"
+  fi
+  HEALTH_WARNINGS=$((HEALTH_WARNINGS + 1))
 }
 
 health_fail() {
-    HEALTH_ITEMS+=("FAIL|$1")
-    if [[ "${JSON_OUTPUT}" != "1" ]]; then
-        echo "  [FAIL] $1"
-    fi
-    HEALTH_FAILURES=$((HEALTH_FAILURES + 1))
+  HEALTH_ITEMS+=("FAIL|$1")
+  if [[ "${JSON_OUTPUT}" != "1" ]]; then
+    echo "  [FAIL] $1"
+  fi
+  HEALTH_FAILURES=$((HEALTH_FAILURES + 1))
 }
 
 health_output_json() {
-    local overall="$1"
-    local checks_json='[]'
+  local overall="$1"
+  local checks_json='[]'
 
-    if [[ ${#HEALTH_ITEMS[@]} -gt 0 ]]; then
-        checks_json=$(printf '%s\n' "${HEALTH_ITEMS[@]}" | jq -R -s '
+  if [[ ${#HEALTH_ITEMS[@]} -gt 0 ]]; then
+    checks_json=$(printf '%s\n' "${HEALTH_ITEMS[@]}" | jq -R -s '
             split("\n")
             | map(select(length > 0))
             | map(capture("^(?<level>[^|]+)\\|(?<message>.*)$"))
@@ -322,15 +322,15 @@ health_output_json() {
                 message: .message
             })
         ')
-    fi
+  fi
 
-    jq -n \
-      --arg command "health" \
-      --arg overall "${overall}" \
-      --argjson failures "${HEALTH_FAILURES}" \
-      --argjson warnings "${HEALTH_WARNINGS}" \
-      --argjson checks "${checks_json}" \
-      '{
+  jq -n \
+    --arg command "health" \
+    --arg overall "${overall}" \
+    --argjson failures "${HEALTH_FAILURES}" \
+    --argjson warnings "${HEALTH_WARNINGS}" \
+    --argjson checks "${checks_json}" \
+    '{
         command: $command,
         overall: $overall,
         failures: $failures,
@@ -340,178 +340,178 @@ health_output_json() {
 }
 
 is_port_listening() {
-    local port="$1"
-    local proto="$2"
-    local ss_output=''
+  local port="$1"
+  local proto="$2"
+  local ss_output=''
 
-    if [[ "$proto" == "udp" ]]; then
-        ss_output=$(ss -lnup 2>/dev/null || true)
-        grep -q ":${port}[[:space:]]" <<< "${ss_output}"
-        return $?
-    fi
-
-    ss_output=$(ss -lntp 2>/dev/null || true)
-    grep -q ":${port}[[:space:]]" <<< "${ss_output}"
+  if [[ "$proto" == "udp" ]]; then
+    ss_output=$(ss -lnup 2>/dev/null || true)
+    grep -q ":${port}[[:space:]]" <<<"${ss_output}"
     return $?
+  fi
+
+  ss_output=$(ss -lntp 2>/dev/null || true)
+  grep -q ":${port}[[:space:]]" <<<"${ss_output}"
+  return $?
 }
 
 discover_health_ports() {
-    local config_file="$1"
-    local entries=''
+  local config_file="$1"
+  local entries=''
 
-    command -v jq >/dev/null 2>&1 || return 1
-    [[ -f "$config_file" ]] || return 1
+  command -v jq >/dev/null 2>&1 || return 1
+  [[ -f "$config_file" ]] || return 1
 
-    entries=$(jq -r '.inbounds[]? | select(.listen_port != null) | [(.tag // .type // "inbound"), (.type // ""), (.listen_port | tostring)] | @tsv' "$config_file" 2>/dev/null) || return 1
-    [[ -n "$entries" ]] || return 1
+  entries=$(jq -r '.inbounds[]? | select(.listen_port != null) | [(.tag // .type // "inbound"), (.type // ""), (.listen_port | tostring)] | @tsv' "$config_file" 2>/dev/null) || return 1
+  [[ -n "$entries" ]] || return 1
 
-    local tag type port proto label
-    while IFS=$'\t' read -r tag type port; do
-        [[ "$port" =~ ^[0-9]+$ ]] || continue
-        if [[ "$type" == "hysteria2" ]]; then
-            proto="udp"
-        else
-            proto="tcp"
-        fi
-        label="${tag:-${type:-inbound}}"
-        echo "${port}|${proto}|${label}"
-    done <<< "$entries"
+  local tag type port proto label
+  while IFS=$'\t' read -r tag type port; do
+    [[ "$port" =~ ^[0-9]+$ ]] || continue
+    if [[ "$type" == "hysteria2" ]]; then
+      proto="udp"
+    else
+      proto="tcp"
+    fi
+    label="${tag:-${type:-inbound}}"
+    echo "${port}|${proto}|${label}"
+  done <<<"$entries"
 }
 
 run_health_check() {
-    local config_file="${SBX_CONFIG_PATH}"
-    local cert_warning_sec=$((HEALTH_CERT_WARNING_DAYS * 86400))
-    local cert_path=''
-    local port_entries=''
+  local config_file="${SBX_CONFIG_PATH}"
+  local cert_warning_sec=$((HEALTH_CERT_WARNING_DAYS * 86400))
+  local cert_path=''
+  local port_entries=''
 
-    HEALTH_FAILURES=0
-    HEALTH_WARNINGS=0
-    HEALTH_ITEMS=()
+  HEALTH_FAILURES=0
+  HEALTH_WARNINGS=0
+  HEALTH_ITEMS=()
 
-    if [[ "${JSON_OUTPUT}" != "1" ]]; then
-        echo -e "${B}sbx health report:${N}"
-    fi
+  if [[ "${JSON_OUTPUT}" != "1" ]]; then
+    echo -e "${B}sbx health report:${N}"
+  fi
 
-    # 1) Service state
-    if systemctl is-active --quiet sing-box 2>/dev/null; then
-        health_ok "Service: active"
+  # 1) Service state
+  if systemctl is-active --quiet sing-box 2>/dev/null; then
+    health_ok "Service: active"
+  else
+    health_fail "Service: inactive"
+  fi
+
+  # 2) Configuration validity
+  if [[ ! -f "$config_file" ]]; then
+    health_fail "Config: not found (${config_file})"
+  elif [[ ! -x "$SBX_BIN" ]]; then
+    health_fail "Config check unavailable (sing-box binary not executable: ${SBX_BIN})"
+  elif "$SBX_BIN" check -c "$config_file" >/dev/null 2>&1; then
+    health_ok "Config: valid"
+  else
+    health_fail "Config: invalid"
+  fi
+
+  # 3) Port listening checks (from configured inbounds)
+  if ! command -v ss >/dev/null 2>&1; then
+    health_warn "Ports: skipped (ss command not available)"
+  else
+    port_entries=$(discover_health_ports "$config_file" 2>/dev/null || true)
+    if [[ -z "$port_entries" ]]; then
+      health_warn "Ports: skipped (no parseable inbound listen_port entries)"
     else
-        health_fail "Service: inactive"
-    fi
+      declare -A seen_ports=()
+      local port proto label key
+      while IFS='|' read -r port proto label; do
+        [[ -n "$port" && -n "$proto" ]] || continue
+        key="${port}/${proto}"
+        [[ -n "${seen_ports[${key}]:-}" ]] && continue
+        seen_ports["${key}"]=1
 
-    # 2) Configuration validity
-    if [[ ! -f "$config_file" ]]; then
-        health_fail "Config: not found (${config_file})"
-    elif [[ ! -x "$SBX_BIN" ]]; then
-        health_fail "Config check unavailable (sing-box binary not executable: ${SBX_BIN})"
-    elif "$SBX_BIN" check -c "$config_file" >/dev/null 2>&1; then
-        health_ok "Config: valid"
+        if is_port_listening "$port" "$proto"; then
+          health_ok "Port ${port}/${proto}: listening (${label})"
+        else
+          health_fail "Port ${port}/${proto}: not listening (${label})"
+        fi
+      done <<<"$port_entries"
+    fi
+  fi
+
+  # 4) Certificate expiry checks (manual cert path only)
+  if [[ -n "${CERT_FULLCHAIN:-}" ]]; then
+    cert_path="${CERT_FULLCHAIN}"
+  elif command -v jq >/dev/null 2>&1 && [[ -f "$config_file" ]]; then
+    cert_path=$(jq -r '.inbounds[]? | .tls.certificate_path? // empty' "$config_file" 2>/dev/null | head -1)
+  fi
+
+  if [[ -n "$cert_path" ]]; then
+    if [[ ! -f "$cert_path" ]]; then
+      health_warn "Certificate: path not found (${cert_path})"
+    elif ! command -v openssl >/dev/null 2>&1; then
+      health_warn "Certificate: cannot check expiry (openssl not available)"
+    elif openssl x509 -in "$cert_path" -checkend "$cert_warning_sec" -noout >/dev/null 2>&1; then
+      health_ok "Certificate: valid (${cert_path})"
     else
-        health_fail "Config: invalid"
+      health_warn "Certificate: expires within ${HEALTH_CERT_WARNING_DAYS} days (${cert_path})"
     fi
+  else
+    health_ok "Certificate: not configured"
+  fi
 
-    # 3) Port listening checks (from configured inbounds)
-    if ! command -v ss >/dev/null 2>&1; then
-        health_warn "Ports: skipped (ss command not available)"
+  # 5) Deprecated field checks
+  if command -v jq >/dev/null 2>&1 && [[ -f "$config_file" ]]; then
+    local deprecated_inbounds=''
+    deprecated_inbounds=$(jq -r '.inbounds[]? | select(.sniff != null or .sniff_override_destination != null) | (.tag // .type // "unknown")' "$config_file" 2>/dev/null | paste -sd "," -)
+    if [[ -n "$deprecated_inbounds" ]]; then
+      health_warn "Deprecated fields detected in inbounds: ${deprecated_inbounds}"
     else
-        port_entries=$(discover_health_ports "$config_file" 2>/dev/null || true)
-        if [[ -z "$port_entries" ]]; then
-            health_warn "Ports: skipped (no parseable inbound listen_port entries)"
-        else
-            declare -A seen_ports=()
-            local port proto label key
-            while IFS='|' read -r port proto label; do
-                [[ -n "$port" && -n "$proto" ]] || continue
-                key="${port}/${proto}"
-                [[ -n "${seen_ports[${key}]:-}" ]] && continue
-                seen_ports["${key}"]=1
-
-                if is_port_listening "$port" "$proto"; then
-                    health_ok "Port ${port}/${proto}: listening (${label})"
-                else
-                    health_fail "Port ${port}/${proto}: not listening (${label})"
-                fi
-            done <<< "$port_entries"
-        fi
+      health_ok "Deprecated fields: none"
     fi
+  else
+    health_warn "Deprecated field check skipped (jq or config unavailable)"
+  fi
 
-    # 4) Certificate expiry checks (manual cert path only)
-    if [[ -n "${CERT_FULLCHAIN:-}" ]]; then
-        cert_path="${CERT_FULLCHAIN}"
-    elif command -v jq >/dev/null 2>&1 && [[ -f "$config_file" ]]; then
-        cert_path=$(jq -r '.inbounds[]? | .tls.certificate_path? // empty' "$config_file" 2>/dev/null | head -1)
-    fi
-
-    if [[ -n "$cert_path" ]]; then
-        if [[ ! -f "$cert_path" ]]; then
-            health_warn "Certificate: path not found (${cert_path})"
-        elif ! command -v openssl >/dev/null 2>&1; then
-            health_warn "Certificate: cannot check expiry (openssl not available)"
-        elif openssl x509 -in "$cert_path" -checkend "$cert_warning_sec" -noout >/dev/null 2>&1; then
-            health_ok "Certificate: valid (${cert_path})"
-        else
-            health_warn "Certificate: expires within ${HEALTH_CERT_WARNING_DAYS} days (${cert_path})"
-        fi
+  if [[ ${HEALTH_FAILURES} -gt 0 ]]; then
+    if [[ "${JSON_OUTPUT}" == "1" ]]; then
+      health_output_json "fail"
     else
-        health_ok "Certificate: not configured"
+      echo
+      echo "Health result: FAIL (${HEALTH_FAILURES} failed, ${HEALTH_WARNINGS} warnings)"
     fi
+    return 1
+  fi
 
-    # 5) Deprecated field checks
-    if command -v jq >/dev/null 2>&1 && [[ -f "$config_file" ]]; then
-        local deprecated_inbounds=''
-        deprecated_inbounds=$(jq -r '.inbounds[]? | select(.sniff != null or .sniff_override_destination != null) | (.tag // .type // "unknown")' "$config_file" 2>/dev/null | paste -sd "," -)
-        if [[ -n "$deprecated_inbounds" ]]; then
-            health_warn "Deprecated fields detected in inbounds: ${deprecated_inbounds}"
-        else
-            health_ok "Deprecated fields: none"
-        fi
+  if [[ ${HEALTH_WARNINGS} -gt 0 ]]; then
+    if [[ "${JSON_OUTPUT}" == "1" ]]; then
+      health_output_json "pass_with_warnings"
     else
-        health_warn "Deprecated field check skipped (jq or config unavailable)"
+      echo
+      echo "Health result: PASS (with warnings)"
     fi
-
-    if [[ ${HEALTH_FAILURES} -gt 0 ]]; then
-        if [[ "${JSON_OUTPUT}" == "1" ]]; then
-            health_output_json "fail"
-        else
-            echo
-            echo "Health result: FAIL (${HEALTH_FAILURES} failed, ${HEALTH_WARNINGS} warnings)"
-        fi
-        return 1
-    fi
-
-    if [[ ${HEALTH_WARNINGS} -gt 0 ]]; then
-        if [[ "${JSON_OUTPUT}" == "1" ]]; then
-            health_output_json "pass_with_warnings"
-        else
-            echo
-            echo "Health result: PASS (with warnings)"
-        fi
+  else
+    if [[ "${JSON_OUTPUT}" == "1" ]]; then
+      health_output_json "pass"
     else
-        if [[ "${JSON_OUTPUT}" == "1" ]]; then
-            health_output_json "pass"
-        else
-            echo
-            echo "Health result: PASS"
-        fi
+      echo
+      echo "Health result: PASS"
     fi
-    return 0
+  fi
+  return 0
 }
 
 output_status_json() {
-    local active=false
-    local pid='0'
+  local active=false
+  local pid='0'
 
-    if systemctl is-active --quiet sing-box 2>/dev/null; then
-        active=true
-    fi
-    pid=$(systemctl show -p MainPID --value sing-box 2>/dev/null || echo "0")
+  if systemctl is-active --quiet sing-box 2>/dev/null; then
+    active=true
+  fi
+  pid=$(systemctl show -p MainPID --value sing-box 2>/dev/null || echo "0")
 
-    jq -n \
-      --arg command "status" \
-      --arg service "sing-box" \
-      --argjson active "${active}" \
-      --arg pid "${pid}" \
-      '{
+  jq -n \
+    --arg command "status" \
+    --arg service "sing-box" \
+    --argjson active "${active}" \
+    --arg pid "${pid}" \
+    '{
         command: $command,
         service: $service,
         active: $active,
@@ -520,23 +520,23 @@ output_status_json() {
 }
 
 output_check_json() {
-    local valid=false
-    local error_message=''
+  local valid=false
+  local error_message=''
 
-    if [[ ! -x "${SBX_BIN}" ]]; then
-        error_message="sing-box binary not executable: ${SBX_BIN}"
-    elif "${SBX_BIN}" check -c "${SBX_CONFIG_PATH}" >/dev/null 2>&1; then
-        valid=true
-    else
-        error_message="configuration validation failed"
-    fi
+  if [[ ! -x "${SBX_BIN}" ]]; then
+    error_message="sing-box binary not executable: ${SBX_BIN}"
+  elif "${SBX_BIN}" check -c "${SBX_CONFIG_PATH}" >/dev/null 2>&1; then
+    valid=true
+  else
+    error_message="configuration validation failed"
+  fi
 
-    jq -n \
-      --arg command "check" \
-      --arg config "${SBX_CONFIG_PATH}" \
-      --argjson valid "${valid}" \
-      --arg error "${error_message}" \
-      '{
+  jq -n \
+    --arg command "check" \
+    --arg config "${SBX_CONFIG_PATH}" \
+    --argjson valid "${valid}" \
+    --arg error "${error_message}" \
+    '{
         command: $command,
         config: $config,
         valid: $valid,
@@ -545,83 +545,83 @@ output_check_json() {
 }
 
 output_info_json() {
-    local missing_fields=()
-    local warnings_text=''
-    local warnings_json='[]'
-    local has_ws=false
-    local has_hy2=false
-    local uri_real='' uri_ws='' uri_hy2=''
+  local missing_fields=()
+  local warnings_text=''
+  local warnings_json='[]'
+  local has_ws=false
+  local has_hy2=false
+  local uri_real='' uri_ws='' uri_hy2=''
 
-    ensure_client_info_loaded
+  ensure_client_info_loaded
 
-    [[ -z "${PUBLIC_KEY:-}" ]] && missing_fields+=("PUBLIC_KEY")
-    [[ -z "${UUID:-}" ]] && missing_fields+=("UUID")
-    [[ -z "${SHORT_ID:-}" ]] && missing_fields+=("SHORT_ID")
-    [[ -z "${DOMAIN:-}" ]] && missing_fields+=("DOMAIN")
+  [[ -z "${PUBLIC_KEY:-}" ]] && missing_fields+=("PUBLIC_KEY")
+  [[ -z "${UUID:-}" ]] && missing_fields+=("UUID")
+  [[ -z "${SHORT_ID:-}" ]] && missing_fields+=("SHORT_ID")
+  [[ -z "${DOMAIN:-}" ]] && missing_fields+=("DOMAIN")
 
-    local field
-    for field in "${missing_fields[@]}"; do
-        warnings_text+="Missing required field: ${field}"$'\n'
-    done
+  local field
+  for field in "${missing_fields[@]}"; do
+    warnings_text+="Missing required field: ${field}"$'\n'
+  done
 
-    REALITY_PORT="${REALITY_PORT:-443}"
-    SNI="${SNI:-www.microsoft.com}"
-    WS_PORT="${WS_PORT:-8444}"
-    HY2_PORT="${HY2_PORT:-8443}"
-    HY2_PASS="${HY2_PASS:-}"
+  REALITY_PORT="${REALITY_PORT:-443}"
+  SNI="${SNI:-www.microsoft.com}"
+  WS_PORT="${WS_PORT:-8444}"
+  HY2_PORT="${HY2_PORT:-8443}"
+  HY2_PASS="${HY2_PASS:-}"
 
-    if command -v export_uri >/dev/null 2>&1; then
-        uri_real=$(export_uri reality)
-        uri_ws=$(export_uri ws 2>/dev/null || true)
-        uri_hy2=$(export_uri hy2 2>/dev/null || true)
-    else
-        uri_real="vless://${UUID:-}@${DOMAIN:-}:${REALITY_PORT}?encryption=none&security=reality&flow=xtls-rprx-vision&sni=${SNI}&pbk=${PUBLIC_KEY:-}&sid=${SHORT_ID:-}&type=tcp&fp=chrome#Reality-${DOMAIN:-}"
-        uri_ws="vless://${UUID:-}@${DOMAIN:-}:${WS_PORT}?encryption=none&security=tls&type=ws&host=${DOMAIN:-}&path=/ws&sni=${DOMAIN:-}&fp=chrome#WS-TLS-${DOMAIN:-}"
-        uri_hy2="hysteria2://${HY2_PASS}@${DOMAIN:-}:${HY2_PORT}/?sni=${DOMAIN:-}&alpn=h3&insecure=0#Hysteria2-${DOMAIN:-}"
-    fi
+  if command -v export_uri >/dev/null 2>&1; then
+    uri_real=$(export_uri reality)
+    uri_ws=$(export_uri ws 2>/dev/null || true)
+    uri_hy2=$(export_uri hy2 2>/dev/null || true)
+  else
+    uri_real="vless://${UUID:-}@${DOMAIN:-}:${REALITY_PORT}?encryption=none&security=reality&flow=xtls-rprx-vision&sni=${SNI}&pbk=${PUBLIC_KEY:-}&sid=${SHORT_ID:-}&type=tcp&fp=chrome#Reality-${DOMAIN:-}"
+    uri_ws="vless://${UUID:-}@${DOMAIN:-}:${WS_PORT}?encryption=none&security=tls&type=ws&host=${DOMAIN:-}&path=/ws&sni=${DOMAIN:-}&fp=chrome#WS-TLS-${DOMAIN:-}"
+    uri_hy2="hysteria2://${HY2_PASS}@${DOMAIN:-}:${HY2_PORT}/?sni=${DOMAIN:-}&alpn=h3&insecure=0#Hysteria2-${DOMAIN:-}"
+  fi
 
-    if [[ "${WS_ENABLED:-false}" == "true" ]]; then
-        has_ws=true
-    elif [[ -n "${CERT_FULLCHAIN:-}" && -n "${CERT_KEY:-}" ]]; then
-        has_ws=true
-    fi
+  if [[ "${WS_ENABLED:-false}" == "true" ]]; then
+    has_ws=true
+  elif [[ -n "${CERT_FULLCHAIN:-}" && -n "${CERT_KEY:-}" ]]; then
+    has_ws=true
+  fi
 
-    if [[ "${HY2_ENABLED:-false}" == "true" ]]; then
-        has_hy2=true
-    elif [[ -n "${CERT_FULLCHAIN:-}" && -n "${CERT_KEY:-}" ]]; then
-        has_hy2=true
-    fi
+  if [[ "${HY2_ENABLED:-false}" == "true" ]]; then
+    has_hy2=true
+  elif [[ -n "${CERT_FULLCHAIN:-}" && -n "${CERT_KEY:-}" ]]; then
+    has_hy2=true
+  fi
 
-    if echo "${uri_real}" | grep -qE 'pbk=&|pbk=$|@:|//:'; then
-        warnings_text+="Reality URI has empty parameters"$'\n'
-    fi
+  if echo "${uri_real}" | grep -qE 'pbk=&|pbk=$|@:|//:'; then
+    warnings_text+="Reality URI has empty parameters"$'\n'
+  fi
 
-    if [[ -n "${warnings_text}" ]]; then
-        warnings_json=$(printf '%s' "${warnings_text}" | jq -R -s 'split("\n") | map(select(length > 0))')
-    fi
+  if [[ -n "${warnings_text}" ]]; then
+    warnings_json=$(printf '%s' "${warnings_text}" | jq -R -s 'split("\n") | map(select(length > 0))')
+  fi
 
-    jq -n \
-      --arg command "info" \
-      --arg domain "${DOMAIN:-}" \
-      --arg binary "${SBX_BIN}" \
-      --arg config "${SBX_CONFIG_PATH}" \
-      --arg uuid "${UUID:-}" \
-      --arg public_key "${PUBLIC_KEY:-}" \
-      --arg short_id "${SHORT_ID:-}" \
-      --arg sni "${SNI}" \
-      --arg reality_port "${REALITY_PORT}" \
-      --arg uri_real "${uri_real}" \
-      --arg ws_port "${WS_PORT}" \
-      --arg uri_ws "${uri_ws}" \
-      --arg hy2_port "${HY2_PORT}" \
-      --arg hy2_pass "${HY2_PASS}" \
-      --arg uri_hy2 "${uri_hy2}" \
-      --arg cert_fullchain "${CERT_FULLCHAIN:-}" \
-      --arg cert_key "${CERT_KEY:-}" \
-      --argjson ws_enabled "${has_ws}" \
-      --argjson hy2_enabled "${has_hy2}" \
-      --argjson warnings "${warnings_json}" \
-      '{
+  jq -n \
+    --arg command "info" \
+    --arg domain "${DOMAIN:-}" \
+    --arg binary "${SBX_BIN}" \
+    --arg config "${SBX_CONFIG_PATH}" \
+    --arg uuid "${UUID:-}" \
+    --arg public_key "${PUBLIC_KEY:-}" \
+    --arg short_id "${SHORT_ID:-}" \
+    --arg sni "${SNI}" \
+    --arg reality_port "${REALITY_PORT}" \
+    --arg uri_real "${uri_real}" \
+    --arg ws_port "${WS_PORT}" \
+    --arg uri_ws "${uri_ws}" \
+    --arg hy2_port "${HY2_PORT}" \
+    --arg hy2_pass "${HY2_PASS}" \
+    --arg uri_hy2 "${uri_hy2}" \
+    --arg cert_fullchain "${CERT_FULLCHAIN:-}" \
+    --arg cert_key "${CERT_KEY:-}" \
+    --argjson ws_enabled "${has_ws}" \
+    --argjson hy2_enabled "${has_hy2}" \
+    --argjson warnings "${warnings_json}" \
+    '{
         command: $command,
         domain: (if $domain == "" then null else $domain end),
         binary: $binary,
@@ -654,36 +654,36 @@ output_info_json() {
 }
 
 output_backup_list_json() {
-    local backup_dir="${BACKUP_DIR:-/var/backups/sbx}"
-    local file_lines=''
+  local backup_dir="${BACKUP_DIR:-/var/backups/sbx}"
+  local file_lines=''
 
-    if [[ ! -d "${backup_dir}" ]]; then
-        jq -n --arg command "backup list" '{command: $command, count: 0, backups: []}'
-        return 0
+  if [[ ! -d "${backup_dir}" ]]; then
+    jq -n --arg command "backup list" '{command: $command, count: 0, backups: []}'
+    return 0
+  fi
+
+  while IFS= read -r backup_file; do
+    local filename size encrypted mtime
+    filename=$(basename "${backup_file}")
+    size=$(stat -c%s "${backup_file}" 2>/dev/null || stat -f%z "${backup_file}" 2>/dev/null || echo "0")
+    if command -v get_file_mtime >/dev/null 2>&1; then
+      mtime=$(get_file_mtime "${backup_file}" 2>/dev/null || echo "")
+    else
+      mtime=$(stat -c %y "${backup_file}" 2>/dev/null | cut -d' ' -f1,2 | cut -d'.' -f1 ||
+        stat -f %Sm "${backup_file}" 2>/dev/null ||
+        echo "")
     fi
+    encrypted="false"
+    [[ "${filename}" =~ \.enc$ ]] && encrypted="true"
+    file_lines+="${filename}"$'\t'"${backup_file}"$'\t'"${size}"$'\t'"${encrypted}"$'\t'"${mtime}"$'\n'
+  done < <(find "${backup_dir}" -name "sbx-backup-*.tar.gz*" -type f 2>/dev/null | sort -r)
 
-    while IFS= read -r backup_file; do
-        local filename size encrypted mtime
-        filename=$(basename "${backup_file}")
-        size=$(stat -c%s "${backup_file}" 2>/dev/null || stat -f%z "${backup_file}" 2>/dev/null || echo "0")
-        if command -v get_file_mtime >/dev/null 2>&1; then
-            mtime=$(get_file_mtime "${backup_file}" 2>/dev/null || echo "")
-        else
-            mtime=$(stat -c %y "${backup_file}" 2>/dev/null | cut -d' ' -f1,2 | cut -d'.' -f1 \
-                || stat -f %Sm "${backup_file}" 2>/dev/null \
-                || echo "")
-        fi
-        encrypted="false"
-        [[ "${filename}" =~ \.enc$ ]] && encrypted="true"
-        file_lines+="${filename}"$'\t'"${backup_file}"$'\t'"${size}"$'\t'"${encrypted}"$'\t'"${mtime}"$'\n'
-    done < <(find "${backup_dir}" -name "sbx-backup-*.tar.gz*" -type f 2>/dev/null | sort -r)
+  if [[ -z "${file_lines}" ]]; then
+    jq -n --arg command "backup list" '{command: $command, count: 0, backups: []}'
+    return 0
+  fi
 
-    if [[ -z "${file_lines}" ]]; then
-        jq -n --arg command "backup list" '{command: $command, count: 0, backups: []}'
-        return 0
-    fi
-
-    printf '%s' "${file_lines}" | jq -R -s '
+  printf '%s' "${file_lines}" | jq -R -s '
       split("\n")
       | map(select(length > 0))
       | map(
@@ -706,368 +706,368 @@ output_backup_list_json() {
 require_jq_for_json
 
 case "${1:-}" in
-    status)
-        if [[ "${JSON_OUTPUT}" == "1" ]]; then
-            output_status_json
-        else
-            echo -e "${B}=== Service Status ===${N}"
-            echo "[sing-box]"
-            systemctl is-active --quiet sing-box && echo -e "Status: ${G}Running${N}" || echo -e "Status: ${R}Stopped${N}"
-            echo "PID: $(systemctl show -p MainPID --value sing-box)"
-            echo
-            # Use || true to ensure status command always returns success
-            # (systemctl status returns 3 for inactive services)
-            systemctl status sing-box --no-pager | head -10 || true
-        fi
-        ;;
+  status)
+    if [[ "${JSON_OUTPUT}" == "1" ]]; then
+      output_status_json
+    else
+      echo -e "${B}=== Service Status ===${N}"
+      echo "[sing-box]"
+      systemctl is-active --quiet sing-box && echo -e "Status: ${G}Running${N}" || echo -e "Status: ${R}Stopped${N}"
+      echo "PID: $(systemctl show -p MainPID --value sing-box)"
+      echo
+      # Use || true to ensure status command always returns success
+      # (systemctl status returns 3 for inactive services)
+      systemctl status sing-box --no-pager | head -10 || true
+    fi
+    ;;
 
-    info|show)
-        if [[ "${JSON_OUTPUT}" == "1" ]]; then
-            output_info_json
-            exit 0
-        fi
+  info | show)
+    if [[ "${JSON_OUTPUT}" == "1" ]]; then
+      output_info_json
+      exit 0
+    fi
 
-        ensure_client_info_loaded
-        show_sbx_logo
+    ensure_client_info_loaded
+    show_sbx_logo
 
-        # Validate required fields
-        missing_fields=()
-        has_warnings=0
-        [[ -z "${PUBLIC_KEY:-}" ]] && missing_fields+=("PUBLIC_KEY") && has_warnings=1
-        [[ -z "${UUID:-}" ]] && missing_fields+=("UUID") && has_warnings=1
-        [[ -z "${SHORT_ID:-}" ]] && missing_fields+=("SHORT_ID") && has_warnings=1
-        [[ -z "${DOMAIN:-}" ]] && missing_fields+=("DOMAIN") && has_warnings=1
+    # Validate required fields
+    missing_fields=()
+    has_warnings=0
+    [[ -z "${PUBLIC_KEY:-}" ]] && missing_fields+=("PUBLIC_KEY") && has_warnings=1
+    [[ -z "${UUID:-}" ]] && missing_fields+=("UUID") && has_warnings=1
+    [[ -z "${SHORT_ID:-}" ]] && missing_fields+=("SHORT_ID") && has_warnings=1
+    [[ -z "${DOMAIN:-}" ]] && missing_fields+=("DOMAIN") && has_warnings=1
 
-        echo
-        printf "${B}=== sing-box Configuration ===${N}\n"
+    echo
+    printf "${B}=== sing-box Configuration ===${N}\n"
 
-        # Display warnings if any fields are missing
-        if [[ $has_warnings -eq 1 ]]; then
-            echo
-            echo -e "${R}[WARNING]${N} Missing required fields in client-info.txt:"
-            for field in "${missing_fields[@]}"; do
-                echo -e "  ${R}✗${N} $field"
-            done
-            echo
-            echo -e "${Y}[INFO]${N} Generated URIs may be invalid or incomplete."
-            echo -e "${Y}[INFO]${N} Please run: ${B}bash install.sh${N} to reinstall."
-            echo
-        fi
+    # Display warnings if any fields are missing
+    if [[ $has_warnings -eq 1 ]]; then
+      echo
+      echo -e "${R}[WARNING]${N} Missing required fields in client-info.txt:"
+      for field in "${missing_fields[@]}"; do
+        echo -e "  ${R}✗${N} $field"
+      done
+      echo
+      echo -e "${Y}[INFO]${N} Generated URIs may be invalid or incomplete."
+      echo -e "${Y}[INFO]${N} Please run: ${B}bash install.sh${N} to reinstall."
+      echo
+    fi
 
-        echo "Domain    : ${DOMAIN:-N/A}"
-        echo "Binary    : /usr/local/bin/sing-box"
-        echo "Config    : /etc/sing-box/config.json"
-        echo "Service   : systemctl status sing-box"
-        echo
+    echo "Domain    : ${DOMAIN:-N/A}"
+    echo "Binary    : /usr/local/bin/sing-box"
+    echo "Config    : /etc/sing-box/config.json"
+    echo "Service   : systemctl status sing-box"
+    echo
 
-        # Reality (use defaults if not set)
-        REALITY_PORT="${REALITY_PORT:-443}"
-        SNI="${SNI:-www.microsoft.com}"
-        echo "INBOUND   : VLESS-REALITY  ${REALITY_PORT}/tcp"
-        echo "  PublicKey = ${PUBLIC_KEY:-[MISSING]}"
-        echo "  Short ID  = ${SHORT_ID:-[MISSING]}"
-        echo "  UUID      = ${UUID:-[MISSING]}"
-        # Use export_uri() if available (DRY), otherwise generate inline
-        if command -v export_uri >/dev/null 2>&1; then
-            URI_REAL=$(export_uri reality)
-        else
-            URI_REAL="vless://${UUID:-}@${DOMAIN:-}:${REALITY_PORT}?encryption=none&security=reality&flow=xtls-rprx-vision&sni=${SNI}&pbk=${PUBLIC_KEY:-}&sid=${SHORT_ID:-}&type=tcp&fp=chrome#Reality-${DOMAIN:-}"
-        fi
-        echo "  URI       = ${URI_REAL}"
+    # Reality (use defaults if not set)
+    REALITY_PORT="${REALITY_PORT:-443}"
+    SNI="${SNI:-www.microsoft.com}"
+    echo "INBOUND   : VLESS-REALITY  ${REALITY_PORT}/tcp"
+    echo "  PublicKey = ${PUBLIC_KEY:-[MISSING]}"
+    echo "  Short ID  = ${SHORT_ID:-[MISSING]}"
+    echo "  UUID      = ${UUID:-[MISSING]}"
+    # Use export_uri() if available (DRY), otherwise generate inline
+    if command -v export_uri >/dev/null 2>&1; then
+      URI_REAL=$(export_uri reality)
+    else
+      URI_REAL="vless://${UUID:-}@${DOMAIN:-}:${REALITY_PORT}?encryption=none&security=reality&flow=xtls-rprx-vision&sni=${SNI}&pbk=${PUBLIC_KEY:-}&sid=${SHORT_ID:-}&type=tcp&fp=chrome#Reality-${DOMAIN:-}"
+    fi
+    echo "  URI       = ${URI_REAL}"
 
-        # Warn if URI has empty parameters
-        if echo "$URI_REAL" | grep -qE 'pbk=&|pbk=$|@:|//:'; then
-            echo -e "  ${R}⚠ WARNING:${N} URI has empty parameters and cannot be used"
-        fi
+    # Warn if URI has empty parameters
+    if echo "$URI_REAL" | grep -qE 'pbk=&|pbk=$|@:|//:'; then
+      echo -e "  ${R}⚠ WARNING:${N} URI has empty parameters and cannot be used"
+    fi
 
-        # WebSocket (if cert exists)
-        if [[ -n "${CERT_FULLCHAIN:-}" && -n "${CERT_KEY:-}" ]]; then
-            WS_PORT="${WS_PORT:-8444}"
-            HY2_PORT="${HY2_PORT:-8443}"
-            HY2_PASS="${HY2_PASS:-}"
-            echo
-            echo "INBOUND   : VLESS-WS-TLS   ${WS_PORT}/tcp"
-            echo "  CERT     = ${CERT_FULLCHAIN}"
-            # Use export_uri() if available (DRY), otherwise generate inline
-            if command -v export_uri >/dev/null 2>&1; then
-                URI_WS=$(export_uri ws)
-            else
-                URI_WS="vless://${UUID:-}@${DOMAIN:-}:${WS_PORT}?encryption=none&security=tls&type=ws&host=${DOMAIN:-}&path=/ws&sni=${DOMAIN:-}&fp=chrome#WS-TLS-${DOMAIN:-}"
-            fi
-            echo "  URI      = ${URI_WS}"
-            echo
-            echo "INBOUND   : Hysteria2      ${HY2_PORT}/udp"
-            echo "  CERT     = ${CERT_FULLCHAIN}"
-            if command -v export_uri >/dev/null 2>&1; then
-                URI_HY2=$(export_uri hy2)
-            else
-                URI_HY2="hysteria2://${HY2_PASS}@${DOMAIN:-}:${HY2_PORT}/?sni=${DOMAIN:-}&alpn=h3&insecure=0#Hysteria2-${DOMAIN:-}"
-            fi
-            echo "  URI      = ${URI_HY2}"
-        fi
-        echo
-        echo -e "${Y}Notes${N}: Reality/Hy2 suggest gray cloud; WS-TLS can use gray/orange cloud."
+    # WebSocket (if cert exists)
+    if [[ -n "${CERT_FULLCHAIN:-}" && -n "${CERT_KEY:-}" ]]; then
+      WS_PORT="${WS_PORT:-8444}"
+      HY2_PORT="${HY2_PORT:-8443}"
+      HY2_PASS="${HY2_PASS:-}"
+      echo
+      echo "INBOUND   : VLESS-WS-TLS   ${WS_PORT}/tcp"
+      echo "  CERT     = ${CERT_FULLCHAIN}"
+      # Use export_uri() if available (DRY), otherwise generate inline
+      if command -v export_uri >/dev/null 2>&1; then
+        URI_WS=$(export_uri ws)
+      else
+        URI_WS="vless://${UUID:-}@${DOMAIN:-}:${WS_PORT}?encryption=none&security=tls&type=ws&host=${DOMAIN:-}&path=/ws&sni=${DOMAIN:-}&fp=chrome#WS-TLS-${DOMAIN:-}"
+      fi
+      echo "  URI      = ${URI_WS}"
+      echo
+      echo "INBOUND   : Hysteria2      ${HY2_PORT}/udp"
+      echo "  CERT     = ${CERT_FULLCHAIN}"
+      if command -v export_uri >/dev/null 2>&1; then
+        URI_HY2=$(export_uri hy2)
+      else
+        URI_HY2="hysteria2://${HY2_PASS}@${DOMAIN:-}:${HY2_PORT}/?sni=${DOMAIN:-}&alpn=h3&insecure=0#Hysteria2-${DOMAIN:-}"
+      fi
+      echo "  URI      = ${URI_HY2}"
+    fi
+    echo
+    echo -e "${Y}Notes${N}: Reality/Hy2 suggest gray cloud; WS-TLS can use gray/orange cloud."
 
-        # Optional: Generate QR codes
-        if command -v qrencode >/dev/null 2>&1; then
-            echo
-            echo -e "${CYAN}Commands:${N}"
-            echo -e "  ${G}sbx qr${N}         - Show QR codes"
-            echo -e "  ${G}sbx export qr${N}  - Save QR code images"
-        fi
-        ;;
+    # Optional: Generate QR codes
+    if command -v qrencode >/dev/null 2>&1; then
+      echo
+      echo -e "${CYAN}Commands:${N}"
+      echo -e "  ${G}sbx qr${N}         - Show QR codes"
+      echo -e "  ${G}sbx export qr${N}  - Save QR code images"
+    fi
+    ;;
 
-    qr)
-        if ! command -v qrencode >/dev/null 2>&1; then
-        echo -e "${R}[ERR]${N} qrencode not installed. Install with: apt install qrencode"
-        exit 1
+  qr)
+    if ! command -v qrencode >/dev/null 2>&1; then
+      echo -e "${R}[ERR]${N} qrencode not installed. Install with: apt install qrencode"
+      exit 1
     fi
 
     ensure_client_info_loaded
 
-        echo -e "${B}=== Configuration QR Codes ===${N}"
+    echo -e "${B}=== Configuration QR Codes ===${N}"
 
-        # Generate Reality QR code
-        if [[ -n "$UUID" && -n "$DOMAIN" && -n "$PUBLIC_KEY" && -n "$SHORT_ID" ]]; then
-            echo
-            echo -e "${G}VLESS-REALITY:${N}"
-            echo "┌─────────────────────────────────────┐"
-            # Use export_uri() if available (DRY), otherwise generate inline
-            if command -v export_uri >/dev/null 2>&1; then
-                URI_REAL=$(export_uri reality)
-            else
-                # Fallback: inline URI generation
-                URI_REAL="vless://${UUID}@${DOMAIN}:${REALITY_PORT}?encryption=none&security=reality&flow=xtls-rprx-vision&sni=${SNI}&pbk=${PUBLIC_KEY}&sid=${SHORT_ID}&type=tcp&fp=chrome#Reality-${DOMAIN}"
-            fi
-            qrencode -t UTF8 -m 0 "$URI_REAL" 2>/dev/null || echo "QR code generation failed"
-            echo "└─────────────────────────────────────┘"
-        fi
+    # Generate Reality QR code
+    if [[ -n "$UUID" && -n "$DOMAIN" && -n "$PUBLIC_KEY" && -n "$SHORT_ID" ]]; then
+      echo
+      echo -e "${G}VLESS-REALITY:${N}"
+      echo "┌─────────────────────────────────────┐"
+      # Use export_uri() if available (DRY), otherwise generate inline
+      if command -v export_uri >/dev/null 2>&1; then
+        URI_REAL=$(export_uri reality)
+      else
+        # Fallback: inline URI generation
+        URI_REAL="vless://${UUID}@${DOMAIN}:${REALITY_PORT}?encryption=none&security=reality&flow=xtls-rprx-vision&sni=${SNI}&pbk=${PUBLIC_KEY}&sid=${SHORT_ID}&type=tcp&fp=chrome#Reality-${DOMAIN}"
+      fi
+      qrencode -t UTF8 -m 0 "$URI_REAL" 2>/dev/null || echo "QR code generation failed"
+      echo "└─────────────────────────────────────┘"
+    fi
 
-        # Generate WS-TLS QR code if certificates exist
-        if [[ -n "$CERT_FULLCHAIN" && -n "$CERT_KEY" && -n "$UUID" && -n "$DOMAIN" ]]; then
-            echo
-            echo -e "${G}VLESS-WS-TLS:${N}"
-            echo "┌─────────────────────────────────────┐"
-            if command -v export_uri >/dev/null 2>&1; then
-                URI_WS=$(export_uri ws)
-            else
-                URI_WS="vless://${UUID}@${DOMAIN}:${WS_PORT}?encryption=none&security=tls&type=ws&host=${DOMAIN}&path=/ws&sni=${DOMAIN}&fp=chrome#WS-TLS-${DOMAIN}"
-            fi
-            qrencode -t UTF8 -m 0 "$URI_WS" 2>/dev/null || echo "QR code generation failed"
-            echo "└─────────────────────────────────────┘"
+    # Generate WS-TLS QR code if certificates exist
+    if [[ -n "$CERT_FULLCHAIN" && -n "$CERT_KEY" && -n "$UUID" && -n "$DOMAIN" ]]; then
+      echo
+      echo -e "${G}VLESS-WS-TLS:${N}"
+      echo "┌─────────────────────────────────────┐"
+      if command -v export_uri >/dev/null 2>&1; then
+        URI_WS=$(export_uri ws)
+      else
+        URI_WS="vless://${UUID}@${DOMAIN}:${WS_PORT}?encryption=none&security=tls&type=ws&host=${DOMAIN}&path=/ws&sni=${DOMAIN}&fp=chrome#WS-TLS-${DOMAIN}"
+      fi
+      qrencode -t UTF8 -m 0 "$URI_WS" 2>/dev/null || echo "QR code generation failed"
+      echo "└─────────────────────────────────────┘"
 
-            echo
-            echo -e "${G}Hysteria2:${N}"
-            echo "┌─────────────────────────────────────┐"
-            if command -v export_uri >/dev/null 2>&1; then
-                URI_HY2=$(export_uri hy2)
-            else
-                URI_HY2="hysteria2://${HY2_PASS}@${DOMAIN}:${HY2_PORT}/?sni=${DOMAIN}&alpn=h3&insecure=0#Hysteria2-${DOMAIN}"
-            fi
-            qrencode -t UTF8 -m 0 "$URI_HY2" 2>/dev/null || echo "QR code generation failed"
-            echo "└─────────────────────────────────────┘"
-        fi
+      echo
+      echo -e "${G}Hysteria2:${N}"
+      echo "┌─────────────────────────────────────┐"
+      if command -v export_uri >/dev/null 2>&1; then
+        URI_HY2=$(export_uri hy2)
+      else
+        URI_HY2="hysteria2://${HY2_PASS}@${DOMAIN}:${HY2_PORT}/?sni=${DOMAIN}&alpn=h3&insecure=0#Hysteria2-${DOMAIN}"
+      fi
+      qrencode -t UTF8 -m 0 "$URI_HY2" 2>/dev/null || echo "QR code generation failed"
+      echo "└─────────────────────────────────────┘"
+    fi
 
-        echo
-        echo -e "${Y}Tip${N}: Use phone to scan QR code to import proxy configuration"
+    echo
+    echo -e "${Y}Tip${N}: Use phone to scan QR code to import proxy configuration"
+    ;;
+
+  backup)
+    if ! command -v backup_create >/dev/null 2>&1; then
+      echo -e "${R}[ERR]${N} Backup module not loaded. Please reinstall sbx-lite."
+      exit 1
+    fi
+
+    case "${2:-}" in
+      create)
+        encrypt_flag="false"
+        [[ "${3:-}" == "--encrypt" ]] && encrypt_flag="true"
+        backup_create "${encrypt_flag}"
         ;;
-
-    backup)
-        if ! command -v backup_create >/dev/null 2>&1; then
-            echo -e "${R}[ERR]${N} Backup module not loaded. Please reinstall sbx-lite."
-            exit 1
-        fi
-
-        case "${2:-}" in
-            create)
-                encrypt_flag="false"
-                [[ "${3:-}" == "--encrypt" ]] && encrypt_flag="true"
-                backup_create "${encrypt_flag}"
-                ;;
-            list)
-                if [[ "${JSON_OUTPUT}" == "1" ]]; then
-                    output_backup_list_json
-                else
-                    backup_list
-                fi
-                ;;
-            restore)
-                [[ -n "${3:-}" ]] || {
-                    echo -e "${R}[ERR]${N} Usage: sbx backup restore <backup-file> [password]"
-                    exit 1
-                }
-                backup_restore "$3" "${4:-}"
-                ;;
-            cleanup)
-                backup_cleanup
-                ;;
-            *)
-                echo -e "${Y}Usage:${N}"
-                echo "  sbx backup create [--encrypt]     - Create new backup"
-                echo "  sbx backup list                   - List available backups"
-                echo "  sbx backup restore <file> [pass]  - Restore from backup"
-                echo "  sbx backup cleanup                - Delete old backups"
-                exit 1
-                ;;
-        esac
-        ;;
-
-    export)
-        if ! command -v export_config >/dev/null 2>&1; then
-            echo -e "${R}[ERR]${N} Export module not loaded. Please reinstall sbx-lite."
-            exit 1
-        fi
-
-        case "${2:-}" in
-            v2rayn|v2rayng)
-                export_config v2rayn "${3:-reality}" "${4:-}"
-                ;;
-            clash|clash-meta)
-                export_config clash "" "${3:-}"
-                ;;
-            uri)
-                export_uri "${3:-all}"
-                ;;
-            qr)
-                export_qr_codes "${3:-./qr-codes}"
-                ;;
-            subscription|sub)
-                export_subscription "${3:-/var/www/html/subscription.txt}"
-                ;;
-            *)
-                echo -e "${Y}Usage:${N}"
-                echo "  sbx export v2rayn [reality|ws] [file]  - Export v2rayN config"
-                echo "  sbx export clash [file]                - Export Clash config"
-                echo "  sbx export uri [protocol]              - Export share URIs"
-                echo "  sbx export qr [output-dir]             - Generate QR codes"
-                echo "  sbx export subscription [file]         - Generate subscription"
-                exit 1
-                ;;
-        esac
-        ;;
-
-    restart)
-        if systemctl restart sing-box; then
-            sleep 1
-            if systemctl is-active --quiet sing-box; then
-                echo -e "${G}✓${N} Service restarted"
-                echo -e "Status: ${G}Running${N}"
-            else
-                echo -e "Status: ${R}Failed${N}"
-                exit 1
-            fi
-        else
-            echo -e "${R}✗${N} Failed to restart service"
-            exit 1
-        fi
-        ;;
-
-    start)
-        if systemctl start sing-box; then
-            if systemctl is-active --quiet sing-box; then
-                echo -e "${G}✓${N} Service started"
-            else
-                echo -e "${R}✗${N} Service not running"
-                exit 1
-            fi
-        else
-            echo -e "${R}✗${N} Failed to start service"
-            exit 1
-        fi
-        ;;
-
-    stop)
-        if systemctl stop sing-box; then
-            echo -e "${Y}✓${N} Service stopped"
-        else
-            echo -e "${R}✗${N} Failed to stop service"
-            exit 1
-        fi
-        ;;
-
-    log|logs)
-        echo -e "${CYAN}Live logs (Ctrl+C to exit):${N}"
-        journalctl -u sing-box -f
-        ;;
-
-    check)
+      list)
         if [[ "${JSON_OUTPUT}" == "1" ]]; then
-            output_check_json
+          output_backup_list_json
         else
-            echo -e "${CYAN}Checking configuration...${N}"
-            "${SBX_BIN}" check -c "${SBX_CONFIG_PATH}" && \
-                echo -e "${G}✓ Configuration valid${N}" || \
-                echo -e "${R}✗ Configuration invalid${N}"
+          backup_list
         fi
         ;;
-
-    health)
-        run_health_check
+      restore)
+        [[ -n "${3:-}" ]] || {
+          echo -e "${R}[ERR]${N} Usage: sbx backup restore <backup-file> [password]"
+          exit 1
+        }
+        backup_restore "$3" "${4:-}"
         ;;
-
-    uninstall|remove)
-        # Check if running as root
-        if [[ "$(id -u)" -ne 0 ]]; then
-            echo -e "${R}[ERR]${N} Please run as root (sudo sbx uninstall)"
-            exit 1
-        fi
-
-        # Paths
-        SB_BIN="/usr/local/bin/sing-box"
-        SB_CONF_DIR="/etc/sing-box"
-        SB_CONF="${SB_CONF_DIR}/config.json"
-        SB_SVC="/etc/systemd/system/sing-box.service"
-        CERT_DIR_BASE="/etc/ssl/sbx"
-
-        echo
-        echo -e "${Y}[!]${N} The following will be completely removed:"
-        [[ -x "$SB_BIN" ]] && echo "  - Binary: $SB_BIN"
-        [[ -f "$SB_CONF" ]] && echo "  - Config: $SB_CONF"
-        [[ -d "$SB_CONF_DIR" ]] && echo "  - Config directory: $SB_CONF_DIR"
-        [[ -f "$SB_SVC" ]] && echo "  - Service: $SB_SVC"
-        [[ -x "/usr/local/bin/sbx-manager" ]] && echo "  - Management commands: sbx-manager, sbx"
-        [[ -d "$CERT_DIR_BASE" ]] && echo "  - Certificates: $CERT_DIR_BASE"
-        [[ -d "$LIB_DIR" ]] && echo "  - Library modules: $LIB_DIR"
-
-        echo
-        read -rp "Continue with complete removal? [y/N] " confirm
-        if [[ ! "${confirm:-N}" =~ ^[Yy]$ ]]; then
-            echo "Uninstall cancelled."
-            exit 0
-        fi
-
-        echo
-        echo -e "${G}[*]${N} Stopping and disabling sing-box service..."
-        systemctl disable --now sing-box 2>/dev/null || true
-
-        # Wait for service to stop
-        retry=0
-        while systemctl is-active sing-box >/dev/null 2>&1 && [[ ${retry} -lt 10 ]]; do
-            sleep 1
-            ((retry++))
-        done
-
-        echo -e "${G}[*]${N} Removing files..."
-        rm -f "$SB_BIN" "$SB_SVC" "/usr/local/bin/sbx-manager" "/usr/local/bin/sbx"
-        rm -rf "$SB_CONF_DIR" "$CERT_DIR_BASE" "$LIB_DIR"
-
-        systemctl daemon-reload
-
-        echo
-        echo -e "${G}✓${N} sing-box uninstalled successfully"
+      cleanup)
+        backup_cleanup
         ;;
-
-    help|--help|-h|"")
-        # Show help for: sbx help, sbx --help, sbx -h, or just sbx (no args)
-        show_usage
-        exit 0
-        ;;
-
-    *)
-        # Unknown command provided
-        echo -e "${R}[ERR]${N} Unknown command: ${1}"
-        echo
-        show_usage
+      *)
+        echo -e "${Y}Usage:${N}"
+        echo "  sbx backup create [--encrypt]     - Create new backup"
+        echo "  sbx backup list                   - List available backups"
+        echo "  sbx backup restore <file> [pass]  - Restore from backup"
+        echo "  sbx backup cleanup                - Delete old backups"
         exit 1
         ;;
+    esac
+    ;;
+
+  export)
+    if ! command -v export_config >/dev/null 2>&1; then
+      echo -e "${R}[ERR]${N} Export module not loaded. Please reinstall sbx-lite."
+      exit 1
+    fi
+
+    case "${2:-}" in
+      v2rayn | v2rayng)
+        export_config v2rayn "${3:-reality}" "${4:-}"
+        ;;
+      clash | clash-meta)
+        export_config clash "" "${3:-}"
+        ;;
+      uri)
+        export_uri "${3:-all}"
+        ;;
+      qr)
+        export_qr_codes "${3:-./qr-codes}"
+        ;;
+      subscription | sub)
+        export_subscription "${3:-/var/www/html/subscription.txt}"
+        ;;
+      *)
+        echo -e "${Y}Usage:${N}"
+        echo "  sbx export v2rayn [reality|ws] [file]  - Export v2rayN config"
+        echo "  sbx export clash [file]                - Export Clash config"
+        echo "  sbx export uri [protocol]              - Export share URIs"
+        echo "  sbx export qr [output-dir]             - Generate QR codes"
+        echo "  sbx export subscription [file]         - Generate subscription"
+        exit 1
+        ;;
+    esac
+    ;;
+
+  restart)
+    if systemctl restart sing-box; then
+      sleep 1
+      if systemctl is-active --quiet sing-box; then
+        echo -e "${G}✓${N} Service restarted"
+        echo -e "Status: ${G}Running${N}"
+      else
+        echo -e "Status: ${R}Failed${N}"
+        exit 1
+      fi
+    else
+      echo -e "${R}✗${N} Failed to restart service"
+      exit 1
+    fi
+    ;;
+
+  start)
+    if systemctl start sing-box; then
+      if systemctl is-active --quiet sing-box; then
+        echo -e "${G}✓${N} Service started"
+      else
+        echo -e "${R}✗${N} Service not running"
+        exit 1
+      fi
+    else
+      echo -e "${R}✗${N} Failed to start service"
+      exit 1
+    fi
+    ;;
+
+  stop)
+    if systemctl stop sing-box; then
+      echo -e "${Y}✓${N} Service stopped"
+    else
+      echo -e "${R}✗${N} Failed to stop service"
+      exit 1
+    fi
+    ;;
+
+  log | logs)
+    echo -e "${CYAN}Live logs (Ctrl+C to exit):${N}"
+    journalctl -u sing-box -f
+    ;;
+
+  check)
+    if [[ "${JSON_OUTPUT}" == "1" ]]; then
+      output_check_json
+    else
+      echo -e "${CYAN}Checking configuration...${N}"
+      "${SBX_BIN}" check -c "${SBX_CONFIG_PATH}" &&
+        echo -e "${G}✓ Configuration valid${N}" ||
+        echo -e "${R}✗ Configuration invalid${N}"
+    fi
+    ;;
+
+  health)
+    run_health_check
+    ;;
+
+  uninstall | remove)
+    # Check if running as root
+    if [[ "$(id -u)" -ne 0 ]]; then
+      echo -e "${R}[ERR]${N} Please run as root (sudo sbx uninstall)"
+      exit 1
+    fi
+
+    # Paths
+    SB_BIN="/usr/local/bin/sing-box"
+    SB_CONF_DIR="/etc/sing-box"
+    SB_CONF="${SB_CONF_DIR}/config.json"
+    SB_SVC="/etc/systemd/system/sing-box.service"
+    CERT_DIR_BASE="/etc/ssl/sbx"
+
+    echo
+    echo -e "${Y}[!]${N} The following will be completely removed:"
+    [[ -x "$SB_BIN" ]] && echo "  - Binary: $SB_BIN"
+    [[ -f "$SB_CONF" ]] && echo "  - Config: $SB_CONF"
+    [[ -d "$SB_CONF_DIR" ]] && echo "  - Config directory: $SB_CONF_DIR"
+    [[ -f "$SB_SVC" ]] && echo "  - Service: $SB_SVC"
+    [[ -x "/usr/local/bin/sbx-manager" ]] && echo "  - Management commands: sbx-manager, sbx"
+    [[ -d "$CERT_DIR_BASE" ]] && echo "  - Certificates: $CERT_DIR_BASE"
+    [[ -d "$LIB_DIR" ]] && echo "  - Library modules: $LIB_DIR"
+
+    echo
+    read -rp "Continue with complete removal? [y/N] " confirm
+    if [[ ! "${confirm:-N}" =~ ^[Yy]$ ]]; then
+      echo "Uninstall cancelled."
+      exit 0
+    fi
+
+    echo
+    echo -e "${G}[*]${N} Stopping and disabling sing-box service..."
+    systemctl disable --now sing-box 2>/dev/null || true
+
+    # Wait for service to stop
+    retry=0
+    while systemctl is-active sing-box >/dev/null 2>&1 && [[ ${retry} -lt 10 ]]; do
+      sleep 1
+      ((retry++))
+    done
+
+    echo -e "${G}[*]${N} Removing files..."
+    rm -f "$SB_BIN" "$SB_SVC" "/usr/local/bin/sbx-manager" "/usr/local/bin/sbx"
+    rm -rf "$SB_CONF_DIR" "$CERT_DIR_BASE" "$LIB_DIR"
+
+    systemctl daemon-reload
+
+    echo
+    echo -e "${G}✓${N} sing-box uninstalled successfully"
+    ;;
+
+  help | --help | -h | "")
+    # Show help for: sbx help, sbx --help, sbx -h, or just sbx (no args)
+    show_usage
+    exit 0
+    ;;
+
+  *)
+    # Unknown command provided
+    echo -e "${R}[ERR]${N} Unknown command: ${1}"
+    echo
+    show_usage
+    exit 1
+    ;;
 esac

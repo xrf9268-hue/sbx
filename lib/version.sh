@@ -41,7 +41,7 @@ _github_api_fetch_json() {
       "${api_url}" 2>&1); then
       err "Failed to fetch release information from GitHub API"
       err "Details: ${err_output}"
-      rm -f "${tmpfile}" 2> /dev/null || true
+      rm -f "${tmpfile}" 2>/dev/null || true
       return 1
     fi
   elif have wget; then
@@ -51,22 +51,22 @@ _github_api_fetch_json() {
       "${api_url}" 2>&1); then
       err "Failed to fetch release information from GitHub API"
       err "Details: ${err_output}"
-      rm -f "${tmpfile}" 2> /dev/null || true
+      rm -f "${tmpfile}" 2>/dev/null || true
       return 1
     fi
   else
     debug "GITHUB_TOKEN set but neither curl nor wget available for authenticated GitHub API request; falling back to unauthenticated request"
-    rm -f "${tmpfile}" 2> /dev/null || true
+    rm -f "${tmpfile}" 2>/dev/null || true
     safe_http_get "${api_url}"
     return $?
   fi
 
   if ! api_response=$(cat "${tmpfile}"); then
     err "Failed to read GitHub API response from temp file: ${tmpfile}"
-    rm -f "${tmpfile}" 2> /dev/null || true
+    rm -f "${tmpfile}" 2>/dev/null || true
     return 1
   fi
-  rm -f "${tmpfile}" 2> /dev/null || true
+  rm -f "${tmpfile}" 2>/dev/null || true
 
   if [[ -z "${api_response}" ]]; then
     err "GitHub API response was empty: ${api_url}"
@@ -139,12 +139,12 @@ resolve_singbox_version() {
 
       # Extract tag_name from JSON response
       if have jq; then
-        resolved_version=$(echo "${api_response}" | jq -r '.tag_name // empty' 2> /dev/null)
+        resolved_version=$(echo "${api_response}" | jq -r '.tag_name // empty' 2>/dev/null)
       else
-        resolved_version=$(echo "${api_response}" \
-          | grep '"tag_name":' \
-          | head -1 \
-          | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+')
+        resolved_version=$(echo "${api_response}" |
+          grep '"tag_name":' |
+          head -1 |
+          grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+')
       fi
 
       if [[ -z "${resolved_version}" ]]; then
@@ -167,12 +167,12 @@ resolve_singbox_version() {
 
       # Extract first tag_name from releases array
       if have jq; then
-        resolved_version=$(echo "${api_response}" | jq -r '.[0].tag_name // empty' 2> /dev/null)
+        resolved_version=$(echo "${api_response}" | jq -r '.[0].tag_name // empty' 2>/dev/null)
       else
-        resolved_version=$(echo "${api_response}" \
-          | grep '"tag_name":' \
-          | head -1 \
-          | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?')
+        resolved_version=$(echo "${api_response}" |
+          grep '"tag_name":' |
+          head -1 |
+          grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?')
       fi
 
       if [[ -z "${resolved_version}" ]]; then
@@ -429,7 +429,7 @@ validate_singbox_version() {
 #
 show_version_info() {
   local current_version=''
-  current_version=$(get_singbox_version 2> /dev/null) || current_version="unknown"
+  current_version=$(get_singbox_version 2>/dev/null) || current_version="unknown"
 
   echo ""
   echo "sing-box Version Information"

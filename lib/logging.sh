@@ -17,7 +17,7 @@ readonly _SBX_LOGGING_LOADED=1
 _LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Source colors module (no circular dependency)
 if [[ -z "${_SBX_COLORS_LOADED:-}" ]]; then
-    source "${_LIB_DIR}/colors.sh"
+  source "${_LIB_DIR}/colors.sh"
 fi
 
 #==============================================================================
@@ -29,15 +29,15 @@ LOG_TIMESTAMPS="${LOG_TIMESTAMPS:-0}"
 LOG_FORMAT="${LOG_FORMAT:-text}"
 LOG_FILE="${LOG_FILE:-}"
 LOG_LEVEL_FILTER="${LOG_LEVEL_FILTER:-}"
-LOG_MAX_SIZE_KB="${LOG_MAX_SIZE_KB:-10240}"  # Default 10MB
-LOG_WRITE_COUNT=0  # Counter for periodic rotation checks
+LOG_MAX_SIZE_KB="${LOG_MAX_SIZE_KB:-10240}" # Default 10MB
+LOG_WRITE_COUNT=0                           # Counter for periodic rotation checks
 # Rotation check interval (defined in common.sh, fallback if not loaded)
 if [[ -z "${LOG_ROTATION_CHECK_INTERVAL:-}" ]]; then
   LOG_ROTATION_CHECK_INTERVAL=100
 fi
 
 # Log level values (lower number = higher priority)
-declare -gr -A LOG_LEVELS=( [ERROR]=0 [WARN]=1 [INFO]=2 [DEBUG]=3 )
+declare -gr -A LOG_LEVELS=([ERROR]=0 [WARN]=1 [INFO]=2 [DEBUG]=3)
 
 # Normalize and validate LOG_LEVEL_FILTER
 if [[ -n "${LOG_LEVEL_FILTER}" ]]; then
@@ -46,7 +46,7 @@ if [[ -n "${LOG_LEVEL_FILTER}" ]]; then
 
   # Validate against known levels
   case "${LOG_LEVEL_FILTER}" in
-    ERROR|WARN|INFO|DEBUG)
+    ERROR | WARN | INFO | DEBUG)
       # Valid level
       ;;
     *)
@@ -60,10 +60,10 @@ fi
 # Set current log level
 case "${LOG_LEVEL_FILTER:-INFO}" in
   ERROR) declare -gr LOG_LEVEL_CURRENT=0 ;;
-  WARN)  declare -gr LOG_LEVEL_CURRENT=1 ;;
-  INFO)  declare -gr LOG_LEVEL_CURRENT=2 ;;
+  WARN) declare -gr LOG_LEVEL_CURRENT=1 ;;
+  INFO) declare -gr LOG_LEVEL_CURRENT=2 ;;
   DEBUG) declare -gr LOG_LEVEL_CURRENT=3 ;;
-  *)     declare -gr LOG_LEVEL_CURRENT=2 ;;  # Default to INFO
+  *) declare -gr LOG_LEVEL_CURRENT=2 ;; # Default to INFO
 esac
 
 #==============================================================================
@@ -90,7 +90,7 @@ _log_to_file() {
     touch "${LOG_FILE}" && chmod 600 "${LOG_FILE}"
   fi
 
-  echo "$*" >> "${LOG_FILE}" 2>/dev/null || true
+  echo "$*" >>"${LOG_FILE}" 2>/dev/null || true
 }
 
 # JSON structured logging helper
@@ -298,7 +298,7 @@ rotate_logs_if_needed() {
 # Log rotation helper
 rotate_logs() {
   local log_file="${1:-${LOG_FILE}}"
-  local max_size_kb="${2:-10240}"  # Default 10MB
+  local max_size_kb="${2:-10240}" # Default 10MB
   local timestamp=''
 
   [[ -z "${log_file}" ]] && return 0
@@ -315,8 +315,8 @@ rotate_logs() {
     touch "${log_file}" && chmod 600 "${log_file}"
 
     # Keep only last 5 rotated logs
-    find "$(dirname "${log_file}")" -name "$(basename "${log_file}").*" -type f \
-      | sort -r | tail -n +6 | xargs rm -f 2>/dev/null || true
+    find "$(dirname "${log_file}")" -name "$(basename "${log_file}").*" -type f |
+      sort -r | tail -n +6 | xargs rm -f 2>/dev/null || true
   fi
 }
 

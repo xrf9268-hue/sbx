@@ -46,7 +46,7 @@ source "${_LIB_DIR}/common.sh"
 # Display application logo
 show_logo() {
   # Only clear screen if terminal supports it
-  clear 2> /dev/null || true
+  clear 2>/dev/null || true
   echo
   echo -e "${BLUE}███████╗${CYAN}██████╗ ${PURPLE}██╗  ██╗    ${G}██╗     ${Y}██╗${R}████████╗${G}███████╗${N}"
   echo -e "${BLUE}██╔════╝${CYAN}██╔══██╗${PURPLE}╚██╗██╔╝    ${G}██║     ${Y}██║${R}╚══██╔══╝${G}██╔════╝${N}"
@@ -183,7 +183,7 @@ prompt_input() {
   input=$(sanitize_input "${input}")
 
   # Validate if validator function provided
-  if [[ -n "${validator}" ]] && command -v "${validator}" > /dev/null 2>&1; then
+  if [[ -n "${validator}" ]] && command -v "${validator}" >/dev/null 2>&1; then
     if ! "${validator}" "${input}"; then
       err "Invalid input"
       return 1
@@ -217,7 +217,7 @@ show_spinner() {
   local spinstr='|/-\'
   local i=0
 
-  while kill -0 "${pid}" 2> /dev/null; do
+  while kill -0 "${pid}" 2>/dev/null; do
     i=$(((i + 1) % 4))
     printf "\r%s ${spinstr:${i}:1}" "${message}"
     sleep 0.1
