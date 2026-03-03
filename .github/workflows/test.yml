@@ -255,6 +255,30 @@ jobs:
           export DOMAIN="test.example.com"
           export REALITY_PORT=443
           export SNI="www.microsoft.com"
+          export TEST_STATE_FILE="/tmp/test-state.json"
+
+          # export_uri now loads values from state/client-info. Provide a minimal
+          # test state file so integration checks exercise the real export path.
+          jq -n \
+            --arg domain "$DOMAIN" \
+            --arg uuid "$UUID" \
+            --arg public_key "$PUBLIC_KEY" \
+            --arg short_id "$SHORT_ID" \
+            --arg sni "$SNI" \
+            --argjson port "$REALITY_PORT" \
+            '{
+              server: {domain: $domain},
+              protocols: {
+                reality: {
+                  uuid: $uuid,
+                  public_key: $public_key,
+                  short_id: $short_id,
+                  sni: $sni,
+                  port: $port
+                }
+              }
+            }' > "$TEST_STATE_FILE"
+          chmod 600 "$TEST_STATE_FILE"
 
           # Test URI export
           if URI=$(export_uri reality 2>/dev/null); then
