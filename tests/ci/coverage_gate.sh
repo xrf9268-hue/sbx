@@ -88,13 +88,14 @@ if ! awk -v v="$line_rate" 'BEGIN{exit (v ~ /^[0-9]+([.][0-9]+)?$/ ? 0 : 1)}'; t
 fi
 
 coverage_percent="$(awk -v rate="$line_rate" 'BEGIN{printf "%.2f", rate * 100}')"
+min_line_rate="$(awk -v min="$MIN_PERCENT" 'BEGIN{printf "%.12f", min / 100}')"
 
-if awk -v c="$coverage_percent" -v m="$MIN_PERCENT" 'BEGIN{exit !(c + 0 >= m + 0)}'; then
+if awk -v r="$line_rate" -v mr="$min_line_rate" 'BEGIN{exit !(r + 0 >= mr + 0)}'; then
   write_metrics "pass" "$line_rate" "$coverage_percent" "threshold_met"
   echo "Coverage gate passed: ${coverage_percent}% >= ${MIN_PERCENT}%"
   exit 0
 fi
 
 write_metrics "fail" "$line_rate" "$coverage_percent" "below_threshold"
-echo "Coverage gate failed: ${coverage_percent}% < ${MIN_PERCENT}%" >&2
+echo "Coverage gate failed: raw line-rate ${line_rate} < ${min_line_rate} (${MIN_PERCENT}%), display=${coverage_percent}%" >&2
 exit 1

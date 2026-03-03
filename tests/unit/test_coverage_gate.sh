@@ -63,11 +63,13 @@ main() {
   fi
 
   local xml_7999="$TMP_DIR/coverage-7999.xml"
+  local xml_79995="$TMP_DIR/coverage-79995.xml"
   local xml_8000="$TMP_DIR/coverage-8000.xml"
   local xml_invalid="$TMP_DIR/coverage-invalid.xml"
   local metrics="$TMP_DIR/metrics.env"
 
   create_xml "$xml_7999" "0.7999"
+  create_xml "$xml_79995" "0.79995"
   create_xml "$xml_8000" "0.8000"
   cat >"$xml_invalid" <<'EOF'
 <?xml version="1.0" ?>
@@ -79,6 +81,9 @@ EOF
   set +e
   "$GATE_SCRIPT" --xml "$xml_7999" --min-percent 80 --metrics-file "$metrics" >/dev/null 2>&1
   assert_exit_code "1" "$?" "line-rate=0.7999 should fail gate"
+
+  "$GATE_SCRIPT" --xml "$xml_79995" --min-percent 80 --metrics-file "$metrics" >/dev/null 2>&1
+  assert_exit_code "1" "$?" "line-rate=0.79995 should fail gate before rounding"
 
   "$GATE_SCRIPT" --xml "$xml_8000" --min-percent 80 --metrics-file "$metrics" >/dev/null 2>&1
   assert_exit_code "0" "$?" "line-rate=0.8000 should pass gate"
