@@ -2,16 +2,16 @@ name: ShellCheck & Code Quality
 
 on:
   push:
-    branches: [ main, develop, feature/*, claude/** ]
+    branches: [ main, dev, develop, codex/**, feature/*, claude/** ]
     paths:
-      - '**.sh'
+      - '**/*.sh'
       - 'lib/**'
       - 'bin/**'
       - '.github/workflows/shellcheck.yml'
   pull_request:
-    branches: [ main, develop ]
+    branches: [ main, dev, develop ]
     paths:
-      - '**.sh'
+      - '**/*.sh'
       - 'lib/**'
       - 'bin/**'
 
