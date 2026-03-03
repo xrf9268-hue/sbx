@@ -7,10 +7,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 OUT_DIR="/tmp/sbx-kcov"
 SUMMARY_FILE="${GITHUB_STEP_SUMMARY:-}"
 KCOV_BIN="${KCOV_BIN:-}"
+INCLUDE_DOCKER=0
 
 usage() {
   cat <<USAGE
-Usage: coverage_suite.sh [--out-dir /tmp/sbx-kcov] [--summary-file <path>] [--kcov-bin /path/to/kcov]
+Usage: coverage_suite.sh [--out-dir /tmp/sbx-kcov] [--summary-file <path>] [--kcov-bin /path/to/kcov] [--include-docker]
 USAGE
 }
 
@@ -27,6 +28,10 @@ while [[ $# -gt 0 ]]; do
     --kcov-bin)
       KCOV_BIN="$2"
       shift 2
+      ;;
+    --include-docker)
+      INCLUDE_DOCKER=1
+      shift
       ;;
     -h|--help)
       usage
@@ -71,7 +76,12 @@ run_case "reality" bash "$SCRIPT_DIR/tests/test_reality.sh"
 run_case "bootstrap" bash "$SCRIPT_DIR/tests/unit/test_bootstrap_constants.sh"
 run_case "integration" bash "$SCRIPT_DIR/tests/ci/integration_checks.sh"
 run_case "advanced" bash "$SCRIPT_DIR/tests/ci/advanced_features_checks.sh"
-run_case "docker" bash "$SCRIPT_DIR/tests/integration/test_docker_lifecycle_smoke.sh"
+
+if [[ "$INCLUDE_DOCKER" -eq 1 ]]; then
+  run_case "docker" bash "$SCRIPT_DIR/tests/integration/test_docker_lifecycle_smoke.sh"
+else
+  echo "Skipping docker lifecycle smoke in coverage suite (covered by dedicated CI job)."
+fi
 
 MERGED_DIR="$OUT_DIR/merged"
 "$KCOV_BIN" --merge "$MERGED_DIR" "$OUT_DIR"/raw-*
