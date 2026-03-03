@@ -32,6 +32,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
 
       - name: Install shfmt
         env:
@@ -50,17 +52,46 @@ jobs:
           echo "# shfmt Format Check" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
+          event_name="${{ github.event_name }}"
+          head_sha="${{ github.sha }}"
+          base_sha=""
+
+          if [[ "${event_name}" == "pull_request" ]]; then
+            base_sha="${{ github.event.pull_request.base.sha }}"
+          else
+            before_sha="${{ github.event.before }}"
+            if [[ -n "${before_sha}" && "${before_sha}" != "0000000000000000000000000000000000000000" ]]; then
+              base_sha="${before_sha}"
+            fi
+          fi
+
+          if [[ -z "${base_sha}" ]]; then
+            if git rev-parse "${head_sha}^" >/dev/null 2>&1; then
+              base_sha="$(git rev-parse "${head_sha}^")"
+            else
+              base_sha="${head_sha}"
+            fi
+          fi
+
+          changed_files="$(git diff --name-only "${base_sha}" "${head_sha}")"
           scripts=()
-          for script in install.sh lib/*.sh bin/*.sh; do
+
+          while IFS= read -r script; do
+            [[ -n "$script" ]] || continue
+            [[ "$script" =~ ^install\.sh$|^lib/.*\.sh$|^bin/.*\.sh$ ]] || continue
             [[ -f "$script" ]] || continue
             scripts+=("$script")
-          done
+          done <<< "$changed_files"
 
           if [[ ${#scripts[@]} -eq 0 ]]; then
-            echo "No shell scripts found for format check." >> $GITHUB_STEP_SUMMARY
+            echo "Compared range: ${base_sha}..${head_sha}" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "No changed shell scripts to format-check." >> $GITHUB_STEP_SUMMARY
             exit 0
           fi
 
+          echo "Compared range: ${base_sha}..${head_sha}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
           echo "Checked files: ${#scripts[@]}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
