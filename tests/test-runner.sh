@@ -7,6 +7,19 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 export TERM="xterm"
 
+# Ensure child bash processes inherit a valid locale.
+# Some environments export C.UTF-8 even when unsupported, which can emit
+# setlocale warnings and break output-based assertions.
+if command -v locale >/dev/null 2>&1; then
+    if ! locale -a 2>/dev/null | grep -qi '^C\.UTF-8$'; then
+        export LC_ALL=C
+        export LANG=C
+    fi
+else
+    export LC_ALL=C
+    export LANG=C
+fi
+
 # Test statistics
 TOTAL_TESTS=0
 PASSED_TESTS=0
