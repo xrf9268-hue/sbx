@@ -72,6 +72,8 @@ main() {
   assert_contains "$shellcheck_content" 'SHFMT_SHA256: "d9fbb2a9c33d13f47e7618cf362a914d029d02a6df124064fff04fd688a745ea"' 'format-check pins shfmt checksum'
   assert_contains "$shellcheck_content" 'sha256sum -c /tmp/shfmt.sha256' 'format-check verifies shfmt checksum'
   assert_contains "$shellcheck_content" 'git diff --name-only' 'format-check scopes to changed files'
+  assert_contains "$shellcheck_content" '--diff-filter=ACMR' 'format-check ignores deleted-only paths'
+  assert_contains "$shellcheck_content" '-z' 'format-check parses changed files with null delimiters'
   assert_contains "$shellcheck_content" 'No changed shell scripts to format-check.' 'format-check skips when no shell files changed'
   assert_contains "$shellcheck_content" 'shfmt -i 2 -ci -d' 'format-check uses repository shfmt style options'
   assert_contains "$shellcheck_content" '-d "${scripts[@]}"' 'format-check enforces diff-based style validation'

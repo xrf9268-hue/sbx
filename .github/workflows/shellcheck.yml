@@ -73,15 +73,16 @@ jobs:
             fi
           fi
 
-          changed_files="$(git diff --name-only "${base_sha}" "${head_sha}")"
           scripts=()
 
-          while IFS= read -r script; do
-            [[ -n "$script" ]] || continue
-            [[ "$script" =~ ^install\.sh$|^lib/.*\.sh$|^bin/.*\.sh$ ]] || continue
+          while IFS= read -r -d '' script; do
+            case "$script" in
+              install.sh|lib/*.sh|bin/*.sh) ;;
+              *) continue ;;
+            esac
             [[ -f "$script" ]] || continue
             scripts+=("$script")
-          done <<< "$changed_files"
+          done < <(git diff --name-only --diff-filter=ACMR -z "${base_sha}" "${head_sha}")
 
           if [[ ${#scripts[@]} -eq 0 ]]; then
             echo "Compared range: ${base_sha}..${head_sha}" >> $GITHUB_STEP_SUMMARY
