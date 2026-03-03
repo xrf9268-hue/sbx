@@ -44,6 +44,8 @@ sudo DOMAIN=your.domain.com CF_MODE=1 bash install.sh
 | `ENABLE_WS` | 1 | Enable VLESS-WS-TLS protocol |
 | `ENABLE_HY2` | 1 | Enable Hysteria2 protocol |
 | `WS_PORT` | 8444 (443 in CF_MODE) | WebSocket TLS port |
+| `SNI_DOMAIN` | `www.microsoft.com` | Override Reality handshake SNI target (validated with TLS 1.3 + h2 probe) |
+| `STATE_FILE` | `/etc/sing-box/state.json` | Structured runtime state file (JSON, preferred over `client-info.txt`) |
 
 **Cloudflare supported HTTPS ports:** 443, 2053, 2083, 2087, 2096, 8443
 
@@ -54,6 +56,9 @@ sudo DOMAIN=your.domain.com CF_MODE=1 ENABLE_REALITY=1 REALITY_PORT=24443 bash i
 
 # CF mode with custom WS port (must be CF-supported)
 sudo DOMAIN=your.domain.com CF_MODE=1 WS_PORT=2053 bash install.sh
+
+# Explicit Reality SNI override
+sudo DOMAIN=your.domain.com SNI_DOMAIN=www.apple.com bash install.sh
 ```
 
 ### Version Selection

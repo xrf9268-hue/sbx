@@ -246,7 +246,17 @@ allocate_port() {
     warn "${name} port ${port} persistently in use; switching to ${fallback}" >&2
     return 0
   else
-    die "Both ${name} ports ${port} and ${fallback} are in use. Please free up these ports or specify different ones."
+    if declare -f die_with_code >/dev/null 2>&1; then
+      die_with_code "SBX-NETWORK-001" "Both ${name} ports ${port} and ${fallback} are in use." \
+        "Free at least one of these ports or provide custom ports." \
+        "REALITY_PORT=30443 WS_PORT=30444 HY2_PORT=30445 bash install.sh"
+    elif declare -f err >/dev/null 2>&1; then
+      err "Both ${name} ports ${port} and ${fallback} are in use. Please free up these ports or specify different ones."
+      return 1
+    else
+      echo "[ERR] Both ${name} ports ${port} and ${fallback} are in use. Please free up these ports or specify different ones." >&2
+      return 1
+    fi
   fi
 }
 

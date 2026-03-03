@@ -20,6 +20,20 @@ source "${_LIB_DIR}/validation.sh"
 # shellcheck source=/dev/null
 source "${_LIB_DIR}/config_validator.sh"
 
+# Emit structured configuration failures when available.
+_config_die() {
+  local code="$1"
+  local reason="$2"
+  local resolution="${3:-}"
+  local example="${4:-}"
+
+  if declare -f die_with_code >/dev/null 2>&1; then
+    die_with_code "${code}" "${reason}" "${resolution}" "${example}"
+  fi
+
+  die "${reason}"
+}
+
 # Declare external variables from common.sh
 # shellcheck disable=SC2154
 : "${REALITY_FLOW_VISION:?}" "${REALITY_MAX_TIME_DIFF:?}" "${REALITY_ALPN_H2:?}" "${REALITY_ALPN_HTTP11:?}"
@@ -460,7 +474,10 @@ _validate_certificate_config() {
   # Check manual certificate mode
   if [[ -n "${cert_fullchain}" && -n "${cert_key}" && -f "${cert_fullchain}" && -f "${cert_key}" ]]; then
     has_manual_certs="true"
-    validate_cert_files "${cert_fullchain}" "${cert_key}" || die "Certificate validation failed"
+    validate_cert_files "${cert_fullchain}" "${cert_key}" || \
+      die_with_code "SBX-CERT-002" "Certificate file validation failed." \
+        "Ensure fullchain/key paths are correct, readable, and matching." \
+        "openssl x509 -in ${cert_fullchain} -noout -text | head"
   fi
 
   # Check ACME mode
@@ -468,7 +485,10 @@ _validate_certificate_config() {
     has_acme="true"
     # Validate CF_API_TOKEN for DNS-01 mode
     if [[ "${cert_mode}" == "cf_dns" ]]; then
-      [[ -n "${CF_API_TOKEN:-}" ]] || die "CF_API_TOKEN is required for CERT_MODE=cf_dns"
+      [[ -n "${CF_API_TOKEN:-}" ]] || \
+        die_with_code "SBX-CERT-001" "CF_API_TOKEN is required for CERT_MODE=cf_dns." \
+          "Provide a valid Cloudflare API token with DNS edit permission." \
+          "CERT_MODE=cf_dns CF_API_TOKEN=xxxx DOMAIN=example.com bash install.sh"
     fi
   fi
 
@@ -478,19 +498,31 @@ _validate_certificate_config() {
   fi
 
   # Validate domain is set
-  [[ -n "${DOMAIN:-}" ]] || die "Domain is not set for certificate/ACME configuration."
+  [[ -n "${DOMAIN:-}" ]] || \
+    die_with_code "SBX-CERT-003" "Domain is not set for certificate/ACME configuration." \
+      "Set DOMAIN when using manual certificates or ACME certificate mode." \
+      "DOMAIN=example.com bash install.sh"
 
   # Validate required variables based on enabled protocols
   local enable_ws="${ENABLE_WS:-1}"
   local enable_hy2="${ENABLE_HY2:-1}"
 
   if [[ "${enable_ws}" == "1" ]]; then
-    [[ -n "${WS_PORT_CHOSEN:-}" ]] || die "WebSocket port is not set but ENABLE_WS=1."
+    [[ -n "${WS_PORT_CHOSEN:-}" ]] || \
+      die_with_code "SBX-CONFIG-010" "WS port is missing while ENABLE_WS=1." \
+        "Set WS_PORT or keep automatic port allocation enabled." \
+        "WS_PORT=8444 bash install.sh"
   fi
 
   if [[ "${enable_hy2}" == "1" ]]; then
-    [[ -n "${HY2_PORT_CHOSEN:-}" ]] || die "Hysteria2 port is not set but ENABLE_HY2=1."
-    [[ -n "${HY2_PASS:-}" ]] || die "Hysteria2 password is not set but ENABLE_HY2=1."
+    [[ -n "${HY2_PORT_CHOSEN:-}" ]] || \
+      die_with_code "SBX-CONFIG-011" "Hysteria2 port is missing while ENABLE_HY2=1." \
+        "Set HY2_PORT or keep automatic port allocation enabled." \
+        "HY2_PORT=8443 bash install.sh"
+    [[ -n "${HY2_PASS:-}" ]] || \
+      die_with_code "SBX-CONFIG-012" "Hysteria2 password is missing while ENABLE_HY2=1." \
+        "Ensure HY2_PASS is generated or provided before config generation." \
+        "HY2_PASS=$(openssl rand -hex 16) bash install.sh"
   fi
 
   return 0
@@ -520,11 +552,13 @@ _create_all_inbounds() {
     local reality_config=''
     reality_config=$(create_reality_inbound "${uuid}" "${reality_port}" "${listen_addr}" \
       "${sni}" "${priv_key}" "${short_id}") \
-      || die "Failed to create Reality inbound"
+      || _config_die "SBX-CONFIG-030" "Failed to create Reality inbound" \
+        "Check Reality parameters (UUID/ports/keys/SNI) and retry."
 
     base_config=$(echo "${base_config}" | jq --argjson reality "${reality_config}" \
       '.inbounds += [$reality]' 2> /dev/null) \
-      || die "Failed to add Reality configuration to base config"
+      || _config_die "SBX-CONFIG-031" "Failed to add Reality configuration to base config" \
+        "Verify generated Reality JSON is valid."
   fi
 
   # Determine TLS mode: manual certificates, ACME, or none
@@ -548,16 +582,19 @@ _create_all_inbounds() {
       local ws_tls=''
       ws_tls=$(_build_tls_block "${DOMAIN}" '["h2","http/1.1"]' \
         "${cert_fullchain}" "${cert_key}" "${cert_mode}" "${CF_API_TOKEN:-}") \
-        || die "Failed to build WS TLS configuration"
+        || _config_die "SBX-CONFIG-032" "Failed to build WS TLS configuration" \
+          "Check certificate mode and TLS inputs."
 
       local ws_config=''
       ws_config=$(create_ws_inbound "${uuid}" "${WS_PORT_CHOSEN}" "${listen_addr}" \
         "${DOMAIN}" "${ws_tls}") \
-        || die "Failed to create WS-TLS inbound"
+        || _config_die "SBX-CONFIG-033" "Failed to create WS-TLS inbound" \
+          "Verify WS port/domain/TLS settings."
 
       base_config=$(echo "${base_config}" | jq --argjson ws "${ws_config}" \
         '.inbounds += [$ws]' 2> /dev/null) \
-        || die "Failed to add WS-TLS configuration"
+        || _config_die "SBX-CONFIG-034" "Failed to add WS-TLS configuration" \
+          "Verify WS inbound JSON generation."
     fi
 
     # Add Hysteria2 inbound (if enabled and port is set)
@@ -565,16 +602,19 @@ _create_all_inbounds() {
       local hy2_tls=''
       hy2_tls=$(_build_tls_block "${DOMAIN}" '["h3"]' \
         "${cert_fullchain}" "${cert_key}" "${cert_mode}" "${CF_API_TOKEN:-}") \
-        || die "Failed to build Hysteria2 TLS configuration"
+        || _config_die "SBX-CONFIG-035" "Failed to build Hysteria2 TLS configuration" \
+          "Check certificate mode and TLS inputs."
 
       local hy2_config=''
       hy2_config=$(create_hysteria2_inbound "${HY2_PASS}" "${HY2_PORT_CHOSEN}" "${listen_addr}" \
         "${hy2_tls}") \
-        || die "Failed to create Hysteria2 inbound"
+        || _config_die "SBX-CONFIG-036" "Failed to create Hysteria2 inbound" \
+          "Verify Hysteria2 password/port/TLS settings."
 
       base_config=$(echo "${base_config}" | jq --argjson hy2 "${hy2_config}" \
         '.inbounds += [$hy2]' 2> /dev/null) \
-        || die "Failed to add Hysteria2 configuration"
+        || _config_die "SBX-CONFIG-037" "Failed to add Hysteria2 configuration" \
+          "Verify Hysteria2 inbound JSON generation."
     fi
   fi
 
@@ -588,6 +628,10 @@ _create_all_inbounds() {
 
 # Generate complete sing-box configuration
 write_config() {
+  with_flock "${SBX_LOCK_TIMEOUT_SEC:-30}" _write_config_impl
+}
+
+_write_config_impl() {
   msg "Writing ${SB_CONF} ..."
   mkdir -p "${SB_CONF_DIR}"
 
@@ -606,14 +650,16 @@ write_config() {
   fi
 
   # Validate all required variables
-  validate_config_vars || die "Configuration validation failed. Please check the errors above."
+  validate_config_vars || _config_die "SBX-CONFIG-038" "Configuration validation failed. Please check the errors above." \
+    "Fix reported validation errors, then retry."
 
   # Validate certificate configuration if provided
   _validate_certificate_config "${CERT_FULLCHAIN:-}" "${CERT_KEY:-}"
 
   # Create temporary file for atomic write with secure permissions (600 automatic)
   local temp_conf=''
-  temp_conf=$(create_temp_file "config") || die "Failed to create secure temporary file"
+  temp_conf=$(create_temp_file "config") || _config_die "SBX-CONFIG-039" "Failed to create secure temporary file" \
+    "Check filesystem permissions and free disk space."
 
   # Setup automatic cleanup on function exit/error
   cleanup_write_config() {
@@ -624,30 +670,34 @@ write_config() {
   # Create base configuration
   local base_config=''
   base_config=$(create_base_config "${ipv6_supported}" "${LOG_LEVEL:-warn}") \
-    || die "Failed to create base configuration"
+    || _config_die "SBX-CONFIG-040" "Failed to create base configuration" \
+      "Check jq availability and base config template logic."
 
   # Create all inbounds (Reality + optional WS-TLS and Hysteria2)
   local inbound_result='' has_certs=''
   # shellcheck disable=SC2154  # UUID, REALITY_PORT_CHOSEN, PRIV, SID set by caller
   inbound_result=$(_create_all_inbounds "${base_config}" "${UUID}" "${REALITY_PORT_CHOSEN}" \
-    "${listen_addr}" "${SNI_DEFAULT:-www.microsoft.com}" "${PRIV}" "${SID}" \
+    "${listen_addr}" "${SNI:-${SNI_DEFAULT:-www.microsoft.com}}" "${PRIV}" "${SID}" \
     "${CERT_FULLCHAIN:-}" "${CERT_KEY:-}")
   has_certs="${inbound_result%%|*}"
   base_config="${inbound_result#*|}"
 
   # Add route and outbound configurations
   base_config=$(add_route_config "${base_config}" "${has_certs}") \
-    || die "Failed to add route configuration"
+    || _config_die "SBX-CONFIG-041" "Failed to add route configuration" \
+      "Verify route generation inputs and JSON integrity."
   base_config=$(add_outbound_config "${base_config}")
 
   # Write configuration to temporary file
   echo "${base_config}" > "${temp_conf}" \
-    || die "Failed to write configuration to temporary file"
+    || _config_die "SBX-CONFIG-042" "Failed to write configuration to temporary file" \
+      "Check filesystem writability for temporary directory."
 
   # Run comprehensive validation pipeline before applying
   if ! validate_config_pipeline "${temp_conf}"; then
     err "Configuration validation failed. See errors above."
-    die "Generated configuration is invalid. This is a bug in the script."
+    _config_die "SBX-CONFIG-043" "Generated configuration is invalid. This is a bug in the script." \
+      "Collect logs and open an issue with your install parameters."
   fi
 
   # Disable trap before successful move (we want to keep the file)
@@ -657,7 +707,8 @@ write_config() {
   if ! mv "${temp_conf}" "${SB_CONF}"; then
     # Re-enable trap for cleanup on failure
     trap cleanup_write_config RETURN
-    die "Failed to move configuration to ${SB_CONF}"
+    _config_die "SBX-CONFIG-044" "Failed to move configuration to ${SB_CONF}" \
+      "Check permissions for ${SB_CONF_DIR} and filesystem health."
   fi
 
   chmod 600 "${SB_CONF}"

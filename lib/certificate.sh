@@ -20,6 +20,20 @@ source "${_LIB_DIR}/common.sh"
 # shellcheck source=/dev/null
 source "${_LIB_DIR}/validation.sh"
 
+# Emit structured certificate failures when available.
+_cert_die() {
+  local code="$1"
+  local reason="$2"
+  local resolution="${3:-}"
+  local example="${4:-}"
+
+  if declare -f die_with_code >/dev/null 2>&1; then
+    die_with_code "${code}" "${reason}" "${resolution}" "${example}"
+  fi
+
+  die "${reason}"
+}
+
 #==============================================================================
 # Certificate / ACME Management
 #==============================================================================
@@ -30,7 +44,8 @@ maybe_issue_cert() {
   # Case 1: Manual certificate files provided — validate and return
   if [[ -n "${CERT_FULLCHAIN}" && -n "${CERT_KEY}" && -f "${CERT_FULLCHAIN}" && -f "${CERT_KEY}" ]]; then
     msg "Using provided certificate paths."
-    validate_cert_files "${CERT_FULLCHAIN}" "${CERT_KEY}" || die "Certificate validation failed"
+    validate_cert_files "${CERT_FULLCHAIN}" "${CERT_KEY}" || _cert_die "SBX-CERT-002" "Certificate validation failed" \
+      "Ensure provided certificate and key are valid and matched."
     return 0
   fi
 
@@ -75,15 +90,19 @@ maybe_issue_cert() {
       info "  ℹ No port 80 required for DNS-01 challenge"
 
       # Validate CF_API_TOKEN
-      [[ -n "${CF_API_TOKEN:-}" ]] || die "CF_API_TOKEN required for CERT_MODE=cf_dns"
-      validate_cf_api_token "${CF_API_TOKEN}" || die "Invalid CF_API_TOKEN format"
+      [[ -n "${CF_API_TOKEN:-}" ]] || _cert_die "SBX-CERT-001" "CF_API_TOKEN required for CERT_MODE=cf_dns" \
+        "Set Cloudflare API token before using DNS-01 mode." \
+        "export CF_API_TOKEN=your_token_here"
+      validate_cf_api_token "${CF_API_TOKEN}" || _cert_die "SBX-CERT-004" "Invalid CF_API_TOKEN format" \
+        "Use a valid Cloudflare API token (40-60 chars, alnum/_/-)."
 
       # Ensure ACME data directory exists
       mkdir -p /var/lib/sing-box/acme 2>/dev/null || true
       ;;
 
     *)
-      die "Unknown CERT_MODE: ${CERT_MODE} (supported: acme, cf_dns)"
+      _cert_die "SBX-CERT-005" "Unknown CERT_MODE: ${CERT_MODE} (supported: acme, cf_dns)" \
+        "Use CERT_MODE=acme or CERT_MODE=cf_dns."
       ;;
   esac
 

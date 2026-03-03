@@ -116,6 +116,13 @@ test_restore_service_state_defined() {
     grep -q "_restore_service_state()" lib/backup.sh
 }
 
+test_backup_restore_uses_with_flock() {
+    # backup_restore should be protected by with_flock to avoid concurrent restore/write races
+    local restore_impl
+    restore_impl=$(sed -n '/^backup_restore()/,/^}/p' lib/backup.sh)
+    echo "${restore_impl}" | grep -q "with_flock"
+}
+
 #==============================================================================
 # Run all tests
 #==============================================================================
@@ -144,6 +151,10 @@ echo ""
 echo "Testing _restore_service_state..."
 run_test "Function exists" test_restore_service_state_exists
 run_test "Defined in backup module" test_restore_service_state_defined
+
+echo ""
+echo "Testing backup_restore locking..."
+run_test "backup_restore uses with_flock" test_backup_restore_uses_with_flock
 
 # Print summary
 echo ""

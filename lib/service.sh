@@ -104,14 +104,23 @@ start_service_with_retry() {
 # Setup and start sing-box service
 setup_service() {
   local ws_port='' hy2_port=''
-  create_service_file || die "Failed to create service file"
+  create_service_file || die_with_code "SBX-SERVICE-001" \
+    "Failed to create systemd service file." \
+    "Check write permissions for /etc/systemd/system." \
+    "ls -ld /etc/systemd/system"
 
   # Reload systemd daemon
-  systemctl daemon-reload || die "Failed to reload systemd daemon"
+  systemctl daemon-reload || die_with_code "SBX-SERVICE-002" \
+    "Failed to reload systemd daemon." \
+    "Check systemd state and journal for details." \
+    "systemctl status --no-pager"
 
   # Validate configuration before starting service
   msg "Validating configuration before starting service..."
-  "${SB_BIN}" check -c "${SB_CONF}" 2>&1 || die "Configuration validation failed. Service not started."
+  "${SB_BIN}" check -c "${SB_CONF}" 2>&1 || die_with_code "SBX-SERVICE-003" \
+    "Configuration validation failed. Service not started." \
+    "Fix config syntax/fields and re-run service setup." \
+    "${SB_BIN} check -c ${SB_CONF}"
   success "  ✓ Configuration validated"
 
   # Enable service for auto-start on boot
@@ -119,7 +128,10 @@ setup_service() {
   systemctl enable sing-box || warn "Failed to enable service (continuing anyway)"
 
   # Start the service with retry logic
-  start_service_with_retry || die "Failed to start sing-box service"
+  start_service_with_retry || die_with_code "SBX-SERVICE-004" \
+    "Failed to start sing-box service." \
+    "Inspect bind conflicts and service logs, then retry." \
+    "journalctl -u sing-box -n 80 --no-pager"
 
   # Wait for service to become active (intelligent polling with timeout)
   msg "  - Waiting for service to become active..."
@@ -141,7 +153,10 @@ setup_service() {
     msg "Checking service status and logs..."
     systemctl status sing-box --no-pager || true
     journalctl -u sing-box -n 50 --no-pager || true
-    die "Service startup failed. Check logs above for details."
+    die_with_code "SBX-SERVICE-005" \
+      "Service startup timed out before reaching active state." \
+      "Review systemd status and journal logs to identify runtime failures." \
+      "systemctl status sing-box --no-pager"
   fi
 
   # Validate port listening (Reality-only mode check)
@@ -230,16 +245,26 @@ stop_service() {
 
 # Restart sing-box service
 restart_service() {
+  with_flock "${SBX_LOCK_TIMEOUT_SEC:-30}" _restart_service_impl "$@"
+}
+
+_restart_service_impl() {
   msg "Restarting sing-box service..."
 
   # Validate configuration before restart
   if [[ -f "${SB_CONF}" ]]; then
     if ! "${SB_BIN}" check -c "${SB_CONF}" 2>&1; then
-      die "Configuration validation failed. Service not restarted."
+      die_with_code "SBX-SERVICE-006" \
+        "Configuration validation failed. Service not restarted." \
+        "Fix configuration errors before restart." \
+        "${SB_BIN} check -c ${SB_CONF}"
     fi
   fi
 
-  systemctl restart sing-box || die "Failed to restart service"
+  systemctl restart sing-box || die_with_code "SBX-SERVICE-007" \
+    "Failed to restart sing-box service." \
+    "Inspect journal and unit file, then retry restart." \
+    "journalctl -u sing-box -n 80 --no-pager"
   sleep "${SERVICE_WAIT_MEDIUM_SEC:-2}"
 
   if check_service_status; then
@@ -259,7 +284,10 @@ reload_service() {
     systemctl reload sing-box 2> /dev/null || restart_service
   else
     msg "Service not running, starting instead..."
-    systemctl start sing-box || die "Failed to start service"
+    systemctl start sing-box || die_with_code "SBX-SERVICE-008" \
+      "Failed to start service." \
+      "Inspect systemd logs and service unit configuration." \
+      "journalctl -u sing-box -n 80 --no-pager"
   fi
 }
 

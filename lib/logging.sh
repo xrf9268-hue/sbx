@@ -227,6 +227,51 @@ die() {
   exit 1
 }
 
+# Structured error output with machine-readable code and remediation guidance.
+# Usage:
+#   die_with_code "SBX-CONFIG-001" "Invalid domain" "Use a public FQDN" \
+#     "DOMAIN=example.com bash install.sh"
+die_with_code() {
+  local code="${1:-SBX-GENERIC-001}"
+  local reason="${2:-Operation failed}"
+  local resolution="${3:-}"
+  local example="${4:-}"
+
+  if [[ "${LOG_FORMAT}" == "json" ]]; then
+    local timestamp=''
+    timestamp="$(date -Iseconds)"
+
+    # Minimal JSON escaping without additional dependencies.
+    local esc_reason esc_resolution esc_example esc_code
+    esc_code="${code//\\/\\\\}"
+    esc_code="${esc_code//\"/\\\"}"
+    esc_reason="${reason//\\/\\\\}"
+    esc_reason="${esc_reason//\"/\\\"}"
+    esc_resolution="${resolution//\\/\\\\}"
+    esc_resolution="${esc_resolution//\"/\\\"}"
+    esc_example="${example//\\/\\\\}"
+    esc_example="${esc_example//\"/\\\"}"
+
+    local resolution_json='null'
+    local example_json='null'
+    [[ -n "${resolution}" ]] && resolution_json="\"${esc_resolution}\""
+    [[ -n "${example}" ]] && example_json="\"${esc_example}\""
+
+    local json_log=''
+    json_log=$(printf '{"timestamp":"%s","level":"ERROR","code":"%s","reason":"%s","resolution":%s,"example":%s}' \
+      "${timestamp}" "${esc_code}" "${esc_reason}" "${resolution_json}" "${example_json}")
+    echo "${json_log}" >&2
+    _log_to_file "${json_log}"
+    exit 1
+  fi
+
+  err "${code}"
+  err "Reason: ${reason}"
+  [[ -n "${resolution}" ]] && err "Resolution: ${resolution}"
+  [[ -n "${example}" ]] && err "Example: ${example}"
+  exit 1
+}
+
 #==============================================================================
 # Log Rotation Functions
 #==============================================================================
@@ -279,6 +324,6 @@ rotate_logs() {
 # Export Functions
 #==============================================================================
 
-export -f msg warn err info success debug die
+export -f msg warn err info success debug die die_with_code
 export -f log_json rotate_logs rotate_logs_if_needed
 export -f _log_timestamp _log_to_file _should_log

@@ -27,6 +27,7 @@ declare -gr SB_CONF_DIR="/etc/sing-box"
 declare -gr SB_CONF="${SB_CONF_DIR}/config.json"
 declare -gr SB_SVC="/etc/systemd/system/sing-box.service"
 declare -gr CLIENT_INFO="${SB_CONF_DIR}/client-info.txt"
+declare -gr STATE_FILE="${SB_CONF_DIR}/state.json"
 
 # Default ports (may be defined in install.sh bootstrap for early use)
 if [[ -z "${REALITY_PORT_DEFAULT:-}" ]]; then
@@ -233,7 +234,19 @@ SBX_TMP_DIR="${SBX_TMP_DIR:-}"
 
 # Check if running as root
 need_root() {
-  [[ "${EUID:-$(id -u)}" -eq 0 ]] || die "Please run as root (sudo)."
+  if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
+    if declare -f die_with_code >/dev/null 2>&1; then
+      die_with_code "SBX-SYSTEM-001" "Root privileges are required." \
+        "Re-run the installer with sudo." \
+        "sudo bash install.sh"
+    elif declare -f err >/dev/null 2>&1; then
+      err "Please run as root (sudo)."
+      return 1
+    else
+      echo "[ERR] Please run as root (sudo)." >&2
+      return 1
+    fi
+  fi
 }
 
 # Check if command exists
@@ -312,7 +325,7 @@ cleanup() {
   local exit_code=$?
 
   # Skip error reporting in test mode (tests manage their own error reporting)
-  if [[ ${exit_code} -ne 0 && -z "${SBX_TEST_MODE:-}" ]]; then
+  if [[ ${exit_code} -ne 0 && -z "${SBX_TEST_MODE:-}" && -z "${_SBX_ERROR_CONTEXT_EMITTED:-}" ]]; then
     # err() function will be available from logging.sh
     if declare -f err > /dev/null 2>&1; then
       err "Script execution failed with exit code ${exit_code}"
@@ -521,6 +534,68 @@ create_temp_file_in_dir() {
   return 0
 }
 
+# Run a command under a cross-process file lock.
+# Usage:
+#   with_flock 30 my_command arg1 arg2
+#   with_flock my_command arg1 arg2  # default timeout 30s
+with_flock() {
+  local timeout=30
+  local lock_file="${SBX_LOCK_FILE:-/var/lock/sbx.lock}"
+  local -a cmd=()
+
+  # Optional first argument: timeout seconds
+  if [[ "${1:-}" =~ ^[0-9]+$ ]]; then
+    timeout="$1"
+    shift
+  fi
+
+  [[ $# -gt 0 ]] || {
+    if declare -f die_with_code > /dev/null 2>&1; then
+      die_with_code "SBX-SYSTEM-002" "with_flock requires a command to execute." \
+        "Call with_flock with a target command and optional timeout."
+    elif declare -f err > /dev/null 2>&1; then
+      err "with_flock requires a command to execute"
+      return 1
+    else
+      echo "[ERR] with_flock requires a command to execute" >&2
+      return 1
+    fi
+  }
+
+  cmd=("$@")
+
+  # Fallback to /tmp when /var/lock is unavailable or not writable.
+  local lock_dir=''
+  lock_dir="$(dirname "${lock_file}")"
+  if [[ ! -d "${lock_dir}" || ! -w "${lock_dir}" ]]; then
+    lock_file="/tmp/sbx.lock"
+  fi
+
+  if ! have flock; then
+    if declare -f warn > /dev/null 2>&1; then
+      warn "flock not available; running without process lock"
+    fi
+    "${cmd[@]}"
+    return $?
+  fi
+
+  (
+    if ! flock -w "${timeout}" 200; then
+      if declare -f die_with_code > /dev/null 2>&1; then
+        die_with_code "SBX-SYSTEM-003" "Could not acquire sbx lock within ${timeout}s." \
+          "Another sbx process may be running; retry after it exits."
+      elif declare -f err > /dev/null 2>&1; then
+        err "Could not acquire sbx lock within ${timeout}s (another sbx process may be running)"
+        return 1
+      else
+        echo "[ERR] Could not acquire sbx lock within ${timeout}s" >&2
+      fi
+      return 1
+    fi
+    "${cmd[@]}"
+  ) 200> "${lock_file}"
+}
+
 #==============================================================================
 # Module Initialization
 #==============================================================================
@@ -539,6 +614,7 @@ trap cleanup EXIT INT TERM
 
 # Export core utility functions
 export -f need_root have safe_rm_temp get_file_size cleanup \
-  create_temp_dir create_temp_dir_in_dir create_temp_file create_temp_file_in_dir
+  create_temp_dir create_temp_dir_in_dir create_temp_file create_temp_file_in_dir \
+  with_flock
 
 # Note: Logging and generator functions are exported by their respective modules
