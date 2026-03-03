@@ -457,9 +457,24 @@ jobs:
           echo "| Function | Tested | Location |" >> $GITHUB_STEP_SUMMARY
           echo "|----------|--------|----------|" >> $GITHUB_STEP_SUMMARY
 
+          # Search all test scripts to avoid false negatives when tests are split across files.
+          mapfile -t TEST_FILES < <(find tests -type f -name 'test*.sh' ! -name 'test_framework.sh' ! -name 'test-runner.sh' | sort)
+
+          is_tested_literal() {
+            local token="$1"
+            [[ ${#TEST_FILES[@]} -gt 0 ]] || return 1
+            grep -Fqs -- "$token" "${TEST_FILES[@]}"
+          }
+
+          is_tested_regex() {
+            local regex="$1"
+            [[ ${#TEST_FILES[@]} -gt 0 ]] || return 1
+            grep -Eqs -- "$regex" "${TEST_FILES[@]}"
+          }
+
           # Check validation functions
           for func in validate_short_id validate_reality_keypair validate_reality_sni validate_transport_security_pairing; do
-            if grep -q "$func" tests/test_reality.sh 2>/dev/null; then
+            if is_tested_literal "$func"; then
               echo "| \`$func\` | ✅ | lib/validation.sh |" >> $GITHUB_STEP_SUMMARY
             else
               echo "| \`$func\` | ⚠️ | lib/validation.sh |" >> $GITHUB_STEP_SUMMARY
@@ -467,7 +482,7 @@ jobs:
           done
 
           # Check config functions
-          if grep -q "create_reality_inbound\|reality.*config" tests/test_reality.sh 2>/dev/null; then
+          if is_tested_regex "create_reality_inbound|reality.*config"; then
             echo "| \`create_reality_inbound\` | ✅ | lib/config.sh |" >> $GITHUB_STEP_SUMMARY
           else
             echo "| \`create_reality_inbound\` | ⚠️ | lib/config.sh |" >> $GITHUB_STEP_SUMMARY
@@ -475,7 +490,7 @@ jobs:
 
           # Check generator functions
           for func in generate_uuid generate_reality_keypair; do
-            if grep -q "$func" tests/test_reality.sh 2>/dev/null; then
+            if is_tested_literal "$func"; then
               echo "| \`$func\` | ✅ | lib/generators.sh |" >> $GITHUB_STEP_SUMMARY
             else
               echo "| \`$func\` | ⚠️ | lib/generators.sh |" >> $GITHUB_STEP_SUMMARY
