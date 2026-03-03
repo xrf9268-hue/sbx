@@ -161,141 +161,11 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y jq openssl
 
-      - name: Test Reality configuration generation
+      - name: Run integration checks
+        env:
+          SINGBOX_TEST_VERSION: ${{ matrix.version }}
         run: |
-          echo "# Integration Tests - sing-box ${{ matrix.version }}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-
-          # Source library modules
-          source lib/common.sh
-          source lib/generators.sh
-          source lib/validation.sh
-          source lib/config.sh
-
-          # Generate test materials
-          UUID=$(generate_uuid)
-          KEYPAIR=$(generate_reality_keypair)
-          read -r PRIV PUB <<< "$KEYPAIR"
-          SID=$(openssl rand -hex 4)
-
-          echo "**Generated Materials:**" >> $GITHUB_STEP_SUMMARY
-          echo "- UUID: ${UUID:0:8}..." >> $GITHUB_STEP_SUMMARY
-          echo "- Short ID: $SID" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-
-          # Validate materials
-          validate_short_id "$SID" || exit 1
-
-          # Generate Reality configuration
-          CONFIG=$(create_reality_inbound "$UUID" 443 "::" "www.microsoft.com" "$PRIV" "$SID")
-
-          # Wrap in complete config
-          jq -n \
-            --argjson inbound "$CONFIG" \
-            '{
-              log: {level: "warn"},
-              dns: {servers: [{type: "local", tag: "dns-local"}], strategy: "ipv4_only"},
-              inbounds: [$inbound],
-              outbounds: [{type: "direct", tag: "direct"}],
-              route: {rules: [{inbound: ["in-reality"], action: "sniff"}], auto_detect_interface: true}
-            }' > /tmp/test-config.json
-
-          # Validate with sing-box
-          if sing-box check -c /tmp/test-config.json; then
-            echo "✅ Configuration validation passed" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "❌ Configuration validation failed" >> $GITHUB_STEP_SUMMARY
-            exit 1
-          fi
-
-      - name: Test configuration structure compliance
-        run: |
-          CONFIG="/tmp/test-config.json"
-
-          echo "**Structure Compliance Checks:**" >> $GITHUB_STEP_SUMMARY
-
-          # Verify Reality is nested under tls
-          if jq -e '.inbounds[0].tls.reality' "$CONFIG" > /dev/null; then
-            echo "✅ Reality properly nested under tls" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "❌ Reality not nested under tls" >> $GITHUB_STEP_SUMMARY
-            exit 1
-          fi
-
-          # Verify flow field
-          FLOW=$(jq -r '.inbounds[0].users[0].flow' "$CONFIG")
-          if [[ "$FLOW" == "xtls-rprx-vision" ]]; then
-            echo "✅ Flow field correct: $FLOW" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "❌ Incorrect flow: $FLOW" >> $GITHUB_STEP_SUMMARY
-            exit 1
-          fi
-
-          # Verify short_id is array
-          SID_TYPE=$(jq -r '.inbounds[0].tls.reality.short_id | type' "$CONFIG")
-          if [[ "$SID_TYPE" == "array" ]]; then
-            echo "✅ Short ID is array type" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "❌ Short ID must be array, got: $SID_TYPE" >> $GITHUB_STEP_SUMMARY
-            exit 1
-          fi
-
-      - name: Test export functionality
-        run: |
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Export Tests:**" >> $GITHUB_STEP_SUMMARY
-
-          source lib/common.sh
-          source lib/export.sh
-
-          # Set required environment variables
-          export UUID=$(jq -r '.inbounds[0].users[0].uuid' /tmp/test-config.json)
-          export PUBLIC_KEY="test_public_key"
-          export SHORT_ID=$(jq -r '.inbounds[0].tls.reality.short_id[0]' /tmp/test-config.json)
-          export DOMAIN="test.example.com"
-          export REALITY_PORT=443
-          export SNI="www.microsoft.com"
-          export TEST_STATE_FILE="/tmp/test-state.json"
-
-          # export_uri now loads values from state/client-info. Provide a minimal
-          # test state file so integration checks exercise the real export path.
-          jq -n \
-            --arg domain "$DOMAIN" \
-            --arg uuid "$UUID" \
-            --arg public_key "$PUBLIC_KEY" \
-            --arg short_id "$SHORT_ID" \
-            --arg sni "$SNI" \
-            --argjson port "$REALITY_PORT" \
-            '{
-              server: {domain: $domain},
-              protocols: {
-                reality: {
-                  uuid: $uuid,
-                  public_key: $public_key,
-                  short_id: $short_id,
-                  sni: $sni,
-                  port: $port
-                }
-              }
-            }' > "$TEST_STATE_FILE"
-          chmod 600 "$TEST_STATE_FILE"
-
-          # Test URI export
-          if URI=$(export_uri reality 2>/dev/null); then
-            if [[ "$URI" =~ ^vless:// ]]; then
-              echo "✅ URI export format valid" >> $GITHUB_STEP_SUMMARY
-            else
-              echo "❌ URI export format invalid" >> $GITHUB_STEP_SUMMARY
-              exit 1
-            fi
-          else
-            echo "⚠️ URI export skipped (function may require full setup)" >> $GITHUB_STEP_SUMMARY
-          fi
-
-      - name: Cleanup
-        if: always()
-        run: |
-          rm -f /tmp/test-*.json
+          bash tests/ci/integration_checks.sh --summary-file "$GITHUB_STEP_SUMMARY"
 
   advanced-features:
     name: Advanced Features Tests
@@ -335,83 +205,9 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y jq openssl
 
-      - name: Test Version Compatibility
+      - name: Run advanced feature checks
         run: |
-          echo "# Advanced Features Tests" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "## Version Compatibility" >> $GITHUB_STEP_SUMMARY
-
-          source lib/common.sh
-          source lib/network.sh
-          source lib/version.sh
-
-          VERSION=$(get_singbox_version)
-          echo "**Detected Version:** $VERSION" >> $GITHUB_STEP_SUMMARY
-
-          if compare_versions "1.8.0" "1.13.0" | grep -q "1.8.0"; then
-            echo "✅ Version comparison works" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "❌ Version comparison failed" >> $GITHUB_STEP_SUMMARY
-            exit 1
-          fi
-
-          if version_meets_minimum "$VERSION" "1.8.0"; then
-            echo "✅ Version meets minimum requirement (1.8.0+)" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "❌ Version too old (< 1.8.0)" >> $GITHUB_STEP_SUMMARY
-            exit 1
-          fi
-
-      - name: Test Schema Validation
-        run: |
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "## Schema Validation" >> $GITHUB_STEP_SUMMARY
-
-          source lib/common.sh
-          source lib/schema_validator.sh
-          source lib/generators.sh
-          source lib/validation.sh
-          source lib/config.sh
-
-          UUID=$(generate_uuid)
-          KEYPAIR=$(generate_reality_keypair)
-          read -r PRIV PUB <<< "$KEYPAIR"
-          SID=$(openssl rand -hex 4)
-
-          CONFIG=$(create_reality_inbound "$UUID" 443 "::" "www.microsoft.com" "$PRIV" "$SID")
-          jq -n \
-            --argjson inbound "$CONFIG" \
-            '{
-              log: {level: "warn"},
-              dns: {servers: [{type: "local", tag: "dns-local"}], strategy: "ipv4_only"},
-              inbounds: [$inbound],
-              outbounds: [{type: "direct", tag: "direct"}],
-              route: {rules: [], auto_detect_interface: true}
-            }' > /tmp/test-schema-config.json
-
-          if validate_reality_structure /tmp/test-schema-config.json; then
-            echo "✅ Schema validation passed" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "❌ Schema validation failed" >> $GITHUB_STEP_SUMMARY
-            exit 1
-          fi
-
-      - name: Test Integration Script Syntax
-        run: |
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "## Integration Tests" >> $GITHUB_STEP_SUMMARY
-
-          if bash -n tests/integration/test_reality_connection.sh 2>&1; then
-            echo "✅ Integration test script syntax valid" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "❌ Integration test script has syntax errors" >> $GITHUB_STEP_SUMMARY
-            exit 1
-          fi
-
-      - name: Cleanup
-        if: always()
-        run: |
-          rm -f /tmp/test-*.json
+          bash tests/ci/advanced_features_checks.sh --summary-file "$GITHUB_STEP_SUMMARY"
 
   docker-lifecycle-smoke:
     name: Docker Lifecycle Smoke Tests
@@ -440,82 +236,77 @@ jobs:
   test-coverage:
     name: Test Coverage Report
     runs-on: ubuntu-latest
-    needs: [unit-tests, integration-tests]
+    needs: [unit-tests]
     if: always()
-    timeout-minutes: 5
+    timeout-minutes: 45
 
     steps:
       - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          submodules: recursive
 
-      - name: Generate coverage report
+      - name: Cache sing-box binary
+        id: cache-singbox-coverage
+        uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
+        with:
+          path: /tmp/sing-box-download
+          key: ${{ runner.os }}-singbox-coverage-latest-v1-${{ hashFiles('.github/workflows/test.yml') }}
+
+      - name: Install sing-box latest
+        if: steps.cache-singbox-coverage.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p /tmp/sing-box-download
+          VERSION=$(curl -s https://api.github.com/repos/SagerNet/sing-box/releases/latest | jq -r '.tag_name')
+          echo "Installing sing-box $VERSION"
+          wget -q "https://github.com/SagerNet/sing-box/releases/download/${VERSION}/sing-box-${VERSION#v}-linux-amd64.tar.gz" -O /tmp/sing-box.tar.gz
+          tar -xzf /tmp/sing-box.tar.gz -C /tmp/sing-box-download
+
+      - name: Setup sing-box binary
+        run: |
+          sudo cp /tmp/sing-box-download/sing-box-*/sing-box /usr/local/bin/
+          sudo chmod +x /usr/local/bin/sing-box
+          sing-box version
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y jq openssl
+
+      - name: Run kcov coverage suite
         run: |
           echo "# Test Coverage Report" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "## Reality Protocol Functions" >> $GITHUB_STEP_SUMMARY
+          echo "## kcov Real Execution Coverage" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Function | Tested | Location |" >> $GITHUB_STEP_SUMMARY
-          echo "|----------|--------|----------|" >> $GITHUB_STEP_SUMMARY
-
-          # Search all test scripts to avoid false negatives when tests are split across files.
-          mapfile -t TEST_FILES < <(find tests -type f -name 'test*.sh' ! -name 'test_framework.sh' ! -name 'test-runner.sh' | sort)
-
-          is_tested_literal() {
-            local token="$1"
-            [[ ${#TEST_FILES[@]} -gt 0 ]] || return 1
-            grep -Fqs -- "$token" "${TEST_FILES[@]}"
-          }
-
-          is_tested_regex() {
-            local regex="$1"
-            [[ ${#TEST_FILES[@]} -gt 0 ]] || return 1
-            grep -Eqs -- "$regex" "${TEST_FILES[@]}"
-          }
-
-          # Check validation functions
-          for func in validate_short_id validate_reality_keypair validate_reality_sni validate_transport_security_pairing; do
-            if is_tested_literal "$func"; then
-              echo "| \`$func\` | ✅ | lib/validation.sh |" >> $GITHUB_STEP_SUMMARY
-            else
-              echo "| \`$func\` | ⚠️ | lib/validation.sh |" >> $GITHUB_STEP_SUMMARY
-            fi
-          done
-
-          # Check config functions
-          if is_tested_regex "create_reality_inbound|reality.*config"; then
-            echo "| \`create_reality_inbound\` | ✅ | lib/config.sh |" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "| \`create_reality_inbound\` | ⚠️ | lib/config.sh |" >> $GITHUB_STEP_SUMMARY
-          fi
-
-          # Check generator functions
-          for func in generate_uuid generate_reality_keypair; do
-            if is_tested_literal "$func"; then
-              echo "| \`$func\` | ✅ | lib/generators.sh |" >> $GITHUB_STEP_SUMMARY
-            else
-              echo "| \`$func\` | ⚠️ | lib/generators.sh |" >> $GITHUB_STEP_SUMMARY
-            fi
-          done
-
+          KCOV_BIN=$(bash tests/ci/install_kcov.sh --version v41)
+          echo "Using kcov binary: $KCOV_BIN" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "## Test Statistics" >> $GITHUB_STEP_SUMMARY
+          bash tests/ci/coverage_suite.sh --out-dir /tmp/sbx-kcov --summary-file "$GITHUB_STEP_SUMMARY" --kcov-bin "$KCOV_BIN"
+
+      - name: Enforce 80% coverage gate
+        run: |
+          bash tests/ci/coverage_gate.sh \
+            --xml /tmp/sbx-kcov/merged/cobertura.xml \
+            --min-percent 80 \
+            --metrics-file /tmp/sbx-kcov/coverage-metrics.env
+
+          source /tmp/sbx-kcov/coverage-metrics.env
+          echo "## Coverage Gate" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-
-          if [ -f tests/test_reality.sh ]; then
-            TEST_COUNT=$(grep -c "^test_" tests/test_reality.sh 2>/dev/null || echo "0")
-            echo "- **Total Test Cases**: $TEST_COUNT" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "- **Total Test Cases**: N/A (test file not found)" >> $GITHUB_STEP_SUMMARY
-          fi
-
-          echo "- **Test Suites**: Unit Tests, Integration Tests, Advanced Features" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Status Summary:**" >> $GITHUB_STEP_SUMMARY
-          echo "- Unit Tests: ${{ needs.unit-tests.result == 'success' && '✅ Passed' || '❌ Failed' }}" >> $GITHUB_STEP_SUMMARY
-          echo "- Integration Tests: ${{ needs.integration-tests.result == 'success' && '✅ Passed' || (needs.integration-tests.result == 'skipped' && '⏭️ Skipped' || '❌ Failed') }}" >> $GITHUB_STEP_SUMMARY
-
+          echo "- Coverage: **${COVERAGE_PERCENT}%**" >> $GITHUB_STEP_SUMMARY
+          echo "- Threshold: **${COVERAGE_THRESHOLD}%**" >> $GITHUB_STEP_SUMMARY
+          echo "- Result: **${COVERAGE_GATE_STATUS}**" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "*Generated: $(date -u +"%Y-%m-%d %H:%M:%S UTC")*" >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload coverage artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kcov-coverage-report
+          path: /tmp/sbx-kcov/merged
+          if-no-files-found: error
 
   test-summary:
     name: Test Summary
@@ -540,7 +331,8 @@ jobs:
 
           if [[ "${{ needs.unit-tests.result }}" == "success" ]] && \
              [[ "${{ needs.advanced-features.result }}" == "success" ]] && \
-             [[ "${{ needs.docker-lifecycle-smoke.result }}" != "failure" ]]; then
+             [[ "${{ needs.docker-lifecycle-smoke.result }}" != "failure" ]] && \
+             [[ "${{ needs.test-coverage.result }}" == "success" ]]; then
             echo "**Overall**: ✅ All tests passed" >> $GITHUB_STEP_SUMMARY
           else
             echo "**Overall**: ❌ Some tests failed" >> $GITHUB_STEP_SUMMARY
@@ -549,7 +341,8 @@ jobs:
       - name: Check overall status
         run: |
           if [[ "${{ needs.unit-tests.result }}" != "success" ]] || \
-             [[ "${{ needs.advanced-features.result }}" != "success" ]]; then
+             [[ "${{ needs.advanced-features.result }}" != "success" ]] || \
+             [[ "${{ needs.test-coverage.result }}" != "success" ]]; then
             echo "::error::One or more test suites failed"
             exit 1
           fi
