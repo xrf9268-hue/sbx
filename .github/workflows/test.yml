@@ -138,17 +138,7 @@ jobs:
       - name: Install sing-box ${{ matrix.version }}
         if: steps.cache-singbox.outputs.cache-hit != 'true'
         run: |
-          mkdir -p /tmp/sing-box-download
-
-          if [ "${{ matrix.version }}" = "latest" ]; then
-            VERSION=$(curl -s https://api.github.com/repos/SagerNet/sing-box/releases/latest | jq -r '.tag_name')
-          else
-            VERSION="v${{ matrix.version }}"
-          fi
-
-          echo "Installing sing-box $VERSION"
-          wget -q "https://github.com/SagerNet/sing-box/releases/download/${VERSION}/sing-box-${VERSION#v}-linux-amd64.tar.gz" -O /tmp/sing-box.tar.gz
-          tar -xzf /tmp/sing-box.tar.gz -C /tmp/sing-box-download
+          bash tests/ci/install_singbox.sh --version "${{ matrix.version }}" --download-dir /tmp/sing-box-download --fallback-version "$SINGBOX_RECOMMENDED_VERSION"
 
       - name: Setup sing-box binary
         run: |
@@ -189,11 +179,7 @@ jobs:
       - name: Install sing-box
         if: steps.cache-singbox.outputs.cache-hit != 'true'
         run: |
-          mkdir -p /tmp/sing-box-download
-          VERSION=$(curl -s https://api.github.com/repos/SagerNet/sing-box/releases/latest | jq -r '.tag_name')
-          echo "Installing sing-box $VERSION"
-          wget -q "https://github.com/SagerNet/sing-box/releases/download/${VERSION}/sing-box-${VERSION#v}-linux-amd64.tar.gz" -O /tmp/sing-box.tar.gz
-          tar -xzf /tmp/sing-box.tar.gz -C /tmp/sing-box-download
+          bash tests/ci/install_singbox.sh --version latest --download-dir /tmp/sing-box-download --fallback-version "$SINGBOX_RECOMMENDED_VERSION"
 
       - name: Setup sing-box binary
         run: |
@@ -256,11 +242,7 @@ jobs:
       - name: Install sing-box latest
         if: steps.cache-singbox-coverage.outputs.cache-hit != 'true'
         run: |
-          mkdir -p /tmp/sing-box-download
-          VERSION=$(curl -s https://api.github.com/repos/SagerNet/sing-box/releases/latest | jq -r '.tag_name')
-          echo "Installing sing-box $VERSION"
-          wget -q "https://github.com/SagerNet/sing-box/releases/download/${VERSION}/sing-box-${VERSION#v}-linux-amd64.tar.gz" -O /tmp/sing-box.tar.gz
-          tar -xzf /tmp/sing-box.tar.gz -C /tmp/sing-box-download
+          bash tests/ci/install_singbox.sh --version latest --download-dir /tmp/sing-box-download --fallback-version "$SINGBOX_RECOMMENDED_VERSION"
 
       - name: Setup sing-box binary
         run: |

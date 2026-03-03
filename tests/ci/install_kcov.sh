@@ -2,10 +2,16 @@
 # tests/ci/install_kcov.sh - Install or locate kcov binary for CI usage
 
 set -euo pipefail
+exec 3>&1
+exec 1>&2
 
 KCOV_VERSION="v41"
 INSTALL_DIR="/tmp/kcov-bin"
 FORCE_REBUILD=0
+
+print_result() {
+  echo "$1" >&3
+}
 
 usage() {
   cat <<USAGE
@@ -42,12 +48,12 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ $FORCE_REBUILD -eq 0 ]] && [[ -x "$INSTALL_DIR/bin/kcov" ]]; then
-  echo "$INSTALL_DIR/bin/kcov"
+  print_result "$INSTALL_DIR/bin/kcov"
   exit 0
 fi
 
 if [[ $FORCE_REBUILD -eq 0 ]] && command -v kcov >/dev/null 2>&1; then
-  command -v kcov
+  print_result "$(command -v kcov)"
   exit 0
 fi
 
@@ -92,4 +98,4 @@ if [[ -n "${GITHUB_PATH:-}" ]]; then
   echo "$INSTALL_DIR/bin" >> "$GITHUB_PATH"
 fi
 
-echo "$INSTALL_DIR/bin/kcov"
+print_result "$INSTALL_DIR/bin/kcov"

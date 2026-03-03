@@ -3,7 +3,7 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SUMMARY_FILE="${GITHUB_STEP_SUMMARY:-}"
 
 usage() {
@@ -46,9 +46,9 @@ summary "# Advanced Features Tests"
 summary ""
 summary "## Version Compatibility"
 
-source "$SCRIPT_DIR/lib/common.sh"
-source "$SCRIPT_DIR/lib/network.sh"
-source "$SCRIPT_DIR/lib/version.sh"
+source "$PROJECT_ROOT/lib/common.sh"
+source "$PROJECT_ROOT/lib/network.sh"
+source "$PROJECT_ROOT/lib/version.sh"
 
 VERSION="$(get_singbox_version)"
 summary "**Detected Version:** $VERSION"
@@ -70,10 +70,10 @@ fi
 summary ""
 summary "## Schema Validation"
 
-source "$SCRIPT_DIR/lib/schema_validator.sh"
-source "$SCRIPT_DIR/lib/generators.sh"
-source "$SCRIPT_DIR/lib/validation.sh"
-source "$SCRIPT_DIR/lib/config.sh"
+source "$PROJECT_ROOT/lib/schema_validator.sh"
+source "$PROJECT_ROOT/lib/generators.sh"
+source "$PROJECT_ROOT/lib/validation.sh"
+source "$PROJECT_ROOT/lib/config.sh"
 
 UUID="$(generate_uuid)"
 KEYPAIR="$(generate_reality_keypair)"
@@ -101,7 +101,7 @@ fi
 
 summary ""
 summary "## Integration Tests"
-if bash -n "$SCRIPT_DIR/tests/integration/test_reality_connection.sh" 2>/dev/null; then
+if bash -n "$PROJECT_ROOT/tests/integration/test_reality_connection.sh" 2>/dev/null; then
   summary "✅ Integration test script syntax valid"
 else
   summary "❌ Integration test script has syntax errors"

@@ -3,7 +3,7 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SUMMARY_FILE="${GITHUB_STEP_SUMMARY:-}"
 SINGBOX_TEST_VERSION="${SINGBOX_TEST_VERSION:-latest}"
 
@@ -46,10 +46,10 @@ trap cleanup EXIT
 summary "# Integration Tests - sing-box ${SINGBOX_TEST_VERSION}"
 summary ""
 
-source "$SCRIPT_DIR/lib/common.sh"
-source "$SCRIPT_DIR/lib/generators.sh"
-source "$SCRIPT_DIR/lib/validation.sh"
-source "$SCRIPT_DIR/lib/config.sh"
+source "$PROJECT_ROOT/lib/common.sh"
+source "$PROJECT_ROOT/lib/generators.sh"
+source "$PROJECT_ROOT/lib/validation.sh"
+source "$PROJECT_ROOT/lib/config.sh"
 
 UUID="$(generate_uuid)"
 KEYPAIR="$(generate_reality_keypair)"
@@ -110,7 +110,7 @@ fi
 summary ""
 summary "**Export Tests:**"
 
-source "$SCRIPT_DIR/lib/export.sh"
+source "$PROJECT_ROOT/lib/export.sh"
 
 export UUID="$(jq -r '.inbounds[0].users[0].uuid' /tmp/test-config.json)"
 export PUBLIC_KEY="test_public_key"
