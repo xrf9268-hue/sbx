@@ -41,8 +41,12 @@ case "$command_name" in
   analyze)
     warn_deprecated
     min_percent="${MIN_COVERAGE_PERCENT:-80}"
+    xml_path="$DEFAULT_OUT_DIR/merged/kcov-merged/cobertura.xml"
+    if [[ ! -f "$xml_path" ]]; then
+      xml_path="$DEFAULT_OUT_DIR/merged/cobertura.xml"
+    fi
     bash "$SCRIPT_DIR/tests/ci/coverage_gate.sh" \
-      --xml "$DEFAULT_OUT_DIR/merged/cobertura.xml" \
+      --xml "$xml_path" \
       --min-percent "$min_percent"
     ;;
   clean)

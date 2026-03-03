@@ -77,13 +77,8 @@ main() {
 <html><body>kcov</body></html>
 EOF_HTML
   local normalized_dir
-  normalized_dir="$(normalize_report_layout "$merged_nested" "$merged_nested/kcov-merged")"
-  assert_equals "$merged_nested" "$normalized_dir" "normalizes report directory to merged root"
-  if [[ -f "$merged_nested/cobertura.xml" && -f "$merged_nested/index.html" ]]; then
-    pass "copies cobertura.xml and index.html to merged root"
-  else
-    fail "copies cobertura.xml and index.html to merged root"
-  fi
+  normalized_dir="$(normalize_report_layout "$merged_nested/kcov-merged")"
+  assert_equals "$merged_nested/kcov-merged" "$normalized_dir" "keeps resolved report directory"
 
   local merged_none="$TMP_DIR/merged-none"
   mkdir -p "$merged_none"

@@ -54,20 +54,8 @@ resolve_coverage_report_dir() {
 }
 
 normalize_report_layout() {
-  local merged_dir="$1"
-  local report_dir="$2"
-
-  if [[ "$report_dir" == "$merged_dir" ]]; then
-    echo "$merged_dir"
-    return 0
-  fi
-
-  cp "$report_dir/cobertura.xml" "$merged_dir/cobertura.xml"
-  if [[ -f "$report_dir/index.html" ]]; then
-    cp "$report_dir/index.html" "$merged_dir/index.html"
-  fi
-
-  echo "$merged_dir"
+  local report_dir="$1"
+  echo "$report_dir"
 }
 
 main() {
@@ -136,7 +124,7 @@ main() {
     exit 1
   fi
 
-  normalized_dir="$(normalize_report_layout "$merged_dir" "$report_dir")"
+  normalized_dir="$(normalize_report_layout "$report_dir")"
   coverage_xml="$normalized_dir/cobertura.xml"
   coverage_html="$normalized_dir/index.html"
 

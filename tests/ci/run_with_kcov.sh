@@ -49,7 +49,8 @@ mkdir -p "$OUTPUT_DIR"
 
 "$KCOV_BIN" \
   --verify \
-  --include-path="$SCRIPT_DIR" \
-  --exclude-pattern="$SCRIPT_DIR/tests,$SCRIPT_DIR/docs,$SCRIPT_DIR/.git" \
+  --bash-method=DEBUG \
+  --include-pattern="$SCRIPT_DIR/lib/,$SCRIPT_DIR/install.sh,lib/,install.sh" \
+  --exclude-pattern="$SCRIPT_DIR/tests,$SCRIPT_DIR/docs,$SCRIPT_DIR/.git,tests/,docs/,.git/" \
   "$OUTPUT_DIR" \
   "$@"

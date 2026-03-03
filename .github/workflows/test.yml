@@ -264,12 +264,31 @@ jobs:
           KCOV_BIN=$(bash tests/ci/install_kcov.sh --version v41)
           echo "Using kcov binary: $KCOV_BIN" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          bash tests/ci/coverage_suite.sh --out-dir /tmp/sbx-kcov --summary-file "$GITHUB_STEP_SUMMARY" --kcov-bin "$KCOV_BIN"
+          SUITE_LOG="/tmp/sbx-kcov-suite.log"
+          bash tests/ci/coverage_suite.sh --out-dir /tmp/sbx-kcov --summary-file "$GITHUB_STEP_SUMMARY" --kcov-bin "$KCOV_BIN" | tee "$SUITE_LOG"
+
+          COVERAGE_XML=$(awk -F= '/^COVERAGE_XML=/{print substr($0, index($0, "=") + 1)}' "$SUITE_LOG" | tail -n 1)
+          COVERAGE_DIR=$(awk -F= '/^COVERAGE_DIR=/{print substr($0, index($0, "=") + 1)}' "$SUITE_LOG" | tail -n 1)
+
+          if [[ -z "$COVERAGE_XML" ]] || [[ ! -f "$COVERAGE_XML" ]]; then
+            echo "::error::coverage suite did not provide a valid COVERAGE_XML path"
+            exit 1
+          fi
+
+          if [[ -z "$COVERAGE_DIR" ]] || [[ ! -d "$COVERAGE_DIR" ]]; then
+            echo "::error::coverage suite did not provide a valid COVERAGE_DIR path"
+            exit 1
+          fi
+
+          echo "COVERAGE_XML=$COVERAGE_XML" >> "$GITHUB_ENV"
+          echo "COVERAGE_DIR=$COVERAGE_DIR" >> "$GITHUB_ENV"
+          echo "- Coverage XML Path: \`$COVERAGE_XML\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Coverage Report Path: \`$COVERAGE_DIR\`" >> $GITHUB_STEP_SUMMARY
 
       - name: Enforce 80% coverage gate
         run: |
           bash tests/ci/coverage_gate.sh \
-            --xml /tmp/sbx-kcov/merged/cobertura.xml \
+            --xml "$COVERAGE_XML" \
             --min-percent 80 \
             --metrics-file /tmp/sbx-kcov/coverage-metrics.env
 
