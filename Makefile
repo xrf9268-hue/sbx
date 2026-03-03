@@ -1,6 +1,6 @@
 # Makefile for sbx-lite development
 
-.PHONY: all check test test-unit test-installer test-quick test-integration lint syntax security coverage benchmark install-hooks clean help
+.PHONY: all check test test-unit test-installer test-quick test-integration test-docker-smoke lint syntax security coverage benchmark install-hooks clean help
 
 # Default target
 all: check
@@ -16,6 +16,7 @@ help:
 	@echo "  test-installer   - Run one-liner installer tests"
 	@echo "  test-quick       - Quick Reality validation tests"
 	@echo "  test-integration - Full integration tests (requires sing-box)"
+	@echo "  test-docker-smoke - Docker lifecycle smoke tests (Docker required)"
 	@echo "  coverage         - Generate code coverage report"
 	@echo "  benchmark        - Run performance benchmarks (quick)"
 	@echo "  benchmark-full   - Run full benchmark suite"
@@ -118,6 +119,12 @@ test-integration:
 	}
 	@bash tests/test_reality.sh
 	@echo "✓ Integration tests passed"
+
+# Run Docker lifecycle smoke tests
+test-docker-smoke:
+	@echo "→ Running Docker lifecycle smoke tests..."
+	@bash tests/integration/test_docker_lifecycle_smoke.sh || exit 1
+	@echo "✓ Docker lifecycle smoke tests passed"
 
 # Generate code coverage report
 coverage:
