@@ -24,6 +24,67 @@ permissions:
   contents: read
 
 jobs:
+  format-check:
+    name: Shell Format Check (shfmt)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Install shfmt
+        env:
+          SHFMT_VERSION: "v3.12.0"
+          SHFMT_SHA256: "d9fbb2a9c33d13f47e7618cf362a914d029d02a6df124064fff04fd688a745ea"
+        run: |
+          curl -fsSLo /tmp/shfmt "https://github.com/mvdan/sh/releases/download/${SHFMT_VERSION}/shfmt_${SHFMT_VERSION}_linux_amd64"
+          echo "${SHFMT_SHA256}  /tmp/shfmt" > /tmp/shfmt.sha256
+          sha256sum -c /tmp/shfmt.sha256
+          chmod +x /tmp/shfmt
+          sudo mv /tmp/shfmt /usr/local/bin/shfmt
+          shfmt --version
+
+      - name: Run shfmt diff check
+        run: |
+          echo "# shfmt Format Check" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          scripts=()
+          for script in install.sh lib/*.sh bin/*.sh; do
+            [[ -f "$script" ]] || continue
+            scripts+=("$script")
+          done
+
+          if [[ ${#scripts[@]} -eq 0 ]]; then
+            echo "No shell scripts found for format check." >> $GITHUB_STEP_SUMMARY
+            exit 0
+          fi
+
+          echo "Checked files: ${#scripts[@]}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          set +e
+          shfmt -d "${scripts[@]}" | tee /tmp/shfmt.diff
+          shfmt_status=${PIPESTATUS[0]}
+          set -e
+
+          if [[ $shfmt_status -ne 0 && ! -s /tmp/shfmt.diff ]]; then
+            echo "❌ shfmt command failed unexpectedly" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+
+          if [[ -s /tmp/shfmt.diff ]]; then
+            echo "❌ Formatting differences detected. Run: shfmt -w install.sh lib/*.sh bin/*.sh" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo '```diff' >> $GITHUB_STEP_SUMMARY
+            cat /tmp/shfmt.diff >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+
+          echo "✅ All checked shell scripts are shfmt-compliant" >> $GITHUB_STEP_SUMMARY
+
   shellcheck:
     name: ShellCheck Static Analysis
     runs-on: ubuntu-latest
