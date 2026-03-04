@@ -57,7 +57,7 @@ main() {
   assert_not_contains 'run_case "unit" "$SCRIPT_DIR/tests/test-runner.sh" unit' "unit suite no longer wraps test-runner"
   assert_contains 'run_case "integration" "$SCRIPT_DIR/tests/ci/integration_checks.sh"' "integration suite runs script directly"
   assert_contains 'run_case "advanced" "$SCRIPT_DIR/tests/ci/advanced_features_checks.sh"' "advanced suite runs script directly"
-  assert_contains 'run_case "docker" "$SCRIPT_DIR/tests/integration/test_docker_lifecycle_smoke.sh"' "docker suite runs script directly"
+  assert_contains 'run_case "docker" "$SCRIPT_DIR/scripts/e2e/install-lifecycle-smoke.sh"' "docker suite runs script directly"
 
   assert_not_contains 'run_case "reality" bash ' "reality suite does not wrap with bash"
   assert_not_contains 'run_case "bootstrap" bash ' "bootstrap suite does not wrap with bash"

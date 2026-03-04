@@ -123,7 +123,7 @@ test-integration:
 # Run Docker lifecycle smoke tests
 test-docker-smoke:
 	@echo "→ Running Docker lifecycle smoke tests..."
-	@bash tests/integration/test_docker_lifecycle_smoke.sh || exit 1
+	@bash scripts/e2e/install-lifecycle-smoke.sh || exit 1
 	@echo "✓ Docker lifecycle smoke tests passed"
 
 # Generate code coverage report
