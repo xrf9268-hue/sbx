@@ -9,7 +9,7 @@
 set -eEuo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-CONTAINER_NAME="${SBX_SMOKE_CONTAINER_NAME:-sbx-lifecycle-smoke-$(date +%s)}"
+CONTAINER_NAME="${SBX_SMOKE_CONTAINER_NAME:-sbx-lifecycle-smoke-$(date +%s)-$$-${RANDOM}}"
 CURRENT_SCENARIO="setup"
 
 # Keep DOCKER_IMAGE for backward compatibility with existing local usage.
