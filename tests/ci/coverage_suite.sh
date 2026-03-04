@@ -118,7 +118,7 @@ main() {
   run_case "advanced" "$SCRIPT_DIR/tests/ci/advanced_features_checks.sh"
 
   if [[ "$INCLUDE_DOCKER" -eq 1 ]]; then
-    run_case "docker" "$SCRIPT_DIR/tests/integration/test_docker_lifecycle_smoke.sh"
+    run_case "docker" "$SCRIPT_DIR/scripts/e2e/install-lifecycle-smoke.sh"
   else
     echo "Skipping docker lifecycle smoke in coverage suite (covered by dedicated CI job)."
   fi
