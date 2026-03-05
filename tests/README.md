@@ -46,8 +46,9 @@ Validated scenarios:
   `docker.950288.xyz/library/ubuntu:24.04`
 - In GitHub Actions (`GITHUB_ACTIONS=true`), fallback image is disabled and only
   the official base image is used.
-- Apt dependency install retries across mirrors. Local runs can fall back to
-  Tsinghua/Aliyun/USTC mirrors when official mirrors are unstable.
+- Apt dependency install retries across mirrors. Local runs try
+  Tsinghua/Aliyun/USTC HTTPS mirrors first, then HTTP mirrors for bootstrap
+  fallback when official mirrors are unstable.
 
 ### Environment variables
 

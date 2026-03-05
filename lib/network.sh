@@ -331,7 +331,7 @@ choose_listen_address() {
   # Always use :: for dual-stack support as per sing-box 1.13.0 standards
   # DNS strategy (ipv4_only/prefer_ipv4/prefer_ipv6) handles address selection
   # This is required to prevent "network unreachable" errors on IPv4-only systems
-  # See: CLAUDE.md line 527, commit 771fca1
+  # See: AGENTS.md (project guidance and shell conventions), commit 771fca1
   echo "::"
 }
 
