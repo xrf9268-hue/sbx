@@ -102,8 +102,13 @@ install_test_dependencies() {
     mirrors=(
       "http://archive.ubuntu.com"
       "http://ports.ubuntu.com"
+      # Try HTTPS mirrors first for environments that block outbound port 80.
+      # Keep HTTP mirrors as bootstrap fallback for minimal container cases.
+      "https://mirrors.tuna.tsinghua.edu.cn"
       "http://mirrors.tuna.tsinghua.edu.cn"
+      "https://mirrors.aliyun.com"
       "http://mirrors.aliyun.com"
+      "https://mirrors.ustc.edu.cn"
       "http://mirrors.ustc.edu.cn"
     )
   fi
