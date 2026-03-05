@@ -384,7 +384,7 @@ lib/common.sh loaded (after bootstrap).
 
 Solution: Added REALITY_FLOW_VISION to install.sh early
 constants section following the established bootstrap pattern
-documented in CLAUDE.md.
+documented in AGENTS.md.
 
 This prevents installation failures on systems without pre-existing
 sing-box installations.
@@ -471,7 +471,7 @@ shellcheck lib/my_module.sh
 ### Documentation
 
 - **Bootstrap Pattern**: `tests/unit/README_BOOTSTRAP_TESTS.md`
-- **Developer Guide**: `CLAUDE.md`
+- **Developer Guide**: `AGENTS.md` (`CLAUDE.md` is a compatibility symlink)
 - **Architecture**: `.claude/ARCHITECTURE.md`
 - **Coding Standards**: `.claude/CODING_STANDARDS.md`
 
