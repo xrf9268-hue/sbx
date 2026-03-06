@@ -99,6 +99,61 @@ test_create_temp_dir_function() {
     rm -rf "$tmpdir1" "$tmpdir2"
 }
 
+test_create_temp_dir_in_dir_function() {
+    echo ""
+    echo "Testing create_temp_dir_in_dir() function..."
+
+    local parent_dir
+    parent_dir=$(mktemp -d)
+
+    # Test 1: Creates directory inside requested parent
+    local tmpdir
+    tmpdir=$(create_temp_dir_in_dir "$parent_dir" "inside" 2> /dev/null) || true
+    if [[ -d "$tmpdir" ]] && [[ "$tmpdir" == "${parent_dir}/inside."* ]]; then
+        test_result "create_temp_dir_in_dir creates directory in parent" "pass"
+  else
+        test_result "create_temp_dir_in_dir creates directory in parent" "fail"
+  fi
+
+    # Test 2: Creates directory with secure permissions (700)
+    if [[ -d "$tmpdir" ]]; then
+        local perms
+        perms=$(stat -c "%a" "$tmpdir" 2> /dev/null || stat -f "%OLp" "$tmpdir" 2> /dev/null) || true
+        if [[ "$perms" == "700" ]]; then
+            test_result "create_temp_dir_in_dir sets permissions to 700" "pass"
+    else
+            test_result "create_temp_dir_in_dir sets permissions to 700 (got $perms)" "fail"
+    fi
+  else
+        test_result "create_temp_dir_in_dir sets permissions to 700 (skipped)" "fail"
+  fi
+
+    # Test 3: Accepts parent paths with trailing slash
+    local slash_tmpdir
+    slash_tmpdir=$(create_temp_dir_in_dir "${parent_dir}/" "slash" 2> /dev/null) || true
+    if [[ -d "$slash_tmpdir" ]] && [[ "$slash_tmpdir" == "${parent_dir}/slash."* ]]; then
+        test_result "create_temp_dir_in_dir handles trailing slash parent" "pass"
+  else
+        test_result "create_temp_dir_in_dir handles trailing slash parent" "fail"
+  fi
+
+    # Test 4: Fails for missing parent directory
+    if create_temp_dir_in_dir "${parent_dir}/missing" "broken" > /dev/null 2>&1; then
+        test_result "create_temp_dir_in_dir fails for missing parent" "fail"
+  else
+        test_result "create_temp_dir_in_dir fails for missing parent" "pass"
+  fi
+
+    # Test 5: Fails for empty parent directory
+    if create_temp_dir_in_dir "" "broken" > /dev/null 2>&1; then
+        test_result "create_temp_dir_in_dir fails for empty parent" "fail"
+  else
+        test_result "create_temp_dir_in_dir fails for empty parent" "pass"
+  fi
+
+    rm -rf "$parent_dir"
+}
+
 #==============================================================================
 # create_temp_file() Function Tests
 #==============================================================================
@@ -151,6 +206,61 @@ test_create_temp_file_function() {
         test_result "create_temp_file creates unique files" "fail"
   fi
     rm -f "$tmpfile1" "$tmpfile2"
+}
+
+test_create_temp_file_in_dir_function() {
+    echo ""
+    echo "Testing create_temp_file_in_dir() function..."
+
+    local parent_dir
+    parent_dir=$(mktemp -d)
+
+    # Test 1: Creates file inside requested parent
+    local tmpfile
+    tmpfile=$(create_temp_file_in_dir "$parent_dir" "inside" 2> /dev/null) || true
+    if [[ -f "$tmpfile" ]] && [[ "$tmpfile" == "${parent_dir}/inside."* ]]; then
+        test_result "create_temp_file_in_dir creates file in parent" "pass"
+  else
+        test_result "create_temp_file_in_dir creates file in parent" "fail"
+  fi
+
+    # Test 2: Creates file with secure permissions (600)
+    if [[ -f "$tmpfile" ]]; then
+        local perms
+        perms=$(stat -c "%a" "$tmpfile" 2> /dev/null || stat -f "%OLp" "$tmpfile" 2> /dev/null) || true
+        if [[ "$perms" == "600" ]]; then
+            test_result "create_temp_file_in_dir sets permissions to 600" "pass"
+    else
+            test_result "create_temp_file_in_dir sets permissions to 600 (got $perms)" "fail"
+    fi
+  else
+        test_result "create_temp_file_in_dir sets permissions to 600 (skipped)" "fail"
+  fi
+
+    # Test 3: Accepts parent paths with trailing slash
+    local slash_tmpfile
+    slash_tmpfile=$(create_temp_file_in_dir "${parent_dir}/" "slash" 2> /dev/null) || true
+    if [[ -f "$slash_tmpfile" ]] && [[ "$slash_tmpfile" == "${parent_dir}/slash."* ]]; then
+        test_result "create_temp_file_in_dir handles trailing slash parent" "pass"
+  else
+        test_result "create_temp_file_in_dir handles trailing slash parent" "fail"
+  fi
+
+    # Test 4: Fails for missing parent directory
+    if create_temp_file_in_dir "${parent_dir}/missing" "broken" > /dev/null 2>&1; then
+        test_result "create_temp_file_in_dir fails for missing parent" "fail"
+  else
+        test_result "create_temp_file_in_dir fails for missing parent" "pass"
+  fi
+
+    # Test 5: Fails for empty parent directory
+    if create_temp_file_in_dir "" "broken" > /dev/null 2>&1; then
+        test_result "create_temp_file_in_dir fails for empty parent" "fail"
+  else
+        test_result "create_temp_file_in_dir fails for empty parent" "pass"
+  fi
+
+    rm -rf "$parent_dir"
 }
 
 #==============================================================================
@@ -305,7 +415,9 @@ main() {
     # Run test suites
     test_utility_functions_exist
     test_create_temp_dir_function
+    test_create_temp_dir_in_dir_function
     test_create_temp_file_function
+    test_create_temp_file_in_dir_function
     test_get_file_size_function
     test_get_file_mtime_function
 

@@ -158,6 +158,80 @@ test_with_flock_function() {
     fi
 }
 
+test_with_flock_requires_command() {
+    echo ""
+    echo "Testing with_flock requires a command..."
+
+    if ! declare -f with_flock >/dev/null 2>&1; then
+        test_result "skipped (function not defined)" "pass"
+        return 0
+    fi
+
+    local stderr_file
+    stderr_file=$(mktemp)
+
+    (
+        with_flock > /dev/null 2>"$stderr_file"
+    )
+    local status=$?
+    local stderr=''
+    stderr=$(cat "$stderr_file")
+    rm -f "$stderr_file"
+
+    if [[ $status -eq 1 ]]; then
+        test_result "with_flock fails without a command" "pass"
+    else
+        test_result "with_flock fails without a command" "fail"
+    fi
+
+    if [[ "$stderr" == *"requires a command to execute"* ]]; then
+        test_result "with_flock reports missing command reason" "pass"
+    else
+        test_result "with_flock reports missing command reason" "fail"
+    fi
+}
+
+test_with_flock_fallback_without_flock_binary() {
+    echo ""
+    echo "Testing with_flock fallback without flock..."
+
+    if ! declare -f with_flock >/dev/null 2>&1; then
+        test_result "skipped (function not defined)" "pass"
+        return 0
+    fi
+
+    local original_have=''
+    original_have="$(declare -f have)"
+    local stderr_file
+    stderr_file=$(mktemp)
+
+    have() {
+        [[ "${1:-}" == "flock" ]] && return 1
+        command -v "$1" >/dev/null 2>&1
+    }
+
+    local output=''
+    output=$(with_flock 5 bash -lc 'printf "fallback-ok"' 2>"$stderr_file")
+    local status=$?
+    local stderr=''
+    stderr=$(cat "$stderr_file")
+    rm -f "$stderr_file"
+
+    eval "$original_have"
+
+    if [[ $status -eq 0 ]] && [[ "$output" == "fallback-ok" ]]; then
+        test_result "with_flock runs command when flock is unavailable" "pass"
+    else
+        test_result "with_flock runs command when flock is unavailable" "fail"
+    fi
+
+    if [[ "$stderr" == *"flock not available; running without process lock"* ]]; then
+        test_result "with_flock warns when flock is unavailable" "pass"
+    else
+        test_result "with_flock warns when flock is unavailable" "fail"
+    fi
+}
+
 #==============================================================================
 # Test: Die Function
 #==============================================================================
@@ -190,6 +264,8 @@ test_create_temp_file
 test_create_temp_dir
 test_safe_rm_temp
 test_with_flock_function
+test_with_flock_requires_command
+test_with_flock_fallback_without_flock_binary
 test_die_function
 
 # Print summary
