@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Unit tests for TUIC V5 and Trojan inbound configuration generation
 # Tests: create_tuic_inbound(), create_trojan_inbound()
-set -uo pipefail
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
@@ -34,7 +34,7 @@ assert_json_valid() {
   local test_name="$1"
   local json="$2"
   TOTAL_TESTS=$((TOTAL_TESTS + 1))
-  if echo "${json}" | jq empty 2> /dev/null; then
+  if echo "${json}" | jq empty 2>/dev/null; then
     echo -e "${GREEN}✓${NC} ${test_name}"
     PASSED_TESTS=$((PASSED_TESTS + 1))
   else
@@ -50,7 +50,7 @@ assert_json_value_equals() {
   local expected="$4"
   TOTAL_TESTS=$((TOTAL_TESTS + 1))
   local actual
-  actual=$(echo "${json}" | jq -r "${key_path}" 2> /dev/null)
+  actual=$(echo "${json}" | jq -r "${key_path}" 2>/dev/null)
   if [[ "${actual}" == "${expected}" ]]; then
     echo -e "${GREEN}✓${NC} ${test_name}"
     PASSED_TESTS=$((PASSED_TESTS + 1))
@@ -66,7 +66,7 @@ assert_json_has_key() {
   local key_path="$3"
   TOTAL_TESTS=$((TOTAL_TESTS + 1))
   local value
-  value=$(echo "${json}" | jq -r "${key_path}" 2> /dev/null)
+  value=$(echo "${json}" | jq -r "${key_path}" 2>/dev/null)
   if [[ -n "${value}" && "${value}" != "null" ]]; then
     echo -e "${GREEN}✓${NC} ${test_name}"
     PASSED_TESTS=$((PASSED_TESTS + 1))
@@ -100,7 +100,7 @@ _make_test_tls() {
       alpn: $alpn,
       certificate_path: "/tmp/test-cert.pem",
       key_path: "/tmp/test-key.pem"
-    }' 2> /dev/null
+    }' 2>/dev/null
 }
 
 #==============================================================================
@@ -121,7 +121,7 @@ test_create_tuic_inbound_basic() {
 
   local config
   config=$(create_tuic_inbound "${test_uuid}" "${test_pass}" "${test_port}" \
-    "${test_listen}" "${test_tls}" 2> /dev/null)
+    "${test_listen}" "${test_tls}" 2>/dev/null)
 
   assert_json_valid "TUIC: generates valid JSON" "${config}"
   assert_json_value_equals "TUIC: type is tuic" "${config}" ".type" "tuic"
@@ -144,7 +144,7 @@ test_create_tuic_inbound_user_fields() {
 
   local config
   config=$(create_tuic_inbound "${test_uuid}" "${test_pass}" "8445" \
-    "::" "${test_tls}" 2> /dev/null)
+    "::" "${test_tls}" 2>/dev/null)
 
   assert_json_value_equals "TUIC: user uuid matches" "${config}" ".users[0].uuid" "${test_uuid}"
   assert_json_value_equals "TUIC: user password matches" "${config}" ".users[0].password" "${test_pass}"
@@ -159,11 +159,11 @@ test_create_tuic_inbound_protocol_fields() {
   test_tls=$(_make_test_tls '["h3"]')
 
   local config
-  config=$(create_tuic_inbound "uuid" "pass" "8445" "::" "${test_tls}" 2> /dev/null)
+  config=$(create_tuic_inbound "uuid" "pass" "8445" "::" "${test_tls}" 2>/dev/null)
 
   assert_json_value_equals "TUIC: congestion_control is bbr" "${config}" ".congestion_control" "bbr"
   local zrtt
-  zrtt=$(echo "${config}" | jq -r '.zero_rtt_handshake' 2> /dev/null)
+  zrtt=$(echo "${config}" | jq -r '.zero_rtt_handshake' 2>/dev/null)
   assert_true "TUIC: zero_rtt_handshake is false" "$([[ "${zrtt}" == "false" ]] && echo true || echo false)"
   assert_json_value_equals "TUIC: heartbeat is 10s" "${config}" ".heartbeat" "10s"
 }
@@ -177,11 +177,11 @@ test_create_tuic_inbound_tls_alpn() {
   test_tls=$(_make_test_tls '["h3"]')
 
   local config
-  config=$(create_tuic_inbound "uuid" "pass" "8445" "::" "${test_tls}" 2> /dev/null)
+  config=$(create_tuic_inbound "uuid" "pass" "8445" "::" "${test_tls}" 2>/dev/null)
 
   assert_json_value_equals "TUIC: TLS alpn[0] is h3" "${config}" ".tls.alpn[0]" "h3"
   local tls_enabled
-  tls_enabled=$(echo "${config}" | jq -r '.tls.enabled' 2> /dev/null)
+  tls_enabled=$(echo "${config}" | jq -r '.tls.enabled' 2>/dev/null)
   assert_true "TUIC: TLS enabled" "$([[ "${tls_enabled}" == "true" ]] && echo true || echo false)"
 }
 
@@ -202,7 +202,7 @@ test_create_trojan_inbound_basic() {
 
   local config
   config=$(create_trojan_inbound "${test_pass}" "${test_port}" \
-    "${test_listen}" "${test_tls}" 2> /dev/null)
+    "${test_listen}" "${test_tls}" 2>/dev/null)
 
   assert_json_valid "Trojan: generates valid JSON" "${config}"
   assert_json_value_equals "Trojan: type is trojan" "${config}" ".type" "trojan"
@@ -223,7 +223,7 @@ test_create_trojan_inbound_user_fields() {
   test_tls=$(_make_test_tls '["h2","http/1.1"]')
 
   local config
-  config=$(create_trojan_inbound "${test_pass}" "8446" "::" "${test_tls}" 2> /dev/null)
+  config=$(create_trojan_inbound "${test_pass}" "8446" "::" "${test_tls}" 2>/dev/null)
 
   assert_json_value_equals "Trojan: user password matches" "${config}" ".users[0].password" "${test_pass}"
 }
@@ -237,12 +237,12 @@ test_create_trojan_inbound_tls_alpn() {
   test_tls=$(_make_test_tls '["h2","http/1.1"]')
 
   local config
-  config=$(create_trojan_inbound "pass" "8446" "::" "${test_tls}" 2> /dev/null)
+  config=$(create_trojan_inbound "pass" "8446" "::" "${test_tls}" 2>/dev/null)
 
   assert_json_value_equals "Trojan: TLS alpn[0] is h2" "${config}" ".tls.alpn[0]" "h2"
   assert_json_value_equals "Trojan: TLS alpn[1] is http/1.1" "${config}" ".tls.alpn[1]" "http/1.1"
   local tls_enabled
-  tls_enabled=$(echo "${config}" | jq -r '.tls.enabled' 2> /dev/null)
+  tls_enabled=$(echo "${config}" | jq -r '.tls.enabled' 2>/dev/null)
   assert_true "Trojan: TLS enabled" "$([[ "${tls_enabled}" == "true" ]] && echo true || echo false)"
 }
 
@@ -298,7 +298,7 @@ test_function_exists() {
   echo "--------------------------"
 
   TOTAL_TESTS=$((TOTAL_TESTS + 1))
-  if declare -f create_tuic_inbound > /dev/null 2>&1; then
+  if declare -f create_tuic_inbound >/dev/null 2>&1; then
     echo -e "${GREEN}✓${NC} create_tuic_inbound is defined"
     PASSED_TESTS=$((PASSED_TESTS + 1))
   else
@@ -307,7 +307,7 @@ test_function_exists() {
   fi
 
   TOTAL_TESTS=$((TOTAL_TESTS + 1))
-  if declare -f create_trojan_inbound > /dev/null 2>&1; then
+  if declare -f create_trojan_inbound >/dev/null 2>&1; then
     echo -e "${GREEN}✓${NC} create_trojan_inbound is defined"
     PASSED_TESTS=$((PASSED_TESTS + 1))
   else

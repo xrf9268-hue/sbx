@@ -249,11 +249,11 @@ SBX_TMP_DIR="${SBX_TMP_DIR:-}"
 # Check if running as root
 need_root() {
   if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
-    if declare -f die_with_code > /dev/null 2>&1; then
+    if declare -f die_with_code >/dev/null 2>&1; then
       die_with_code "SBX-SYSTEM-001" "Root privileges are required." \
         "Re-run the installer with sudo." \
         "sudo bash install.sh"
-    elif declare -f err > /dev/null 2>&1; then
+    elif declare -f err >/dev/null 2>&1; then
       err "Please run as root (sudo)."
       return 1
     else
@@ -265,7 +265,7 @@ need_root() {
 
 # Check if command exists
 have() {
-  command -v "$1" > /dev/null 2>&1
+  command -v "$1" >/dev/null 2>&1
 }
 
 # Safe temporary directory cleanup
@@ -275,7 +275,7 @@ safe_rm_temp() {
   [[ -n "${temp_path}" && "${temp_path}" != "/" ]] || return 1
   # Accept both Linux /tmp/ and macOS /var/folders/ temp directories
   [[ "${temp_path}" =~ ^/tmp/ || "${temp_path}" =~ ^/var/folders/ ]] || return 1
-  [[ -d "${temp_path}" ]] && rm -rf "${temp_path}" 2> /dev/null || true
+  [[ -d "${temp_path}" ]] && rm -rf "${temp_path}" 2>/dev/null || true
 }
 
 # Get file size in bytes (cross-platform)
@@ -298,7 +298,7 @@ get_file_size() {
   # Cross-platform file size retrieval
   # Linux: stat -c%s
   # BSD/macOS: stat -f%z
-  stat -c%s "${file}" 2> /dev/null || stat -f%z "${file}" 2> /dev/null || echo "0"
+  stat -c%s "${file}" 2>/dev/null || stat -f%z "${file}" 2>/dev/null || echo "0"
 }
 
 #------------------------------------------------------------------------------
@@ -326,9 +326,9 @@ get_file_mtime() {
   # Cross-platform modification time retrieval
   # Linux: stat -c %y (returns: YYYY-MM-DD HH:MM:SS.nanoseconds +timezone)
   # BSD/macOS: stat -f %Sm (returns: format depends on -t option)
-  stat -c %y "${file}" 2> /dev/null | cut -d' ' -f1,2 | cut -d'.' -f1 \
-    || stat -f %Sm "${file}" 2> /dev/null \
-    || echo ""
+  stat -c %y "${file}" 2>/dev/null | cut -d' ' -f1,2 | cut -d'.' -f1 ||
+    stat -f %Sm "${file}" 2>/dev/null ||
+    echo ""
 }
 
 #==============================================================================
@@ -341,7 +341,7 @@ cleanup() {
   # Skip error reporting in test mode (tests manage their own error reporting)
   if [[ ${exit_code} -ne 0 && -z "${SBX_TEST_MODE:-}" && -z "${_SBX_ERROR_CONTEXT_EMITTED:-}" ]]; then
     # err() function will be available from logging.sh
-    if declare -f err > /dev/null 2>&1; then
+    if declare -f err >/dev/null 2>&1; then
       err "Script execution failed with exit code ${exit_code}"
     else
       echo "[ERR] Script execution failed with exit code ${exit_code}" >&2
@@ -352,24 +352,24 @@ cleanup() {
   if [[ -n "${SBX_TMP_DIR:-}" && -d "${SBX_TMP_DIR}" ]]; then
     # Verify it's a safe path before removal
     if [[ "${SBX_TMP_DIR}" =~ ^/tmp/sbx-[a-zA-Z0-9._-]+$ ]]; then
-      rm -rf "${SBX_TMP_DIR}" 2> /dev/null || true
+      rm -rf "${SBX_TMP_DIR}" 2>/dev/null || true
     fi
   fi
 
   # Clean up known temporary config files (specific to this process)
-  rm -f "${SB_CONF}.tmp" 2> /dev/null || true
+  rm -f "${SB_CONF}.tmp" 2>/dev/null || true
 
   # Remove temporary installer directory created during one-liner bootstrap
   if [[ -n "${INSTALLER_TEMP_DIR:-}" && -d "${INSTALLER_TEMP_DIR}" ]]; then
     # Validate: Must be in a temp directory and contain PID pattern for safety
     if [[ "${INSTALLER_TEMP_DIR}" =~ ^(/tmp|/var/tmp)/sbx-install-[0-9]+$ ]]; then
-      if ! rm -rf "${INSTALLER_TEMP_DIR}" 2> /dev/null; then
-        if declare -f warn > /dev/null 2>&1; then
+      if ! rm -rf "${INSTALLER_TEMP_DIR}" 2>/dev/null; then
+        if declare -f warn >/dev/null 2>&1; then
           warn "Failed to cleanup temporary installer directory: ${INSTALLER_TEMP_DIR}"
         fi
       fi
     else
-      if declare -f warn > /dev/null 2>&1; then
+      if declare -f warn >/dev/null 2>&1; then
         warn "Skipping cleanup of INSTALLER_TEMP_DIR (path validation failed): ${INSTALLER_TEMP_DIR}"
       fi
     fi
@@ -378,14 +378,14 @@ cleanup() {
   # Clean up stale port lock files (over 60 minutes old, with safe timeout)
   # This is safe because it only removes very old locks that are likely orphaned
   if [[ -d "/var/lock" ]]; then
-    find /var/lock -maxdepth 1 -name 'sbx-port-*.lock' -type f -mmin +"${CLEANUP_OLD_FILES_MIN:-60}" -delete 2> /dev/null || true
+    find /var/lock -maxdepth 1 -name 'sbx-port-*.lock' -type f -mmin +"${CLEANUP_OLD_FILES_MIN:-60}" -delete 2>/dev/null || true
   fi
 
   # If we're in the middle of an upgrade/install and something fails,
   # try to restore service if it was previously running
   if [[ ${exit_code} -ne 0 && -f "${SB_SVC}" ]]; then
-    if systemctl is-enabled sing-box > /dev/null 2>&1; then
-      systemctl start sing-box 2> /dev/null || true
+    if systemctl is-enabled sing-box >/dev/null 2>&1; then
+      systemctl start sing-box 2>/dev/null || true
     fi
   fi
 
@@ -422,7 +422,7 @@ create_temp_dir() {
   # Set secure permissions
   chmod 700 "${temp_dir}" || {
     err "Failed to set permissions on temp directory: ${temp_dir}"
-    rm -rf "${temp_dir}" 2> /dev/null
+    rm -rf "${temp_dir}" 2>/dev/null
     return 1
   }
 
@@ -464,7 +464,7 @@ create_temp_dir_in_dir() {
 
   chmod 700 "${temp_dir}" || {
     err "Failed to set permissions on temp directory: ${temp_dir}"
-    rm -rf "${temp_dir}" 2> /dev/null
+    rm -rf "${temp_dir}" 2>/dev/null
     return 1
   }
 
@@ -498,7 +498,7 @@ create_temp_file() {
   # Set secure permissions
   chmod 600 "${tmpfile}" || {
     err "Failed to set permissions on temp file: ${tmpfile}"
-    rm -f "${tmpfile}" 2> /dev/null
+    rm -f "${tmpfile}" 2>/dev/null
     return 1
   }
 
@@ -540,7 +540,7 @@ create_temp_file_in_dir() {
 
   chmod 600 "${tmpfile}" || {
     err "Failed to set permissions on temp file: ${tmpfile}"
-    rm -f "${tmpfile}" 2> /dev/null
+    rm -f "${tmpfile}" 2>/dev/null
     return 1
   }
 
@@ -564,10 +564,10 @@ with_flock() {
   fi
 
   [[ $# -gt 0 ]] || {
-    if declare -f die_with_code > /dev/null 2>&1; then
+    if declare -f die_with_code >/dev/null 2>&1; then
       die_with_code "SBX-SYSTEM-002" "with_flock requires a command to execute." \
         "Call with_flock with a target command and optional timeout."
-    elif declare -f err > /dev/null 2>&1; then
+    elif declare -f err >/dev/null 2>&1; then
       err "with_flock requires a command to execute"
       return 1
     else
@@ -586,7 +586,7 @@ with_flock() {
   fi
 
   if ! have flock; then
-    if declare -f warn > /dev/null 2>&1; then
+    if declare -f warn >/dev/null 2>&1; then
       warn "flock not available; running without process lock"
     fi
     "${cmd[@]}"
@@ -595,10 +595,10 @@ with_flock() {
 
   (
     if ! flock -w "${timeout}" 200; then
-      if declare -f die_with_code > /dev/null 2>&1; then
+      if declare -f die_with_code >/dev/null 2>&1; then
         die_with_code "SBX-SYSTEM-003" "Could not acquire sbx lock within ${timeout}s." \
           "Another sbx process may be running; retry after it exits."
-      elif declare -f err > /dev/null 2>&1; then
+      elif declare -f err >/dev/null 2>&1; then
         err "Could not acquire sbx lock within ${timeout}s (another sbx process may be running)"
         return 1
       else
@@ -607,7 +607,7 @@ with_flock() {
       return 1
     fi
     "${cmd[@]}"
-  ) 200> "${lock_file}"
+  ) 200>"${lock_file}"
 }
 
 #==============================================================================
