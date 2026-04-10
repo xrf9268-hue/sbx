@@ -76,6 +76,8 @@ readonly REALITY_SHORT_ID_MAX_LENGTH=8
 readonly REALITY_PORT_DEFAULT=443
 readonly WS_PORT_DEFAULT=8444
 readonly HY2_PORT_DEFAULT=8443
+readonly TUIC_PORT_DEFAULT=8445
+readonly TROJAN_PORT_DEFAULT=8446
 
 # ACME data directory (used by lib/config.sh for native ACME)
 readonly ACME_DATA_DIRECTORY="/var/lib/sing-box/acme"
@@ -113,7 +115,7 @@ get_file_size() {
   # Cross-platform file size retrieval
   # Linux: stat -c%s
   # BSD/macOS: stat -f%z
-  stat -c%s "${file}" 2>/dev/null || stat -f%z "${file}" 2>/dev/null || echo "0"
+  stat -c%s "${file}" 2> /dev/null || stat -f%z "${file}" 2> /dev/null || echo "0"
 }
 
 # Temporary create_temp_dir implementation for bootstrapping
@@ -122,14 +124,14 @@ create_temp_dir() {
   local prefix="${1:-sbx}"
   local temp_dir=''
 
-  if ! temp_dir=$(mktemp -d -t "${prefix}.XXXXXX" 2>/dev/null); then
+  if ! temp_dir=$(mktemp -d -t "${prefix}.XXXXXX" 2> /dev/null); then
     echo "ERROR: Failed to create temporary directory" >&2
     return 1
   fi
 
-  chmod "${SECURE_DIR_PERMISSIONS}" "${temp_dir}" 2>/dev/null || {
+  chmod "${SECURE_DIR_PERMISSIONS}" "${temp_dir}" 2> /dev/null || {
     echo "ERROR: Failed to set permissions on temporary directory: ${temp_dir}" >&2
-    rm -rf "${temp_dir}" 2>/dev/null || true
+    rm -rf "${temp_dir}" 2> /dev/null || true
     return 1
   }
 
@@ -139,7 +141,7 @@ create_temp_dir() {
 
 # Print usage help (must work before module loading)
 _print_help() {
-  cat <<'EOF'
+  cat << 'EOF'
 sbx-lite sing-box installer
 
 Usage:
@@ -192,13 +194,13 @@ _download_single_module() {
   [[ "${DEBUG:-0}" == "1" ]] && echo "DEBUG: Downloading ${module} from ${module_url}" >&2
 
   # Download module
-  if command -v curl >/dev/null 2>&1; then
+  if command -v curl > /dev/null 2>&1; then
     if ! curl -fsSL --connect-timeout "${DOWNLOAD_CONNECT_TIMEOUT_SEC}" --max-time "${DOWNLOAD_MAX_TIMEOUT_SEC}" "${module_url}" -o "${module_file}" 2>&1; then
       echo "DOWNLOAD_FAILED:${module}" >&2
       [[ "${DEBUG:-0}" == "1" ]] && echo "DEBUG: curl failed for ${module}" >&2
       return 1
     fi
-  elif command -v wget >/dev/null 2>&1; then
+  elif command -v wget > /dev/null 2>&1; then
     if ! wget -q --timeout="${DOWNLOAD_MAX_TIMEOUT_SEC}" "${module_url}" -O "${module_file}" 2>&1; then
       echo "DOWNLOAD_FAILED:${module}" >&2
       [[ "${DEBUG:-0}" == "1" ]] && echo "DEBUG: wget failed for ${module}" >&2
@@ -227,7 +229,7 @@ _download_single_module() {
   fi
 
   # Validate bash syntax
-  if ! bash -n "${module_file}" 2>/dev/null; then
+  if ! bash -n "${module_file}" 2> /dev/null; then
     echo "SYNTAX_ERROR:${module}" >&2
     [[ "${DEBUG:-0}" == "1" ]] && echo "DEBUG: Syntax check failed for ${module}" >&2
     return 1
@@ -322,15 +324,15 @@ _download_modules_sequential() {
     printf "  [%d/%d] Downloading %s..." "${current}" "${total}" "${module}.sh"
 
     # Download
-    if command -v curl >/dev/null 2>&1; then
-      if ! curl -fsSL --connect-timeout "${DOWNLOAD_CONNECT_TIMEOUT_SEC}" --max-time "${DOWNLOAD_MAX_TIMEOUT_SEC}" "${module_url}" -o "${module_file}" 2>/dev/null; then
+    if command -v curl > /dev/null 2>&1; then
+      if ! curl -fsSL --connect-timeout "${DOWNLOAD_CONNECT_TIMEOUT_SEC}" --max-time "${DOWNLOAD_MAX_TIMEOUT_SEC}" "${module_url}" -o "${module_file}" 2> /dev/null; then
         echo " ✗ FAILED"
         rm -rf "${temp_lib_dir}"
         _show_download_error_help "${module}" "${module_url}"
         return 1
       fi
-    elif command -v wget >/dev/null 2>&1; then
-      if ! wget -q --timeout="${DOWNLOAD_MAX_TIMEOUT_SEC}" "${module_url}" -O "${module_file}" 2>/dev/null; then
+    elif command -v wget > /dev/null 2>&1; then
+      if ! wget -q --timeout="${DOWNLOAD_MAX_TIMEOUT_SEC}" "${module_url}" -O "${module_file}" 2> /dev/null; then
         echo " ✗ FAILED"
         rm -rf "${temp_lib_dir}"
         _show_download_error_help "${module}" "${module_url}"
@@ -354,7 +356,7 @@ _download_modules_sequential() {
       return 1
     fi
 
-    if ! bash -n "${module_file}" 2>/dev/null; then
+    if ! bash -n "${module_file}" 2> /dev/null; then
       echo " ✗ SYNTAX ERROR"
       rm -rf "${temp_lib_dir}"
       _show_syntax_error "${module}"
@@ -447,15 +449,15 @@ _download_and_validate_manager_script() {
   [[ "${DEBUG:-0}" == "1" ]] && echo "DEBUG: Creating ${installer_dir}/bin directory" >&2
   mkdir -p "${installer_dir}/bin"
 
-  if command -v curl >/dev/null 2>&1; then
+  if command -v curl > /dev/null 2>&1; then
     [[ "${DEBUG:-0}" == "1" ]] && echo "DEBUG: Downloading sbx-manager.sh via curl from ${manager_url}" >&2
     if curl -fsSL --connect-timeout "${DOWNLOAD_CONNECT_TIMEOUT_SEC}" \
-      --max-time "${DOWNLOAD_MAX_TIMEOUT_SEC}" "${manager_url}" -o "${manager_file}" 2>/dev/null; then
+      --max-time "${DOWNLOAD_MAX_TIMEOUT_SEC}" "${manager_url}" -o "${manager_file}" 2> /dev/null; then
       download_success=1
     fi
-  elif command -v wget >/dev/null 2>&1; then
+  elif command -v wget > /dev/null 2>&1; then
     [[ "${DEBUG:-0}" == "1" ]] && echo "DEBUG: Downloading sbx-manager.sh via wget from ${manager_url}" >&2
-    if wget -q --timeout="${DOWNLOAD_MAX_TIMEOUT_SEC}" "${manager_url}" -O "${manager_file}" 2>/dev/null; then
+    if wget -q --timeout="${DOWNLOAD_MAX_TIMEOUT_SEC}" "${manager_url}" -O "${manager_file}" 2> /dev/null; then
       download_success=1
     fi
   else
@@ -485,7 +487,7 @@ _download_and_validate_manager_script() {
     return 1
   fi
 
-  if ! bash -n "${manager_file}" 2>/dev/null; then
+  if ! bash -n "${manager_file}" 2> /dev/null; then
     echo "ERROR: Invalid bash syntax in downloaded sbx-manager.sh"
     echo "       File may be corrupted."
     return 1
@@ -525,7 +527,7 @@ _load_modules() {
     fi
 
     # Download modules (parallel with fallback to sequential on failure)
-    if [[ ${use_parallel} -eq 1 ]] && command -v xargs >/dev/null 2>&1; then
+    if [[ ${use_parallel} -eq 1 ]] && command -v xargs > /dev/null 2>&1; then
       # Try parallel download first
       if ! _download_modules_parallel "${temp_lib_dir}" "${github_repo}" "${modules[@]}"; then
         # Parallel failed, fallback to sequential
@@ -641,7 +643,7 @@ _verify_module_apis() {
     local missing_functions=()
 
     for func in ${required_functions}; do
-      if ! declare -F "${func}" >/dev/null 2>&1; then
+      if ! declare -F "${func}" > /dev/null 2>&1; then
         missing_functions+=("${func}")
         all_ok=false
       fi
@@ -733,8 +735,8 @@ detect_libc() {
   fi
 
   # Method 2: Parse ldd output
-  if command -v ldd >/dev/null 2>&1; then
-    if ldd /bin/sh 2>/dev/null | grep -q musl; then
+  if command -v ldd > /dev/null 2>&1; then
+    if ldd /bin/sh 2> /dev/null | grep -q musl; then
       msg "Detected musl libc via ldd"
       echo "-musl"
       return
@@ -760,7 +762,7 @@ get_installed_version() {
   local version=''
   if [[ -x "${SB_BIN}" ]]; then
     # Match version with or without 'v' prefix (e.g., "v1.12.12" or "1.12.12")
-    version=$("${SB_BIN}" version 2>/dev/null | head -1 | grep -oE 'v?[0-9]+\.[0-9]+\.[0-9]+' || echo "unknown")
+    version=$("${SB_BIN}" version 2> /dev/null | head -1 | grep -oE 'v?[0-9]+\.[0-9]+\.[0-9]+' || echo "unknown")
 
     # Ensure version has 'v' prefix for consistency with the rest of the codebase
     if [[ "${version}" != "unknown" && "${version}" != v* ]]; then
@@ -810,8 +812,8 @@ compare_versions() {
   fi
 
   # Semantic version comparison (major.minor.patch)
-  IFS='.' read -r -a current_parts <<<"${current}"
-  IFS='.' read -r -a latest_parts <<<"${latest}"
+  IFS='.' read -r -a current_parts <<< "${current}"
+  IFS='.' read -r -a latest_parts <<< "${latest}"
 
   # Compare each component
   for i in 0 1 2; do
@@ -1088,7 +1090,7 @@ download_singbox() {
   # Stop service before replacing binary (prevents "Text file busy" error)
   # The service will be restarted by setup_service or restart_service in main flow
   local service_was_running=0
-  if check_service_status 2>/dev/null; then
+  if check_service_status 2> /dev/null; then
     msg "Stopping sing-box service for binary replacement..."
     stop_service
     service_was_running=1
@@ -1097,7 +1099,7 @@ download_singbox() {
   cp "${extracted_bin}" "${SB_BIN}" || {
     rm -rf "${tmp}"
     # Try to restart service if we stopped it
-    [[ "${service_was_running}" -eq 1 ]] && start_service_with_retry 2>/dev/null
+    [[ "${service_was_running}" -eq 1 ]] && start_service_with_retry 2> /dev/null
     die_with_code "SBX-DOWNLOAD-008" "Failed to install sing-box binary to target path." \
       "Check filesystem permissions and mount flags for /usr/local/bin." \
       "ls -ld /usr/local/bin && id"
@@ -1185,6 +1187,8 @@ _configure_cloudflare_mode() {
     ENABLE_REALITY="${ENABLE_REALITY:-0}"
     ENABLE_WS="${ENABLE_WS:-1}"
     ENABLE_HY2="${ENABLE_HY2:-0}"
+    ENABLE_TUIC="${ENABLE_TUIC:-0}"
+    ENABLE_TROJAN="${ENABLE_TROJAN:-0}"
 
     if [[ "${WS_PORT_USER_SPECIFIED:-0}" == "1" ]]; then
       WS_PORT="${WS_PORT:-443}"
@@ -1207,8 +1211,10 @@ _configure_cloudflare_mode() {
     ENABLE_REALITY="${ENABLE_REALITY:-1}"
     ENABLE_WS="${ENABLE_WS:-1}"
     ENABLE_HY2="${ENABLE_HY2:-1}"
+    ENABLE_TUIC="${ENABLE_TUIC:-0}"
+    ENABLE_TROJAN="${ENABLE_TROJAN:-0}"
   fi
-  export ENABLE_REALITY ENABLE_WS ENABLE_HY2
+  export ENABLE_REALITY ENABLE_WS ENABLE_HY2 ENABLE_TUIC ENABLE_TROJAN
 }
 
 # Validate protocol configuration
@@ -1222,9 +1228,10 @@ _validate_protocol_config() {
     return 0
   fi
 
-  if [[ "${ENABLE_REALITY}" != "1" && "${ENABLE_WS}" != "1" && "${ENABLE_HY2}" != "1" ]]; then
+  if [[ "${ENABLE_REALITY}" != "1" && "${ENABLE_WS}" != "1" && "${ENABLE_HY2}" != "1" &&
+    "${ENABLE_TUIC:-0}" != "1" && "${ENABLE_TROJAN:-0}" != "1" ]]; then
     die_with_code "SBX-CONFIG-004" "All protocols are disabled." \
-      "Enable at least one of ENABLE_REALITY, ENABLE_WS, or ENABLE_HY2." \
+      "Enable at least one of ENABLE_REALITY, ENABLE_WS, ENABLE_HY2, ENABLE_TUIC, or ENABLE_TROJAN." \
       "ENABLE_REALITY=1 bash install.sh"
   fi
 
@@ -1246,7 +1253,7 @@ _configure_reality_sni() {
     return 0
   fi
 
-  if ! command -v select_reality_sni_domain >/dev/null 2>&1; then
+  if ! command -v select_reality_sni_domain > /dev/null 2>&1; then
     warn "SNI probe helper unavailable, using ${preferred_sni}"
     export SNI="${preferred_sni}"
     return 0
@@ -1274,7 +1281,7 @@ _configure_reality_sni() {
 }
 
 # Generate cryptographic credentials
-# Sets: UUID, PRIV, PUB, SID
+# Sets: UUID, PRIV, PUB, SID, HY2_PASS, TUIC_PASS, TROJAN_PASS
 _generate_credentials() {
   export UUID
   UUID=$(generate_uuid)
@@ -1285,7 +1292,7 @@ _generate_credentials() {
     "Ensure openssl is available and retry." \
     "openssl rand -hex 32"
   export PRIV PUB
-  read -r PRIV PUB <<<"${keypair}"
+  read -r PRIV PUB <<< "${keypair}"
   success "  ✓ Reality keypair generated"
 
   export SID
@@ -1293,6 +1300,20 @@ _generate_credentials() {
   validate_short_id "${SID}" || die_with_code "SBX-CONFIG-007" "Generated invalid short ID: ${SID}." \
     "Regenerate short ID with 1-8 hex chars."
   success "  ✓ Short ID generated: ${SID}"
+
+  if [[ "${REALITY_ONLY_MODE:-0}" != "1" ]]; then
+    if [[ "${ENABLE_TUIC:-0}" == "1" ]]; then
+      export TUIC_PASS
+      TUIC_PASS=$(generate_hex_string 16)
+      success "  ✓ TUIC password generated"
+    fi
+
+    if [[ "${ENABLE_TROJAN:-0}" == "1" ]]; then
+      export TROJAN_PASS
+      TROJAN_PASS=$(generate_hex_string 16)
+      success "  ✓ Trojan password generated"
+    fi
+  fi
 }
 
 # Allocate ports for enabled protocols
@@ -1312,6 +1333,7 @@ _allocate_ports() {
 
   if [[ "${REALITY_ONLY_MODE:-0}" != "1" ]]; then
     export WS_PORT_CHOSEN="" HY2_PORT_CHOSEN="" HY2_PASS=""
+    export TUIC_PORT_CHOSEN="" TROJAN_PORT_CHOSEN=""
 
     if [[ "${ENABLE_WS}" == "1" ]]; then
       WS_PORT_CHOSEN=$(allocate_port "${WS_PORT}" "${WS_PORT_FALLBACK}" "WS-TLS") || die_with_code "SBX-NETWORK-004" "Failed to allocate WS port." \
@@ -1326,6 +1348,20 @@ _allocate_ports() {
         "HY2_PORT=30445 bash install.sh"
       HY2_PASS=$(generate_hex_string 16)
       success "  ✓ Hysteria2 port: ${HY2_PORT_CHOSEN}"
+    fi
+
+    if [[ "${ENABLE_TUIC:-0}" == "1" ]]; then
+      TUIC_PORT_CHOSEN=$(allocate_port "${TUIC_PORT}" "${TUIC_PORT_FALLBACK}" "TUIC") || die_with_code "SBX-NETWORK-006" "Failed to allocate TUIC port." \
+        "Free occupied ports or set TUIC_PORT to an available one." \
+        "TUIC_PORT=8445 bash install.sh"
+      success "  ✓ TUIC port: ${TUIC_PORT_CHOSEN}"
+    fi
+
+    if [[ "${ENABLE_TROJAN:-0}" == "1" ]]; then
+      TROJAN_PORT_CHOSEN=$(allocate_port "${TROJAN_PORT}" "${TROJAN_PORT_FALLBACK}" "Trojan") || die_with_code "SBX-NETWORK-007" "Failed to allocate Trojan port." \
+        "Free occupied ports or set TROJAN_PORT to an available one." \
+        "TROJAN_PORT=8446 bash install.sh"
+      success "  ✓ Trojan port: ${TROJAN_PORT_CHOSEN}"
     fi
   fi
 }
@@ -1349,7 +1385,7 @@ gen_materials() {
 save_client_info() {
   msg "Saving client information..."
 
-  cat >"${CLIENT_INFO}" <<EOF
+  cat > "${CLIENT_INFO}" << EOF
 # sing-box client configuration
 # Generated: $(date)
 
@@ -1363,20 +1399,34 @@ EOF
 
   if [[ "${REALITY_ONLY_MODE:-0}" != "1" ]]; then
     if [[ "${ENABLE_WS:-0}" == "1" ]]; then
-      cat >>"${CLIENT_INFO}" <<EOF
+      cat >> "${CLIENT_INFO}" << EOF
 WS_PORT="${WS_PORT_CHOSEN}"
 EOF
     fi
 
     if [[ "${ENABLE_HY2:-0}" == "1" ]]; then
-      cat >>"${CLIENT_INFO}" <<EOF
+      cat >> "${CLIENT_INFO}" << EOF
 HY2_PORT="${HY2_PORT_CHOSEN}"
 HY2_PASS="${HY2_PASS}"
 EOF
     fi
 
+    if [[ "${ENABLE_TUIC:-0}" == "1" ]]; then
+      cat >> "${CLIENT_INFO}" << EOF
+TUIC_PORT="${TUIC_PORT_CHOSEN}"
+TUIC_PASS="${TUIC_PASS}"
+EOF
+    fi
+
+    if [[ "${ENABLE_TROJAN:-0}" == "1" ]]; then
+      cat >> "${CLIENT_INFO}" << EOF
+TROJAN_PORT="${TROJAN_PORT_CHOSEN}"
+TROJAN_PASS="${TROJAN_PASS}"
+EOF
+    fi
+
     if [[ -n "${CERT_FULLCHAIN:-}" || -n "${CERT_KEY:-}" ]]; then
-      cat >>"${CLIENT_INFO}" <<EOF
+      cat >> "${CLIENT_INFO}" << EOF
 CERT_FULLCHAIN="${CERT_FULLCHAIN}"
 CERT_KEY="${CERT_KEY}"
 EOF
@@ -1406,18 +1456,27 @@ save_state_info() {
   local hy2_pass=''
 
   [[ "${REALITY_ONLY_MODE:-0}" == "1" ]] && mode="reality_only"
-  installed_at=$(date -Iseconds 2>/dev/null || date)
-  resolved_version=$(get_installed_version 2>/dev/null || echo "")
+  installed_at=$(date -Iseconds 2> /dev/null || date)
+  resolved_version=$(get_installed_version 2> /dev/null || echo "")
 
-  if validate_ip_address "${DOMAIN}" >/dev/null 2>&1; then
+  if validate_ip_address "${DOMAIN}" > /dev/null 2>&1; then
     server_ip="${DOMAIN}"
   else
     server_domain="${DOMAIN}"
   fi
 
+  local tuic_enabled=false
+  local trojan_enabled=false
+  local tuic_port=''
+  local tuic_pass=''
+  local trojan_port=''
+  local trojan_pass=''
+
   if [[ "${REALITY_ONLY_MODE:-0}" != "1" ]]; then
     local enable_ws="${ENABLE_WS:-}"
     local enable_hy2="${ENABLE_HY2:-}"
+    local enable_tuic="${ENABLE_TUIC:-0}"
+    local enable_trojan="${ENABLE_TROJAN:-0}"
 
     [[ -z "${enable_ws}" && -n "${WS_PORT_CHOSEN:-}" ]] && enable_ws="1"
     [[ -z "${enable_hy2}" && -n "${HY2_PORT_CHOSEN:-}" ]] && enable_hy2="1"
@@ -1431,6 +1490,18 @@ save_state_info() {
       hy2_enabled=true
       hy2_port="${HY2_PORT_CHOSEN:-}"
       hy2_pass="${HY2_PASS:-}"
+    fi
+
+    if [[ "${enable_tuic}" == "1" ]]; then
+      tuic_enabled=true
+      tuic_port="${TUIC_PORT_CHOSEN:-}"
+      tuic_pass="${TUIC_PASS:-}"
+    fi
+
+    if [[ "${enable_trojan}" == "1" ]]; then
+      trojan_enabled=true
+      trojan_port="${TROJAN_PORT_CHOSEN:-}"
+      trojan_pass="${TROJAN_PASS:-}"
     fi
 
     cert_path="${CERT_FULLCHAIN:-}"
@@ -1456,6 +1527,12 @@ save_state_info() {
     --argjson hy2_enabled "${hy2_enabled}" \
     --argjson hy2_port "${hy2_port:-0}" \
     --arg hy2_pass "${hy2_pass}" \
+    --argjson tuic_enabled "${tuic_enabled}" \
+    --argjson tuic_port "${tuic_port:-0}" \
+    --arg tuic_pass "${tuic_pass}" \
+    --argjson trojan_enabled "${trojan_enabled}" \
+    --argjson trojan_port "${trojan_port:-0}" \
+    --arg trojan_pass "${trojan_pass}" \
     '{
       version: $version,
       installed_at: $installed_at,
@@ -1484,9 +1561,19 @@ save_state_info() {
           enabled: $hy2_enabled,
           port: (if $hy2_enabled and $hy2_port != 0 then $hy2_port else null end),
           password: (if $hy2_enabled and $hy2_pass != "" then $hy2_pass else null end)
+        },
+        tuic: {
+          enabled: $tuic_enabled,
+          port: (if $tuic_enabled and $tuic_port != 0 then $tuic_port else null end),
+          password: (if $tuic_enabled and $tuic_pass != "" then $tuic_pass else null end)
+        },
+        trojan: {
+          enabled: $trojan_enabled,
+          port: (if $trojan_enabled and $trojan_port != 0 then $trojan_port else null end),
+          password: (if $trojan_enabled and $trojan_pass != "" then $trojan_pass else null end)
         }
       }
-    }' >"${state_file}"
+    }' > "${state_file}"
 
   chmod "${SECURE_FILE_PERMISSIONS}" "${state_file}"
   success "  ✓ State saved to: ${state_file}"
@@ -1559,7 +1646,7 @@ install_manager_script() {
     err "Creating minimal fallback version (limited functionality)..."
 
     # Fallback to inline version if template not found
-    cat >/usr/local/bin/sbx-manager <<'EOF'
+    cat > /usr/local/bin/sbx-manager << 'EOF'
 #!/bin/bash
 case "$1" in
     info)
@@ -1587,26 +1674,40 @@ EOF
 
 # Open firewall ports
 open_firewall() {
-  local ports_to_open=("${REALITY_PORT_CHOSEN}")
+  local ports_to_open=()
+  [[ -n "${REALITY_PORT_CHOSEN:-}" ]] && ports_to_open+=("${REALITY_PORT_CHOSEN}")
 
   if [[ "${REALITY_ONLY_MODE:-0}" != "1" ]]; then
-    ports_to_open+=("${WS_PORT_CHOSEN}" "${HY2_PORT_CHOSEN}")
+    [[ -n "${WS_PORT_CHOSEN:-}" ]] && ports_to_open+=("${WS_PORT_CHOSEN}")
+    [[ -n "${HY2_PORT_CHOSEN:-}" ]] && ports_to_open+=("${HY2_PORT_CHOSEN}")
+    [[ -n "${TUIC_PORT_CHOSEN:-}" ]] && ports_to_open+=("${TUIC_PORT_CHOSEN}")
+    [[ -n "${TROJAN_PORT_CHOSEN:-}" ]] && ports_to_open+=("${TROJAN_PORT_CHOSEN}")
   fi
 
+  [[ ${#ports_to_open[@]} -eq 0 ]] && return 0
+
   msg "Configuring firewall..."
+
+  # TUIC uses UDP; Hysteria2 also uses UDP
+  _is_udp_port() {
+    local p="$1"
+    [[ -n "${HY2_PORT_CHOSEN:-}" && "${p}" == "${HY2_PORT_CHOSEN}" ]] && return 0
+    [[ -n "${TUIC_PORT_CHOSEN:-}" && "${p}" == "${TUIC_PORT_CHOSEN}" ]] && return 0
+    return 1
+  }
 
   # Try different firewall managers
   if have firewall-cmd; then
     for port in "${ports_to_open[@]}"; do
-      firewall-cmd --permanent --add-port="${port}/tcp" 2>/dev/null || true
-      [[ -n "${HY2_PORT_CHOSEN:-}" && "${port}" == "${HY2_PORT_CHOSEN}" ]] && firewall-cmd --permanent --add-port="${port}/udp" 2>/dev/null || true
+      firewall-cmd --permanent --add-port="${port}/tcp" 2> /dev/null || true
+      _is_udp_port "${port}" && firewall-cmd --permanent --add-port="${port}/udp" 2> /dev/null || true
     done
-    firewall-cmd --reload 2>/dev/null || true
+    firewall-cmd --reload 2> /dev/null || true
     success "  ✓ Firewall configured (firewalld)"
   elif have ufw; then
     for port in "${ports_to_open[@]}"; do
-      ufw allow "${port}/tcp" 2>/dev/null || true
-      [[ -n "${HY2_PORT_CHOSEN:-}" && "${port}" == "${HY2_PORT_CHOSEN}" ]] && ufw allow "${port}/udp" 2>/dev/null || true
+      ufw allow "${port}/tcp" 2> /dev/null || true
+      _is_udp_port "${port}" && ufw allow "${port}/udp" 2> /dev/null || true
     done
     success "  ✓ Firewall configured (ufw)"
   else
@@ -1633,6 +1734,8 @@ print_summary() {
   local enable_reality="${ENABLE_REALITY:-1}"
   local enable_ws="${ENABLE_WS:-1}"
   local enable_hy2="${ENABLE_HY2:-1}"
+  local enable_tuic="${ENABLE_TUIC:-0}"
+  local enable_trojan="${ENABLE_TROJAN:-0}"
 
   if [[ "${enable_reality}" == "1" && -n "${REALITY_PORT_CHOSEN:-}" ]]; then
     echo "  • VLESS-REALITY (port ${REALITY_PORT_CHOSEN})"
@@ -1644,6 +1747,12 @@ print_summary() {
     fi
     if [[ "${enable_hy2}" == "1" && -n "${HY2_PORT_CHOSEN:-}" ]]; then
       echo "  • Hysteria2 (port ${HY2_PORT_CHOSEN})"
+    fi
+    if [[ "${enable_tuic}" == "1" && -n "${TUIC_PORT_CHOSEN:-}" ]]; then
+      echo "  • TUIC V5 (port ${TUIC_PORT_CHOSEN})"
+    fi
+    if [[ "${enable_trojan}" == "1" && -n "${TROJAN_PORT_CHOSEN:-}" ]]; then
+      echo "  • Trojan (port ${TROJAN_PORT_CHOSEN})"
     fi
   fi
 
@@ -1670,7 +1779,7 @@ print_summary() {
     echo "  ${uri_real}"
   fi
 
-  # WS-TLS and Hysteria2 URIs (if not Reality-only mode and enabled)
+  # WS-TLS, Hysteria2, TUIC, Trojan URIs (if not Reality-only mode and enabled)
   if [[ "${REALITY_ONLY_MODE:-0}" != "1" && -n "${CERT_FULLCHAIN:-}" ]]; then
     if [[ "${enable_ws}" == "1" && -n "${WS_PORT_CHOSEN:-}" ]]; then
       echo
@@ -1684,6 +1793,20 @@ print_summary() {
       local uri_hy2="hysteria2://${HY2_PASS}@${DOMAIN}:${HY2_PORT_CHOSEN}/?sni=${DOMAIN}&alpn=h3&insecure=0#Hysteria2-${DOMAIN}"
       echo -e "${G}Hysteria2:${N}"
       echo "  ${uri_hy2}"
+    fi
+
+    if [[ "${enable_tuic}" == "1" && -n "${TUIC_PORT_CHOSEN:-}" ]]; then
+      echo
+      local uri_tuic="tuic://${UUID}:${TUIC_PASS}@${DOMAIN}:${TUIC_PORT_CHOSEN}?congestion_control=bbr&alpn=h3&sni=${DOMAIN}&udp_relay_mode=native#TUIC-${DOMAIN}"
+      echo -e "${G}TUIC V5:${N}"
+      echo "  ${uri_tuic}"
+    fi
+
+    if [[ "${enable_trojan}" == "1" && -n "${TROJAN_PORT_CHOSEN:-}" ]]; then
+      echo
+      local uri_trojan="trojan://${TROJAN_PASS}@${DOMAIN}:${TROJAN_PORT_CHOSEN}?sni=${DOMAIN}&security=tls&type=tcp&fp=chrome#Trojan-${DOMAIN}"
+      echo -e "${G}Trojan:${N}"
+      echo "  ${uri_trojan}"
     fi
   fi
 
@@ -1722,7 +1845,7 @@ dry_run_flow() {
     export REALITY_ONLY_MODE=1
     mode_desc="Reality-only (no domain specified)"
     display_domain="<auto-detect during install>"
-  elif validate_ip_address "${DOMAIN}" >/dev/null 2>&1; then
+  elif validate_ip_address "${DOMAIN}" > /dev/null 2>&1; then
     export REALITY_ONLY_MODE=1
     mode_desc="Reality-only (ip: ${DOMAIN})"
     display_domain="${DOMAIN}"
@@ -1741,6 +1864,8 @@ dry_run_flow() {
   reality_port_preview="${REALITY_PORT:-${REALITY_PORT_DEFAULT}}"
   ws_port_preview="${WS_PORT:-${WS_PORT_DEFAULT}}"
   hy2_port_preview="${HY2_PORT:-${HY2_PORT_DEFAULT}}"
+  local tuic_port_preview="${TUIC_PORT:-${TUIC_PORT_DEFAULT}}"
+  local trojan_port_preview="${TROJAN_PORT:-${TROJAN_PORT_DEFAULT}}"
 
   echo
   echo "sbx dry-run preview:"
@@ -1762,6 +1887,14 @@ dry_run_flow() {
       echo "    - Hysteria2 on port ${hy2_port_preview}/udp"
       preview_ports+=("${hy2_port_preview}/udp")
     fi
+    if [[ "${ENABLE_TUIC:-0}" == "1" ]]; then
+      echo "    - TUIC V5 on port ${tuic_port_preview}/udp"
+      preview_ports+=("${tuic_port_preview}/udp")
+    fi
+    if [[ "${ENABLE_TROJAN:-0}" == "1" ]]; then
+      echo "    - Trojan on port ${trojan_port_preview}/tcp"
+      preview_ports+=("${trojan_port_preview}/tcp")
+    fi
   fi
 
   if [[ "${REALITY_ONLY_MODE:-0}" != "1" ]]; then
@@ -1775,7 +1908,7 @@ dry_run_flow() {
     echo "  Certificates: ${cert_desc}"
   fi
 
-  arch_desc=$(uname -m 2>/dev/null || echo "unknown")
+  arch_desc=$(uname -m 2> /dev/null || echo "unknown")
   echo "  SNI: ${sni_preview} (validated during real install)"
   echo "  Binary: sing-box ${SINGBOX_VERSION:-stable} (${arch_desc})"
   echo "  Config: ${SB_CONF}"
