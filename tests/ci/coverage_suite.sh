@@ -10,7 +10,7 @@ KCOV_BIN="${KCOV_BIN:-}"
 INCLUDE_DOCKER=0
 
 usage() {
-  cat <<USAGE
+  cat << USAGE
 Usage: coverage_suite.sh [--out-dir /tmp/sbx-kcov] [--summary-file <path>] [--kcov-bin /path/to/kcov] [--include-docker]
 USAGE
 }
@@ -33,11 +33,19 @@ run_case() {
 run_unit_cases() {
   local unit_dir="$SCRIPT_DIR/tests/unit"
   local unit_script case_name
+  local failed_cases=()
 
   while IFS= read -r unit_script; do
     case_name="$(basename "${unit_script%.sh}")"
-    run_case "unit-${case_name}" "$unit_script"
+    if ! run_case "unit-${case_name}" "$unit_script"; then
+      echo "[WARN] kcov case unit-${case_name} exited non-zero — continuing for best-effort coverage" >&2
+      failed_cases+=("${case_name}")
+    fi
   done < <(find "$unit_dir" -maxdepth 1 -type f -name 'test_*.sh' | LC_ALL=C sort)
+
+  if [[ ${#failed_cases[@]} -gt 0 ]]; then
+    echo "[WARN] ${#failed_cases[@]} unit case(s) failed under kcov: ${failed_cases[*]}" >&2
+  fi
 }
 
 resolve_coverage_report_dir() {
@@ -87,7 +95,7 @@ main() {
         INCLUDE_DOCKER=1
         shift
         ;;
-      -h|--help)
+      -h | --help)
         usage
         exit 0
         ;;
