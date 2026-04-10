@@ -39,8 +39,8 @@ _export_die() {
 # Load client info from saved configuration with strict validation
 load_client_info() {
   local client_info_file='' state_file='' resolved='' owner='' perm='' invalid_line=''
-  local ws_enabled_raw='' hy2_enabled_raw=''
-  local allowed_keys_regex="^(DOMAIN|UUID|PUBLIC_KEY|SHORT_ID|SNI|REALITY_PORT|WS_PORT|HY2_PORT|HY2_PASS|CERT_FULLCHAIN|CERT_KEY)$"
+  local ws_enabled_raw='' hy2_enabled_raw='' tuic_enabled_raw='' trojan_enabled_raw=''
+  local allowed_keys_regex="^(DOMAIN|UUID|PUBLIC_KEY|SHORT_ID|SNI|REALITY_PORT|WS_PORT|HY2_PORT|HY2_PASS|TUIC_PORT|TUIC_PASS|TROJAN_PORT|TROJAN_PASS|CERT_FULLCHAIN|CERT_KEY)$"
 
   # Prefer structured state file when available, with compatibility fallback.
   state_file="${TEST_STATE_FILE:-${STATE_FILE:-${SB_CONF_DIR}/state.json}}"
@@ -81,10 +81,16 @@ load_client_info() {
     WS_PORT=$(jq -r '.protocols.ws_tls.port // empty' "${resolved}")
     HY2_PORT=$(jq -r '.protocols.hysteria2.port // empty' "${resolved}")
     HY2_PASS=$(jq -r '.protocols.hysteria2.password // empty' "${resolved}")
+    TUIC_PORT=$(jq -r '.protocols.tuic.port // empty' "${resolved}")
+    TUIC_PASS=$(jq -r '.protocols.tuic.password // empty' "${resolved}")
+    TROJAN_PORT=$(jq -r '.protocols.trojan.port // empty' "${resolved}")
+    TROJAN_PASS=$(jq -r '.protocols.trojan.password // empty' "${resolved}")
     CERT_FULLCHAIN=$(jq -r '.protocols.ws_tls.certificate // empty' "${resolved}")
     CERT_KEY=$(jq -r '.protocols.ws_tls.key // empty' "${resolved}")
     ws_enabled_raw=$(jq -r '.protocols.ws_tls.enabled // empty' "${resolved}")
     hy2_enabled_raw=$(jq -r '.protocols.hysteria2.enabled // empty' "${resolved}")
+    tuic_enabled_raw=$(jq -r '.protocols.tuic.enabled // empty' "${resolved}")
+    trojan_enabled_raw=$(jq -r '.protocols.trojan.enabled // empty' "${resolved}")
 
     case "${ws_enabled_raw}" in
       true | 1 | yes | on) WS_ENABLED="true" ;;
@@ -102,10 +108,28 @@ load_client_info() {
         ;;
     esac
 
+    case "${tuic_enabled_raw}" in
+      true | 1 | yes | on) TUIC_ENABLED="true" ;;
+      false | 0 | no | off) TUIC_ENABLED="false" ;;
+      *)
+        [[ -n "${TUIC_PORT:-}" || -n "${TUIC_PASS:-}" ]] && TUIC_ENABLED="true" || TUIC_ENABLED="false"
+        ;;
+    esac
+
+    case "${trojan_enabled_raw}" in
+      true | 1 | yes | on) TROJAN_ENABLED="true" ;;
+      false | 0 | no | off) TROJAN_ENABLED="false" ;;
+      *)
+        [[ -n "${TROJAN_PORT:-}" || -n "${TROJAN_PASS:-}" ]] && TROJAN_ENABLED="true" || TROJAN_ENABLED="false"
+        ;;
+    esac
+
     REALITY_PORT="${REALITY_PORT:-${REALITY_PORT_DEFAULT:-443}}"
     SNI="${SNI:-${SNI_DEFAULT:-www.microsoft.com}}"
     WS_PORT="${WS_PORT:-${WS_PORT_DEFAULT:-8444}}"
     HY2_PORT="${HY2_PORT:-${HY2_PORT_DEFAULT:-8443}}"
+    TUIC_PORT="${TUIC_PORT:-${TUIC_PORT_DEFAULT:-8445}}"
+    TROJAN_PORT="${TROJAN_PORT:-${TROJAN_PORT_DEFAULT:-8446}}"
     return 0
   fi
 
@@ -192,11 +216,25 @@ load_client_info() {
     HY2_ENABLED="false"
   fi
 
+  if [[ -v client_info_map[TUIC_PORT] || -v client_info_map[TUIC_PASS] ]]; then
+    TUIC_ENABLED="true"
+  else
+    TUIC_ENABLED="false"
+  fi
+
+  if [[ -v client_info_map[TROJAN_PORT] || -v client_info_map[TROJAN_PASS] ]]; then
+    TROJAN_ENABLED="true"
+  else
+    TROJAN_ENABLED="false"
+  fi
+
   # Set defaults for missing variables to ensure valid URIs
   REALITY_PORT="${REALITY_PORT:-${REALITY_PORT_DEFAULT:-443}}"
   SNI="${SNI:-${SNI_DEFAULT:-www.microsoft.com}}"
   WS_PORT="${WS_PORT:-${WS_PORT_DEFAULT:-8444}}"
   HY2_PORT="${HY2_PORT:-${HY2_PORT_DEFAULT:-8443}}"
+  TUIC_PORT="${TUIC_PORT:-${TUIC_PORT_DEFAULT:-8445}}"
+  TROJAN_PORT="${TROJAN_PORT:-${TROJAN_PORT_DEFAULT:-8446}}"
 }
 
 #==============================================================================
@@ -350,6 +388,37 @@ EOF
 EOF
   fi
 
+  if [[ "${TUIC_ENABLED:-false}" == "true" && -n "${TUIC_PORT:-}" && -n "${TUIC_PASS:-}" ]]; then
+    cat <<EOF
+
+  - name: "sbx-tuic-${DOMAIN}"
+    type: tuic
+    server: ${DOMAIN}
+    port: ${TUIC_PORT}
+    uuid: ${UUID}
+    password: ${TUIC_PASS}
+    congestion-controller: bbr
+    alpn:
+      - h3
+    sni: ${DOMAIN}
+    skip-cert-verify: false
+EOF
+  fi
+
+  if [[ "${TROJAN_ENABLED:-false}" == "true" && -n "${TROJAN_PORT:-}" && -n "${TROJAN_PASS:-}" ]]; then
+    cat <<EOF
+
+  - name: "sbx-trojan-${DOMAIN}"
+    type: trojan
+    server: ${DOMAIN}
+    port: ${TROJAN_PORT}
+    password: ${TROJAN_PASS}
+    sni: ${DOMAIN}
+    skip-cert-verify: false
+    client-fingerprint: ${REALITY_FINGERPRINT_DEFAULT}
+EOF
+  fi
+
   cat <<EOF
 
 proxy-groups:
@@ -363,6 +432,18 @@ EOF
     cat <<EOF
       - "sbx-ws-${DOMAIN}"
       - "sbx-hysteria2-${DOMAIN}"
+EOF
+  fi
+
+  if [[ "${TUIC_ENABLED:-false}" == "true" ]]; then
+    cat <<EOF
+      - "sbx-tuic-${DOMAIN}"
+EOF
+  fi
+
+  if [[ "${TROJAN_ENABLED:-false}" == "true" ]]; then
+    cat <<EOF
+      - "sbx-trojan-${DOMAIN}"
 EOF
   fi
 }
@@ -390,14 +471,26 @@ export_uri() {
         "Enable Hysteria2 during install or export Reality only."
       echo "hysteria2://${HY2_PASS}@${DOMAIN}:${HY2_PORT}/?sni=${DOMAIN}&alpn=h3&insecure=0#Hysteria2-${DOMAIN}"
       ;;
+    tuic)
+      [[ -n "${TUIC_PORT:-}" && -n "${TUIC_PASS:-}" ]] || _export_die "SBX-EXPORT-046" "TUIC not configured" \
+        "Enable TUIC during install or export another protocol."
+      echo "tuic://${UUID}:${TUIC_PASS}@${DOMAIN}:${TUIC_PORT}?congestion_control=bbr&alpn=h3&sni=${DOMAIN}&udp_relay_mode=native#TUIC-${DOMAIN}"
+      ;;
+    trojan)
+      [[ -n "${TROJAN_PORT:-}" && -n "${TROJAN_PASS:-}" ]] || _export_die "SBX-EXPORT-047" "Trojan not configured" \
+        "Enable Trojan during install or export another protocol."
+      echo "trojan://${TROJAN_PASS}@${DOMAIN}:${TROJAN_PORT}?sni=${DOMAIN}&security=tls&type=tcp&fp=${REALITY_FINGERPRINT_DEFAULT}#Trojan-${DOMAIN}"
+      ;;
     all)
       export_uri reality
       [[ -n "${WS_PORT}" ]] && export_uri ws
       [[ -n "${HY2_PORT}" ]] && export_uri hy2
+      [[ "${TUIC_ENABLED:-false}" == "true" ]] && export_uri tuic
+      [[ "${TROJAN_ENABLED:-false}" == "true" ]] && export_uri trojan
       ;;
     *)
-      _export_die "SBX-EXPORT-043" "Invalid protocol: ${protocol} (use: reality, ws, hy2, all)" \
-        "Use one of: reality, ws, hy2, all."
+      _export_die "SBX-EXPORT-043" "Invalid protocol: ${protocol} (use: reality, ws, hy2, tuic, trojan, all)" \
+        "Use one of: reality, ws, hy2, tuic, trojan, all."
       ;;
   esac
 }
@@ -409,7 +502,7 @@ export_uri() {
 # Generate QR codes for configuration
 export_qr_codes() {
   local output_dir="${1:-./qr-codes}"
-  local reality_uri='' ws_uri='' hy2_uri=''
+  local reality_uri='' ws_uri='' hy2_uri='' tuic_uri='' trojan_uri=''
   load_client_info
 
   command -v qrencode >/dev/null || _export_die "SBX-EXPORT-044" "qrencode not installed." \
@@ -436,6 +529,18 @@ export_qr_codes() {
     success "  ✓ Hysteria2 QR code: ${output_dir}/hy2-qr.png"
   fi
 
+  if [[ "${TUIC_ENABLED:-false}" == "true" ]]; then
+    tuic_uri=$(export_uri tuic)
+    qrencode -t PNG -o "${output_dir}/tuic-qr.png" "${tuic_uri}"
+    success "  ✓ TUIC QR code: ${output_dir}/tuic-qr.png"
+  fi
+
+  if [[ "${TROJAN_ENABLED:-false}" == "true" ]]; then
+    trojan_uri=$(export_uri trojan)
+    qrencode -t PNG -o "${output_dir}/trojan-qr.png" "${trojan_uri}"
+    success "  ✓ Trojan QR code: ${output_dir}/trojan-qr.png"
+  fi
+
   info "QR codes saved to: ${output_dir}"
 }
 
@@ -457,6 +562,14 @@ export_subscription() {
   if [[ -n "${WS_PORT}" ]]; then
     uris+=$'\n'$(export_uri ws)
     uris+=$'\n'$(export_uri hy2)
+  fi
+
+  if [[ "${TUIC_ENABLED:-false}" == "true" ]]; then
+    uris+=$'\n'$(export_uri tuic)
+  fi
+
+  if [[ "${TROJAN_ENABLED:-false}" == "true" ]]; then
+    uris+=$'\n'$(export_uri trojan)
   fi
 
   # Base64 encode

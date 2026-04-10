@@ -389,19 +389,81 @@ create_hysteria2_inbound() {
   echo "${hy2_config}"
 }
 
+# Create TUIC V5 inbound configuration
+# Args: uuid password port listen_addr tls_json
+create_tuic_inbound() {
+  local uuid="$1"
+  local password="$2"
+  local port="$3"
+  local listen_addr="$4"
+  local tls_json="$5"
+
+  local tuic_config=''
+
+  if ! tuic_config=$(jq -n \
+    --arg uuid "${uuid}" \
+    --arg password "${password}" \
+    --arg port "${port}" \
+    --arg listen_addr "${listen_addr}" \
+    --argjson tls "${tls_json}" \
+    '{
+      type: "tuic",
+      tag: "in-tuic",
+      listen: $listen_addr,
+      listen_port: ($port | tonumber),
+      users: [{ uuid: $uuid, password: $password }],
+      congestion_control: "bbr",
+      zero_rtt_handshake: false,
+      heartbeat: "10s",
+      tls: $tls
+    }' 2>/dev/null); then
+    err "Failed to create TUIC V5 configuration with jq"
+    return 1
+  fi
+
+  echo "${tuic_config}"
+}
+
+# Create Trojan inbound configuration
+# Args: password port listen_addr tls_json
+create_trojan_inbound() {
+  local password="$1"
+  local port="$2"
+  local listen_addr="$3"
+  local tls_json="$4"
+
+  local trojan_config=''
+
+  if ! trojan_config=$(jq -n \
+    --arg password "${password}" \
+    --arg port "${port}" \
+    --arg listen_addr "${listen_addr}" \
+    --argjson tls "${tls_json}" \
+    '{
+      type: "trojan",
+      tag: "in-trojan",
+      listen: $listen_addr,
+      listen_port: ($port | tonumber),
+      users: [{ password: $password }],
+      tls: $tls
+    }' 2>/dev/null); then
+    err "Failed to create Trojan configuration with jq"
+    return 1
+  fi
+
+  echo "${trojan_config}"
+}
+
 #==============================================================================
 # Route Configuration
 #==============================================================================
 
 # Add route configuration for sing-box 1.13.0+ compatibility
+# Args: config inbounds_json
+#   inbounds_json: JSON array of inbound tags to include in sniff rule
 add_route_config() {
   local config="$1"
-  local has_certs="${2:-false}"
-
-  local route_inbounds='["in-reality"]'
-  if [[ "${has_certs}" == "true" ]]; then
-    route_inbounds='["in-reality", "in-ws", "in-hy2"]'
-  fi
+  local route_inbounds="${2:-[\"in-reality\"]}"
 
   local updated_config=''
   if ! updated_config=$(echo "${config}" | jq --argjson inbounds "${route_inbounds}" '.route = {
@@ -506,6 +568,8 @@ _validate_certificate_config() {
   # Validate required variables based on enabled protocols
   local enable_ws="${ENABLE_WS:-1}"
   local enable_hy2="${ENABLE_HY2:-1}"
+  local enable_tuic="${ENABLE_TUIC:-0}"
+  local enable_trojan="${ENABLE_TROJAN:-0}"
 
   if [[ "${enable_ws}" == "1" ]]; then
     [[ -n "${WS_PORT_CHOSEN:-}" ]] ||
@@ -525,11 +589,33 @@ _validate_certificate_config() {
         "HY2_PASS=$(openssl rand -hex 16) bash install.sh"
   fi
 
+  if [[ "${enable_tuic}" == "1" ]]; then
+    [[ -n "${TUIC_PORT_CHOSEN:-}" ]] ||
+      die_with_code "SBX-CONFIG-013" "TUIC port is missing while ENABLE_TUIC=1." \
+        "Set TUIC_PORT or keep automatic port allocation enabled." \
+        "TUIC_PORT=8445 bash install.sh"
+    [[ -n "${TUIC_PASS:-}" ]] ||
+      die_with_code "SBX-CONFIG-014" "TUIC password is missing while ENABLE_TUIC=1." \
+        "Ensure TUIC_PASS is generated or provided before config generation." \
+        "TUIC_PASS=\$(openssl rand -hex 16) bash install.sh"
+  fi
+
+  if [[ "${enable_trojan}" == "1" ]]; then
+    [[ -n "${TROJAN_PORT_CHOSEN:-}" ]] ||
+      die_with_code "SBX-CONFIG-015" "Trojan port is missing while ENABLE_TROJAN=1." \
+        "Set TROJAN_PORT or keep automatic port allocation enabled." \
+        "TROJAN_PORT=8446 bash install.sh"
+    [[ -n "${TROJAN_PASS:-}" ]] ||
+      die_with_code "SBX-CONFIG-016" "Trojan password is missing while ENABLE_TROJAN=1." \
+        "Ensure TROJAN_PASS is generated or provided before config generation." \
+        "TROJAN_PASS=\$(openssl rand -hex 16) bash install.sh"
+  fi
+
   return 0
 }
 
 # Create all inbound configurations
-# Respects ENABLE_REALITY, ENABLE_WS, ENABLE_HY2 environment variables
+# Respects ENABLE_REALITY, ENABLE_WS, ENABLE_HY2, ENABLE_TUIC, ENABLE_TROJAN environment variables
 # Supports manual certificates (cert_fullchain/cert_key) and ACME modes
 _create_all_inbounds() {
   local base_config="$1"
@@ -542,10 +628,12 @@ _create_all_inbounds() {
   local cert_fullchain="${8:-}"
   local cert_key="${9:-}"
 
-  # Check which protocols are enabled (default to 1 if not set)
+  # Check which protocols are enabled
   local enable_reality="${ENABLE_REALITY:-1}"
   local enable_ws="${ENABLE_WS:-1}"
   local enable_hy2="${ENABLE_HY2:-1}"
+  local enable_tuic="${ENABLE_TUIC:-0}"
+  local enable_trojan="${ENABLE_TROJAN:-0}"
 
   # Add Reality inbound (if enabled and port is set)
   if [[ "${enable_reality}" == "1" && -n "${reality_port}" ]]; then
@@ -616,6 +704,46 @@ _create_all_inbounds() {
         _config_die "SBX-CONFIG-037" "Failed to add Hysteria2 configuration" \
           "Verify Hysteria2 inbound JSON generation."
     fi
+
+    # Add TUIC V5 inbound (if enabled and port is set)
+    if [[ "${enable_tuic}" == "1" && -n "${TUIC_PORT_CHOSEN:-}" ]]; then
+      local tuic_tls=''
+      tuic_tls=$(_build_tls_block "${DOMAIN}" '["h3"]' \
+        "${cert_fullchain}" "${cert_key}" "${cert_mode}" "${CF_API_TOKEN:-}") ||
+        _config_die "SBX-CONFIG-050" "Failed to build TUIC TLS configuration" \
+          "Check certificate mode and TLS inputs."
+
+      local tuic_config=''
+      tuic_config=$(create_tuic_inbound "${uuid}" "${TUIC_PASS}" "${TUIC_PORT_CHOSEN}" \
+        "${listen_addr}" "${tuic_tls}") ||
+        _config_die "SBX-CONFIG-051" "Failed to create TUIC inbound" \
+          "Verify TUIC uuid/password/port/TLS settings."
+
+      base_config=$(echo "${base_config}" | jq --argjson tuic "${tuic_config}" \
+        '.inbounds += [$tuic]' 2>/dev/null) ||
+        _config_die "SBX-CONFIG-052" "Failed to add TUIC configuration" \
+          "Verify TUIC inbound JSON generation."
+    fi
+
+    # Add Trojan inbound (if enabled and port is set)
+    if [[ "${enable_trojan}" == "1" && -n "${TROJAN_PORT_CHOSEN:-}" ]]; then
+      local trojan_tls=''
+      trojan_tls=$(_build_tls_block "${DOMAIN}" '["h2","http/1.1"]' \
+        "${cert_fullchain}" "${cert_key}" "${cert_mode}" "${CF_API_TOKEN:-}") ||
+        _config_die "SBX-CONFIG-053" "Failed to build Trojan TLS configuration" \
+          "Check certificate mode and TLS inputs."
+
+      local trojan_config=''
+      trojan_config=$(create_trojan_inbound "${TROJAN_PASS}" "${TROJAN_PORT_CHOSEN}" \
+        "${listen_addr}" "${trojan_tls}") ||
+        _config_die "SBX-CONFIG-054" "Failed to create Trojan inbound" \
+          "Verify Trojan password/port/TLS settings."
+
+      base_config=$(echo "${base_config}" | jq --argjson trojan "${trojan_config}" \
+        '.inbounds += [$trojan]' 2>/dev/null) ||
+        _config_die "SBX-CONFIG-055" "Failed to add Trojan configuration" \
+          "Verify Trojan inbound JSON generation."
+    fi
   fi
 
   # Return updated config and has_certs flag
@@ -682,8 +810,29 @@ _write_config_impl() {
   has_certs="${inbound_result%%|*}"
   base_config="${inbound_result#*|}"
 
+  # Build route inbound tag list from actually-enabled inbound configurations
+  local route_inbound_tags=()
+  [[ "${ENABLE_REALITY:-1}" == "1" && -n "${REALITY_PORT_CHOSEN:-}" ]] &&
+    route_inbound_tags+=("in-reality")
+  if [[ "${has_certs}" == "true" ]]; then
+    [[ "${ENABLE_WS:-1}" == "1" && -n "${WS_PORT_CHOSEN:-}" ]] &&
+      route_inbound_tags+=("in-ws")
+    [[ "${ENABLE_HY2:-1}" == "1" && -n "${HY2_PORT_CHOSEN:-}" ]] &&
+      route_inbound_tags+=("in-hy2")
+    [[ "${ENABLE_TUIC:-0}" == "1" && -n "${TUIC_PORT_CHOSEN:-}" ]] &&
+      route_inbound_tags+=("in-tuic")
+    [[ "${ENABLE_TROJAN:-0}" == "1" && -n "${TROJAN_PORT_CHOSEN:-}" ]] &&
+      route_inbound_tags+=("in-trojan")
+  fi
+  local route_inbounds_json=''
+  if [[ ${#route_inbound_tags[@]} -eq 0 ]]; then
+    route_inbounds_json='[]'
+  else
+    route_inbounds_json=$(printf '%s\n' "${route_inbound_tags[@]}" | jq -R . | jq -sc .)
+  fi
+
   # Add route and outbound configurations
-  base_config=$(add_route_config "${base_config}" "${has_certs}") ||
+  base_config=$(add_route_config "${base_config}" "${route_inbounds_json}") ||
     _config_die "SBX-CONFIG-041" "Failed to add route configuration" \
       "Verify route generation inputs and JSON integrity."
   base_config=$(add_outbound_config "${base_config}")
@@ -723,5 +872,6 @@ _write_config_impl() {
 
 export -f validate_config_vars create_base_config create_reality_inbound
 export -f create_ws_inbound create_hysteria2_inbound add_route_config
+export -f create_tuic_inbound create_trojan_inbound
 export -f add_outbound_config write_config
 # Note: _validate_certificate_config and _create_all_inbounds are private helpers (not exported)

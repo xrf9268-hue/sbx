@@ -39,11 +39,19 @@ fi
 if [[ -z "${HY2_PORT_DEFAULT:-}" ]]; then
   declare -gr HY2_PORT_DEFAULT=8443
 fi
+if [[ -z "${TUIC_PORT_DEFAULT:-}" ]]; then
+  declare -gr TUIC_PORT_DEFAULT=8445
+fi
+if [[ -z "${TROJAN_PORT_DEFAULT:-}" ]]; then
+  declare -gr TROJAN_PORT_DEFAULT=8446
+fi
 
 # Fallback ports
 declare -gr REALITY_PORT_FALLBACK=24443
 declare -gr WS_PORT_FALLBACK=24444
 declare -gr HY2_PORT_FALLBACK=24445
+declare -gr TUIC_PORT_FALLBACK=24447
+declare -gr TROJAN_PORT_FALLBACK=24448
 
 # Default values
 declare -gr SNI_DEFAULT="${SNI_DEFAULT:-www.microsoft.com}"
@@ -208,6 +216,8 @@ CERT_KEY="${CERT_KEY:-}"
 REALITY_PORT="${REALITY_PORT:-${REALITY_PORT_DEFAULT}}"
 WS_PORT="${WS_PORT:-${WS_PORT_DEFAULT}}"
 HY2_PORT="${HY2_PORT:-${HY2_PORT_DEFAULT}}"
+TUIC_PORT="${TUIC_PORT:-${TUIC_PORT_DEFAULT}}"
+TROJAN_PORT="${TROJAN_PORT:-${TROJAN_PORT_DEFAULT}}"
 
 SINGBOX_VERSION="${SINGBOX_VERSION:-}"
 
@@ -219,10 +229,14 @@ SID="${SID:-}"
 PUBLIC_KEY="${PUBLIC_KEY:-}"
 SHORT_ID="${SHORT_ID:-}"
 HY2_PASS="${HY2_PASS:-}"
+TUIC_PASS="${TUIC_PASS:-}"
+TROJAN_PASS="${TROJAN_PASS:-}"
 SNI="${SNI:-}"
 REALITY_PORT_CHOSEN="${REALITY_PORT_CHOSEN:-}"
 WS_PORT_CHOSEN="${WS_PORT_CHOSEN:-}"
 HY2_PORT_CHOSEN="${HY2_PORT_CHOSEN:-}"
+TUIC_PORT_CHOSEN="${TUIC_PORT_CHOSEN:-}"
+TROJAN_PORT_CHOSEN="${TROJAN_PORT_CHOSEN:-}"
 
 # Process-specific temporary directory for secure cleanup
 # Created with secure permissions and cleaned up automatically
