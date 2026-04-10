@@ -156,11 +156,14 @@ install_gh() {
 
   tmp_dir="$(mktemp -d /tmp/gh-install-XXXXXX)"
   if curl -fsSL -o "${tmp_dir}/gh.tar.gz" \
-    "https://github.com/cli/cli/releases/download/${gh_version}/gh_${ver}_linux_${arch}.tar.gz"; then
-    tar -xzf "${tmp_dir}/gh.tar.gz" -C "${tmp_dir}"
-    sudo mv "${tmp_dir}/gh_${ver}_linux_${arch}/bin/gh" /usr/local/bin/gh
-    sudo chmod +x /usr/local/bin/gh
-    echo "  [OK] gh ${gh_version}"
+    "https://github.com/cli/cli/releases/download/${gh_version}/gh_${ver}_linux_${arch}.tar.gz" 2> /dev/null; then
+    if tar -xzf "${tmp_dir}/gh.tar.gz" -C "${tmp_dir}" 2> /dev/null \
+      && sudo mv "${tmp_dir}/gh_${ver}_linux_${arch}/bin/gh" /usr/local/bin/gh 2> /dev/null \
+      && sudo chmod +x /usr/local/bin/gh 2> /dev/null; then
+      echo "  [OK] gh ${gh_version}"
+    else
+      echo "  [WARN] gh: extract/install failed (no sudo?), skipping" >&2
+    fi
   else
     echo "  [WARN] gh: download failed, skipping" >&2
   fi
