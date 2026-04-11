@@ -86,7 +86,10 @@ export_uri() {
     reality) echo "vless://reality-uri" ;;
     ws) echo "vless://ws-uri" ;;
     hy2) echo "hysteria2://hy2-uri" ;;
-    tuic) echo "tuic://tuic-uri" ;;
+    tuic)
+      [[ -n "${TUIC_PORT:-}" && -n "${TUIC_PASS:-}" ]] || return 46
+      echo "tuic://tuic-uri"
+      ;;
     *) echo "vless://all-uri" ;;
   esac
 }
@@ -243,6 +246,10 @@ EOF
     assert_equals "true" "$(echo "$info_json_acme" | jq -r '.protocols.hysteria2.enabled')" "info --json ACME marks hy2 enabled"
     assert_equals "vless://ws-uri" "$(echo "$info_json_acme" | jq -r '.protocols.ws_tls.uri')" "info --json ACME includes ws URI"
     assert_equals "hysteria2://hy2-uri" "$(echo "$info_json_acme" | jq -r '.protocols.hysteria2.uri')" "info --json ACME includes hy2 URI"
+    assert_equals "false" "$(echo "$info_json_acme" | jq -r '.protocols.tuic.enabled')" "info --json ACME marks tuic disabled"
+    assert_equals "null" "$(echo "$info_json_acme" | jq -r '.protocols.tuic.port')" "info --json ACME omits tuic port"
+    assert_equals "null" "$(echo "$info_json_acme" | jq -r '.protocols.tuic.password')" "info --json ACME omits tuic password"
+    assert_equals "null" "$(echo "$info_json_acme" | jq -r '.protocols.tuic.uri')" "info --json ACME omits tuic URI"
 }
 
 main() {

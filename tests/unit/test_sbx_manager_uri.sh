@@ -68,7 +68,15 @@ EOF
 #!/usr/bin/env bash
 set -euo pipefail
 export_uri() {
-  echo "stub-${1:-all}"
+  case "${1:-all}" in
+    tuic)
+      [[ -n "${TUIC_PORT:-}" && -n "${TUIC_PASS:-}" ]] || return 46
+      echo "stub-tuic"
+      ;;
+    *)
+      echo "stub-${1:-all}"
+      ;;
+  esac
 }
 load_client_info() {
   source "${TEST_CLIENT_INFO:?}"
@@ -78,6 +86,24 @@ load_client_info() {
   HY2_PORT="${HY2_PORT:-8443}"
 }
 EOF
+}
+
+create_non_tuic_client_info() {
+  local path="$1"
+  cat >"$path" <<'EOF'
+DOMAIN="example.com"
+UUID="11111111-2222-3333-4444-555555555555"
+PUBLIC_KEY="pubkey123"
+SHORT_ID="abcd1234"
+REALITY_PORT="443"
+SNI="www.microsoft.com"
+WS_PORT="8444"
+HY2_PORT="8443"
+HY2_PASS="pass123"
+CERT_FULLCHAIN="/tmp/fullchain.pem"
+CERT_KEY="/tmp/key.pem"
+EOF
+  chmod 600 "$path"
 }
 
 test_stubbed_export_uri_used_in_info_and_qr() {
@@ -136,6 +162,26 @@ test_help_lists_tuic_export_protocol() {
   fi
 }
 
+test_info_skips_tuic_when_not_configured() {
+  echo ""
+  echo "Test: sbx-manager info skips TUIC when not configured"
+
+  local client_info="$TEST_TMP_DIR/client-info-no-tuic.txt"
+  create_non_tuic_client_info "$client_info"
+
+  local stub_lib="$TEST_TMP_DIR/lib-no-tuic"
+  create_stub_lib "$stub_lib"
+
+  local info_output
+  info_output=$(LIB_DIR="$stub_lib" TEST_CLIENT_INFO="$client_info" bash "$PROJECT_ROOT/bin/sbx-manager.sh" info)
+
+  if echo "$info_output" | grep -q "INBOUND   : TUIC V5"; then
+    fail "info command should not print TUIC section when disabled" "$info_output"
+  else
+    pass "info command skips TUIC section when disabled"
+  fi
+}
+
 test_cli_uri_matches_export_module() {
   echo ""
   echo "Test: sbx-manager URIs match lib/export.sh"
@@ -182,6 +228,7 @@ echo "=========================================="
 
 test_stubbed_export_uri_used_in_info_and_qr
 test_help_lists_tuic_export_protocol
+test_info_skips_tuic_when_not_configured
 test_cli_uri_matches_export_module
 
 echo ""

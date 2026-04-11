@@ -572,6 +572,7 @@ output_info_json() {
   local has_ws=false
   local has_hy2=false
   local has_tuic=false
+  local tuic_port_out='' tuic_pass_out=''
   local uri_real='' uri_ws='' uri_hy2='' uri_tuic=''
 
   ensure_client_info_loaded
@@ -591,20 +592,6 @@ output_info_json() {
   WS_PORT="${WS_PORT:-8444}"
   HY2_PORT="${HY2_PORT:-8443}"
   HY2_PASS="${HY2_PASS:-}"
-  TUIC_PORT="${TUIC_PORT:-8445}"
-  TUIC_PASS="${TUIC_PASS:-}"
-
-  if command -v export_uri >/dev/null 2>&1; then
-    uri_real=$(export_uri reality)
-    uri_ws=$(export_uri ws 2>/dev/null || true)
-    uri_hy2=$(export_uri hy2 2>/dev/null || true)
-    uri_tuic=$(export_uri tuic 2>/dev/null || true)
-  else
-    uri_real="vless://${UUID:-}@${DOMAIN:-}:${REALITY_PORT}?encryption=none&security=reality&flow=xtls-rprx-vision&sni=${SNI}&pbk=${PUBLIC_KEY:-}&sid=${SHORT_ID:-}&type=tcp&fp=chrome#Reality-${DOMAIN:-}"
-    uri_ws="vless://${UUID:-}@${DOMAIN:-}:${WS_PORT}?encryption=none&security=tls&type=ws&host=${DOMAIN:-}&path=/ws&sni=${DOMAIN:-}&fp=chrome#WS-TLS-${DOMAIN:-}"
-    uri_hy2="hysteria2://${HY2_PASS}@${DOMAIN:-}:${HY2_PORT}/?sni=${DOMAIN:-}&alpn=h3&insecure=0#Hysteria2-${DOMAIN:-}"
-    uri_tuic="tuic://${UUID:-}:${TUIC_PASS}@${DOMAIN:-}:${TUIC_PORT}?congestion_control=bbr&alpn=h3&sni=${DOMAIN:-}&udp_relay_mode=native#TUIC-${DOMAIN:-}"
-  fi
 
   if [[ "${WS_ENABLED:-false}" == "true" ]]; then
     has_ws=true
@@ -619,9 +606,30 @@ output_info_json() {
   fi
 
   if [[ "${TUIC_ENABLED:-false}" == "true" ]]; then
+    [[ -n "${TUIC_PASS:-}" ]] && has_tuic=true
+  elif [[ -n "${TUIC_PORT:-}" && -n "${TUIC_PASS:-}" ]]; then
     has_tuic=true
-  elif [[ -n "${TUIC_PORT:-}" || -n "${TUIC_PASS:-}" ]]; then
-    has_tuic=true
+  fi
+
+  if [[ "${has_tuic}" == "true" ]]; then
+    tuic_port_out="${TUIC_PORT:-8445}"
+    tuic_pass_out="${TUIC_PASS:-}"
+  fi
+
+  if command -v export_uri >/dev/null 2>&1; then
+    uri_real=$(export_uri reality)
+    uri_ws=$(export_uri ws 2>/dev/null || true)
+    uri_hy2=$(export_uri hy2 2>/dev/null || true)
+    if [[ "${has_tuic}" == "true" ]]; then
+      uri_tuic=$(export_uri tuic)
+    fi
+  else
+    uri_real="vless://${UUID:-}@${DOMAIN:-}:${REALITY_PORT}?encryption=none&security=reality&flow=xtls-rprx-vision&sni=${SNI}&pbk=${PUBLIC_KEY:-}&sid=${SHORT_ID:-}&type=tcp&fp=chrome#Reality-${DOMAIN:-}"
+    uri_ws="vless://${UUID:-}@${DOMAIN:-}:${WS_PORT}?encryption=none&security=tls&type=ws&host=${DOMAIN:-}&path=/ws&sni=${DOMAIN:-}&fp=chrome#WS-TLS-${DOMAIN:-}"
+    uri_hy2="hysteria2://${HY2_PASS}@${DOMAIN:-}:${HY2_PORT}/?sni=${DOMAIN:-}&alpn=h3&insecure=0#Hysteria2-${DOMAIN:-}"
+    if [[ "${has_tuic}" == "true" ]]; then
+      uri_tuic="tuic://${UUID:-}:${tuic_pass_out}@${DOMAIN:-}:${tuic_port_out}?congestion_control=bbr&alpn=h3&sni=${DOMAIN:-}&udp_relay_mode=native#TUIC-${DOMAIN:-}"
+    fi
   fi
 
   if echo "${uri_real}" | grep -qE 'pbk=&|pbk=$|@:|//:'; then
@@ -648,8 +656,8 @@ output_info_json() {
     --arg hy2_port "${HY2_PORT}" \
     --arg hy2_pass "${HY2_PASS}" \
     --arg uri_hy2 "${uri_hy2}" \
-    --arg tuic_port "${TUIC_PORT}" \
-    --arg tuic_pass "${TUIC_PASS}" \
+    --arg tuic_port "${tuic_port_out}" \
+    --arg tuic_pass "${tuic_pass_out}" \
     --arg uri_tuic "${uri_tuic}" \
     --arg cert_fullchain "${CERT_FULLCHAIN:-}" \
     --arg cert_key "${CERT_KEY:-}" \
@@ -824,11 +832,15 @@ case "${1:-}" in
 
     # WebSocket (if cert exists)
     if [[ -n "${CERT_FULLCHAIN:-}" && -n "${CERT_KEY:-}" ]]; then
+      has_tuic_in_info=false
       WS_PORT="${WS_PORT:-8444}"
       HY2_PORT="${HY2_PORT:-8443}"
       HY2_PASS="${HY2_PASS:-}"
-      TUIC_PORT="${TUIC_PORT:-8445}"
-      TUIC_PASS="${TUIC_PASS:-}"
+      if [[ "${TUIC_ENABLED:-false}" == "true" ]]; then
+        [[ -n "${TUIC_PASS:-}" ]] && has_tuic_in_info=true
+      elif [[ -n "${TUIC_PORT:-}" && -n "${TUIC_PASS:-}" ]]; then
+        has_tuic_in_info=true
+      fi
       echo
       echo "INBOUND   : VLESS-WS-TLS   ${WS_PORT}/tcp"
       echo "  CERT     = ${CERT_FULLCHAIN}"
@@ -849,14 +861,16 @@ case "${1:-}" in
       fi
       echo "  URI      = ${URI_HY2}"
 
-      if [[ "${TUIC_ENABLED:-false}" == "true" || -n "${TUIC_PORT:-}" || -n "${TUIC_PASS:-}" ]]; then
+      if [[ "${has_tuic_in_info}" == "true" ]]; then
+        tuic_port_info="${TUIC_PORT:-8445}"
+        tuic_pass_info="${TUIC_PASS:-}"
         echo
-        echo "INBOUND   : TUIC V5        ${TUIC_PORT}/udp"
+        echo "INBOUND   : TUIC V5        ${tuic_port_info}/udp"
         echo "  CERT     = ${CERT_FULLCHAIN}"
         if command -v export_uri >/dev/null 2>&1; then
           URI_TUIC=$(export_uri tuic)
         else
-          URI_TUIC="tuic://${UUID:-}:${TUIC_PASS}@${DOMAIN:-}:${TUIC_PORT}?congestion_control=bbr&alpn=h3&sni=${DOMAIN:-}&udp_relay_mode=native#TUIC-${DOMAIN:-}"
+          URI_TUIC="tuic://${UUID:-}:${tuic_pass_info}@${DOMAIN:-}:${tuic_port_info}?congestion_control=bbr&alpn=h3&sni=${DOMAIN:-}&udp_relay_mode=native#TUIC-${DOMAIN:-}"
         fi
         echo "  URI      = ${URI_TUIC}"
       fi
