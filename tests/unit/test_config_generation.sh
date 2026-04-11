@@ -497,8 +497,17 @@ test_build_tls_block_acme_http01() {
     FAILED_TESTS=$((FAILED_TESTS + 1))
   fi
 
-  # Chrome Root Store must be set in ACME mode
-  assert_json_value_equals "Chrome Root Store in ACME HTTP-01" "$tls_block" ".certificate.store" "chrome"
+  # ACME mode must not emit a legacy certificate block
+  TOTAL_TESTS=$((TOTAL_TESTS + 1))
+  local has_cert_block
+  has_cert_block=$(echo "$tls_block" | jq 'has("certificate")' 2> /dev/null)
+  if [[ "$has_cert_block" == "false" ]]; then
+    echo -e "${GREEN}✓${NC} No certificate block in ACME HTTP-01 mode"
+    PASSED_TESTS=$((PASSED_TESTS + 1))
+  else
+    echo -e "${RED}✗${NC} Unexpected certificate block in ACME HTTP-01 mode"
+    FAILED_TESTS=$((FAILED_TESTS + 1))
+  fi
 }
 
 test_build_tls_block_acme_dns01() {
@@ -526,8 +535,17 @@ test_build_tls_block_acme_dns01() {
   assert_json_value_equals "DNS provider is cloudflare" "$tls_block" ".acme.dns01_challenge.provider" "cloudflare"
   assert_json_value_equals "API token passed" "$tls_block" ".acme.dns01_challenge.api_token" "fake-cf-api-token-1234567890"
 
-  # Chrome Root Store must be set in DNS-01 ACME mode
-  assert_json_value_equals "Chrome Root Store in ACME DNS-01" "$tls_block" ".certificate.store" "chrome"
+  # ACME DNS-01 mode must not emit a legacy certificate block
+  TOTAL_TESTS=$((TOTAL_TESTS + 1))
+  local has_cert_block
+  has_cert_block=$(echo "$tls_block" | jq 'has("certificate")' 2> /dev/null)
+  if [[ "$has_cert_block" == "false" ]]; then
+    echo -e "${GREEN}✓${NC} No certificate block in ACME DNS-01 mode"
+    PASSED_TESTS=$((PASSED_TESTS + 1))
+  else
+    echo -e "${RED}✗${NC} Unexpected certificate block in ACME DNS-01 mode"
+    FAILED_TESTS=$((FAILED_TESTS + 1))
+  fi
 }
 
 test_build_tls_block_caddy_compat() {

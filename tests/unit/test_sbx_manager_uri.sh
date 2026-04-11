@@ -47,6 +47,8 @@ SNI="www.microsoft.com"
 WS_PORT="8444"
 HY2_PORT="8443"
 HY2_PASS="pass123"
+TUIC_PORT="8445"
+TUIC_PASS="tuicpass123"
 CERT_FULLCHAIN="/tmp/fullchain.pem"
 CERT_KEY="/tmp/key.pem"
 EOF
@@ -66,7 +68,15 @@ EOF
 #!/usr/bin/env bash
 set -euo pipefail
 export_uri() {
-  echo "stub-${1:-all}"
+  case "${1:-all}" in
+    tuic)
+      [[ -n "${TUIC_PORT:-}" && -n "${TUIC_PASS:-}" ]] || return 46
+      echo "stub-tuic"
+      ;;
+    *)
+      echo "stub-${1:-all}"
+      ;;
+  esac
 }
 load_client_info() {
   source "${TEST_CLIENT_INFO:?}"
@@ -76,6 +86,24 @@ load_client_info() {
   HY2_PORT="${HY2_PORT:-8443}"
 }
 EOF
+}
+
+create_non_tuic_client_info() {
+  local path="$1"
+  cat >"$path" <<'EOF'
+DOMAIN="example.com"
+UUID="11111111-2222-3333-4444-555555555555"
+PUBLIC_KEY="pubkey123"
+SHORT_ID="abcd1234"
+REALITY_PORT="443"
+SNI="www.microsoft.com"
+WS_PORT="8444"
+HY2_PORT="8443"
+HY2_PASS="pass123"
+CERT_FULLCHAIN="/tmp/fullchain.pem"
+CERT_KEY="/tmp/key.pem"
+EOF
+  chmod 600 "$path"
 }
 
 test_stubbed_export_uri_used_in_info_and_qr() {
@@ -105,12 +133,52 @@ EOF
     fail "info command should delegate to export_uri" "$info_output"
   fi
 
+  if echo "$info_output" | grep -q "stub-tuic"; then
+    pass "info command prints TUIC URI when configured"
+  else
+    fail "info command should print TUIC URI" "$info_output"
+  fi
+
   LIB_DIR="$stub_lib" TEST_CLIENT_INFO="$client_info" PATH="$TEST_TMP_DIR/bin:$PATH" bash "$PROJECT_ROOT/bin/sbx-manager.sh" qr >/dev/null 2>&1 || true
 
   if [[ -f "$QR_LOG" ]] && grep -q "stub-reality" "$QR_LOG"; then
     pass "qr command uses export_uri path"
   else
     fail "qr command should delegate to export_uri" "qrencode log missing stub URI"
+  fi
+}
+
+test_help_lists_tuic_export_protocol() {
+  echo ""
+  echo "Test: sbx-manager help lists TUIC export support"
+
+  local help_output
+  help_output=$(bash "$PROJECT_ROOT/bin/sbx-manager.sh" help)
+
+  if echo "$help_output" | grep -q "reality|ws|hy2|tuic|all"; then
+    pass "help output lists TUIC for export uri"
+  else
+    fail "help output should list TUIC for export uri" "$help_output"
+  fi
+}
+
+test_info_skips_tuic_when_not_configured() {
+  echo ""
+  echo "Test: sbx-manager info skips TUIC when not configured"
+
+  local client_info="$TEST_TMP_DIR/client-info-no-tuic.txt"
+  create_non_tuic_client_info "$client_info"
+
+  local stub_lib="$TEST_TMP_DIR/lib-no-tuic"
+  create_stub_lib "$stub_lib"
+
+  local info_output
+  info_output=$(LIB_DIR="$stub_lib" TEST_CLIENT_INFO="$client_info" bash "$PROJECT_ROOT/bin/sbx-manager.sh" info)
+
+  if echo "$info_output" | grep -q "INBOUND   : TUIC V5"; then
+    fail "info command should not print TUIC section when disabled" "$info_output"
+  else
+    pass "info command skips TUIC section when disabled"
   fi
 }
 
@@ -159,6 +227,8 @@ echo "Running test suite: sbx-manager URI paths"
 echo "=========================================="
 
 test_stubbed_export_uri_used_in_info_and_qr
+test_help_lists_tuic_export_protocol
+test_info_skips_tuic_when_not_configured
 test_cli_uri_matches_export_module
 
 echo ""
