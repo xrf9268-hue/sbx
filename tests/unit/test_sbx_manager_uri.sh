@@ -106,6 +106,27 @@ EOF
   chmod 600 "$path"
 }
 
+create_acme_client_info() {
+  local path="$1"
+  cat >"$path" <<'EOF'
+DOMAIN="example.com"
+UUID="11111111-2222-3333-4444-555555555555"
+PUBLIC_KEY="pubkey123"
+SHORT_ID="abcd1234"
+REALITY_PORT="443"
+SNI="www.microsoft.com"
+WS_PORT="8444"
+HY2_PORT="8443"
+HY2_PASS="pass123"
+TUIC_PORT="8445"
+TUIC_PASS="tuicpass123"
+WS_ENABLED="true"
+HY2_ENABLED="true"
+TUIC_ENABLED="true"
+EOF
+  chmod 600 "$path"
+}
+
 test_stubbed_export_uri_used_in_info_and_qr() {
   echo ""
   echo "Test: sbx-manager uses export_uri hook"
@@ -182,6 +203,38 @@ test_info_skips_tuic_when_not_configured() {
   fi
 }
 
+test_info_prints_acme_managed_protocols() {
+  echo ""
+  echo "Test: sbx-manager info prints ACME-managed protocol URIs"
+
+  local client_info="$TEST_TMP_DIR/client-info-acme.txt"
+  create_acme_client_info "$client_info"
+
+  local stub_lib="$TEST_TMP_DIR/lib-acme"
+  create_stub_lib "$stub_lib"
+
+  local info_output
+  info_output=$(LIB_DIR="$stub_lib" TEST_CLIENT_INFO="$client_info" bash "$PROJECT_ROOT/bin/sbx-manager.sh" info)
+
+  if echo "$info_output" | grep -q "stub-ws"; then
+    pass "info command prints WS URI for ACME-managed setup"
+  else
+    fail "info command should print WS URI for ACME-managed setup" "$info_output"
+  fi
+
+  if echo "$info_output" | grep -q "stub-hy2"; then
+    pass "info command prints Hysteria2 URI for ACME-managed setup"
+  else
+    fail "info command should print Hysteria2 URI for ACME-managed setup" "$info_output"
+  fi
+
+  if echo "$info_output" | grep -q "stub-tuic"; then
+    pass "info command prints TUIC URI for ACME-managed setup"
+  else
+    fail "info command should print TUIC URI for ACME-managed setup" "$info_output"
+  fi
+}
+
 test_cli_uri_matches_export_module() {
   echo ""
   echo "Test: sbx-manager URIs match lib/export.sh"
@@ -229,6 +282,7 @@ echo "=========================================="
 test_stubbed_export_uri_used_in_info_and_qr
 test_help_lists_tuic_export_protocol
 test_info_skips_tuic_when_not_configured
+test_info_prints_acme_managed_protocols
 test_cli_uri_matches_export_module
 
 echo ""
