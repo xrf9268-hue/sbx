@@ -830,43 +830,70 @@ case "${1:-}" in
       echo -e "  ${R}⚠ WARNING:${N} URI has empty parameters and cannot be used"
     fi
 
-    # WebSocket (if cert exists)
+    has_ws_in_info=false
+    has_hy2_in_info=false
+    has_tuic_in_info=false
+    cert_label=''
+
+    if [[ "${WS_ENABLED:-false}" == "true" ]]; then
+      has_ws_in_info=true
+    elif [[ -n "${CERT_FULLCHAIN:-}" && -n "${CERT_KEY:-}" ]]; then
+      has_ws_in_info=true
+    fi
+
+    if [[ "${HY2_ENABLED:-false}" == "true" ]]; then
+      has_hy2_in_info=true
+    elif [[ -n "${CERT_FULLCHAIN:-}" && -n "${CERT_KEY:-}" ]]; then
+      has_hy2_in_info=true
+    fi
+
+    if [[ "${TUIC_ENABLED:-false}" == "true" ]]; then
+      [[ -n "${TUIC_PASS:-}" ]] && has_tuic_in_info=true
+    elif [[ -n "${TUIC_PORT:-}" && -n "${TUIC_PASS:-}" ]]; then
+      has_tuic_in_info=true
+    fi
+
     if [[ -n "${CERT_FULLCHAIN:-}" && -n "${CERT_KEY:-}" ]]; then
-      has_tuic_in_info=false
+      cert_label="${CERT_FULLCHAIN}"
+    elif [[ "${has_ws_in_info}" == "true" || "${has_hy2_in_info}" == "true" || "${has_tuic_in_info}" == "true" ]]; then
+      cert_label="ACME-managed"
+    fi
+
+    if [[ "${has_ws_in_info}" == "true" || "${has_hy2_in_info}" == "true" || "${has_tuic_in_info}" == "true" ]]; then
       WS_PORT="${WS_PORT:-8444}"
       HY2_PORT="${HY2_PORT:-8443}"
       HY2_PASS="${HY2_PASS:-}"
-      if [[ "${TUIC_ENABLED:-false}" == "true" ]]; then
-        [[ -n "${TUIC_PASS:-}" ]] && has_tuic_in_info=true
-      elif [[ -n "${TUIC_PORT:-}" && -n "${TUIC_PASS:-}" ]]; then
-        has_tuic_in_info=true
-      fi
       echo
-      echo "INBOUND   : VLESS-WS-TLS   ${WS_PORT}/tcp"
-      echo "  CERT     = ${CERT_FULLCHAIN}"
-      # Use export_uri() if available (DRY), otherwise generate inline
-      if command -v export_uri >/dev/null 2>&1; then
-        URI_WS=$(export_uri ws)
-      else
-        URI_WS="vless://${UUID:-}@${DOMAIN:-}:${WS_PORT}?encryption=none&security=tls&type=ws&host=${DOMAIN:-}&path=/ws&sni=${DOMAIN:-}&fp=chrome#WS-TLS-${DOMAIN:-}"
+      if [[ "${has_ws_in_info}" == "true" ]]; then
+        echo "INBOUND   : VLESS-WS-TLS   ${WS_PORT}/tcp"
+        echo "  CERT     = ${cert_label}"
+        # Use export_uri() if available (DRY), otherwise generate inline
+        if command -v export_uri >/dev/null 2>&1; then
+          URI_WS=$(export_uri ws)
+        else
+          URI_WS="vless://${UUID:-}@${DOMAIN:-}:${WS_PORT}?encryption=none&security=tls&type=ws&host=${DOMAIN:-}&path=/ws&sni=${DOMAIN:-}&fp=chrome#WS-TLS-${DOMAIN:-}"
+        fi
+        echo "  URI      = ${URI_WS}"
       fi
-      echo "  URI      = ${URI_WS}"
-      echo
-      echo "INBOUND   : Hysteria2      ${HY2_PORT}/udp"
-      echo "  CERT     = ${CERT_FULLCHAIN}"
-      if command -v export_uri >/dev/null 2>&1; then
-        URI_HY2=$(export_uri hy2)
-      else
-        URI_HY2="hysteria2://${HY2_PASS}@${DOMAIN:-}:${HY2_PORT}/?sni=${DOMAIN:-}&alpn=h3&insecure=0#Hysteria2-${DOMAIN:-}"
+
+      if [[ "${has_hy2_in_info}" == "true" ]]; then
+        echo
+        echo "INBOUND   : Hysteria2      ${HY2_PORT}/udp"
+        echo "  CERT     = ${cert_label}"
+        if command -v export_uri >/dev/null 2>&1; then
+          URI_HY2=$(export_uri hy2)
+        else
+          URI_HY2="hysteria2://${HY2_PASS}@${DOMAIN:-}:${HY2_PORT}/?sni=${DOMAIN:-}&alpn=h3&insecure=0#Hysteria2-${DOMAIN:-}"
+        fi
+        echo "  URI      = ${URI_HY2}"
       fi
-      echo "  URI      = ${URI_HY2}"
 
       if [[ "${has_tuic_in_info}" == "true" ]]; then
         tuic_port_info="${TUIC_PORT:-8445}"
         tuic_pass_info="${TUIC_PASS:-}"
         echo
         echo "INBOUND   : TUIC V5        ${tuic_port_info}/udp"
-        echo "  CERT     = ${CERT_FULLCHAIN}"
+        echo "  CERT     = ${cert_label}"
         if command -v export_uri >/dev/null 2>&1; then
           URI_TUIC=$(export_uri tuic)
         else
