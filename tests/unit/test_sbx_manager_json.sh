@@ -29,6 +29,8 @@ REALITY_PORT="443"
 WS_PORT="8444"
 HY2_PORT="8443"
 HY2_PASS="hy2pass123"
+TUIC_PORT="8445"
+TUIC_PASS="tuicpass123"
 CERT_FULLCHAIN="/tmp/fake-fullchain.pem"
 CERT_KEY="/tmp/fake-key.pem"
 EOF
@@ -56,7 +58,7 @@ cat >"${LIB_DIR_STUB}/export.sh" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 load_client_info() {
-  unset WS_ENABLED HY2_ENABLED WS_PORT HY2_PORT HY2_PASS CERT_FULLCHAIN CERT_KEY
+  unset WS_ENABLED HY2_ENABLED TUIC_ENABLED WS_PORT HY2_PORT HY2_PASS TUIC_PORT TUIC_PASS CERT_FULLCHAIN CERT_KEY
   source "${TEST_CLIENT_INFO:?}"
   if [[ -n "${WS_PORT+x}" ]]; then
     WS_ENABLED="true"
@@ -68,16 +70,23 @@ load_client_info() {
   else
     HY2_ENABLED="false"
   fi
+  if [[ -n "${TUIC_PORT+x}" || -n "${TUIC_PASS+x}" ]]; then
+    TUIC_ENABLED="true"
+  else
+    TUIC_ENABLED="false"
+  fi
   REALITY_PORT="${REALITY_PORT:-443}"
   SNI="${SNI:-www.microsoft.com}"
   WS_PORT="${WS_PORT:-8444}"
   HY2_PORT="${HY2_PORT:-8443}"
+  TUIC_PORT="${TUIC_PORT:-8445}"
 }
 export_uri() {
   case "${1:-all}" in
     reality) echo "vless://reality-uri" ;;
     ws) echo "vless://ws-uri" ;;
     hy2) echo "hysteria2://hy2-uri" ;;
+    tuic) echo "tuic://tuic-uri" ;;
     *) echo "vless://all-uri" ;;
   esac
 }
@@ -186,6 +195,10 @@ test_json_output_commands() {
     assert_success "printf '%s' \"\$info_json\" | jq empty" "info --json returns valid JSON"
     assert_equals "info" "$(echo "$info_json" | jq -r '.command')" "info --json includes command field"
     assert_equals "vless://reality-uri" "$(echo "$info_json" | jq -r '.protocols.reality.uri')" "info --json includes reality URI"
+    assert_equals "true" "$(echo "$info_json" | jq -r '.protocols.tuic.enabled')" "info --json marks tuic enabled"
+    assert_equals "8445" "$(echo "$info_json" | jq -r '.protocols.tuic.port')" "info --json includes tuic port"
+    assert_equals "tuicpass123" "$(echo "$info_json" | jq -r '.protocols.tuic.password')" "info --json includes tuic password"
+    assert_equals "tuic://tuic-uri" "$(echo "$info_json" | jq -r '.protocols.tuic.uri')" "info --json includes tuic URI"
 
     # --json status (global flag form)
     status_json=$(run_sbx_json --json status 2>/dev/null)

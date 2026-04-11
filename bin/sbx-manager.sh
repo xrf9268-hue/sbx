@@ -67,7 +67,7 @@ ${B}Backup & Restore:${N}
 ${B}Configuration Export:${N}
   export v2rayn [protocol] [file]   Export v2rayN config (reality|ws)
   export clash [file]               Export Clash YAML config
-  export uri [protocol]             Export share URIs (reality|ws|hy2|all)
+  export uri [protocol]             Export share URIs (reality|ws|hy2|tuic|all)
   export qr [output-dir]            Generate QR code images
   export subscription [file]        Generate subscription link
 
@@ -88,7 +88,7 @@ EOF
 
 CLIENT_INFO_PATH="${CLIENT_INFO:-/etc/sing-box/client-info.txt}"
 STATE_INFO_PATH="${STATE_FILE:-/etc/sing-box/state.json}"
-CLIENT_INFO_ALLOWED_KEYS_REGEX="^(DOMAIN|UUID|PUBLIC_KEY|SHORT_ID|SNI|REALITY_PORT|WS_PORT|HY2_PORT|HY2_PASS|CERT_FULLCHAIN|CERT_KEY)$"
+CLIENT_INFO_ALLOWED_KEYS_REGEX="^(DOMAIN|UUID|PUBLIC_KEY|SHORT_ID|SNI|REALITY_PORT|WS_PORT|HY2_PORT|HY2_PASS|TUIC_PORT|TUIC_PASS|CERT_FULLCHAIN|CERT_KEY)$"
 SBX_BIN="${SBX_BIN:-${SB_BIN:-/usr/local/bin/sing-box}}"
 SBX_CONFIG_PATH="${SBX_CONFIG_PATH:-${SB_CONF:-/etc/sing-box/config.json}}"
 HEALTH_CERT_WARNING_DAYS="${HEALTH_CERT_WARNING_DAYS:-30}"
@@ -199,21 +199,29 @@ parse_client_info_file() {
     HY2_ENABLED="false"
   fi
 
+  if [[ -v client_info_map[TUIC_PORT] || -v client_info_map[TUIC_PASS] ]]; then
+    TUIC_ENABLED="true"
+  else
+    TUIC_ENABLED="false"
+  fi
+
   # Set defaults for missing variables
   local default_reality="${REALITY_PORT_DEFAULT:-443}"
   local default_sni="${SNI_DEFAULT:-www.microsoft.com}"
   local default_ws="${WS_PORT_DEFAULT:-8444}"
   local default_hy2="${HY2_PORT_DEFAULT:-8443}"
+  local default_tuic="${TUIC_PORT_DEFAULT:-8445}"
 
   REALITY_PORT="${REALITY_PORT:-$default_reality}"
   SNI="${SNI:-$default_sni}"
   WS_PORT="${WS_PORT:-$default_ws}"
   HY2_PORT="${HY2_PORT:-$default_hy2}"
+  TUIC_PORT="${TUIC_PORT:-$default_tuic}"
 }
 
 parse_state_info_file() {
   local file="$1"
-  local ws_enabled_raw='' hy2_enabled_raw=''
+  local ws_enabled_raw='' hy2_enabled_raw='' tuic_enabled_raw=''
 
   DOMAIN=$(jq -r '.server.domain // .server.ip // empty' "$file")
   UUID=$(jq -r '.protocols.reality.uuid // empty' "$file")
@@ -224,10 +232,13 @@ parse_state_info_file() {
   WS_PORT=$(jq -r '.protocols.ws_tls.port // empty' "$file")
   HY2_PORT=$(jq -r '.protocols.hysteria2.port // empty' "$file")
   HY2_PASS=$(jq -r '.protocols.hysteria2.password // empty' "$file")
+  TUIC_PORT=$(jq -r '.protocols.tuic.port // empty' "$file")
+  TUIC_PASS=$(jq -r '.protocols.tuic.password // empty' "$file")
   CERT_FULLCHAIN=$(jq -r '.protocols.ws_tls.certificate // empty' "$file")
   CERT_KEY=$(jq -r '.protocols.ws_tls.key // empty' "$file")
   ws_enabled_raw=$(jq -r '.protocols.ws_tls.enabled // empty' "$file")
   hy2_enabled_raw=$(jq -r '.protocols.hysteria2.enabled // empty' "$file")
+  tuic_enabled_raw=$(jq -r '.protocols.tuic.enabled // empty' "$file")
 
   case "${ws_enabled_raw}" in
     true | 1 | yes | on) WS_ENABLED="true" ;;
@@ -245,15 +256,25 @@ parse_state_info_file() {
       ;;
   esac
 
+  case "${tuic_enabled_raw}" in
+    true | 1 | yes | on) TUIC_ENABLED="true" ;;
+    false | 0 | no | off) TUIC_ENABLED="false" ;;
+    *)
+      [[ -n "${TUIC_PORT:-}" || -n "${TUIC_PASS:-}" ]] && TUIC_ENABLED="true" || TUIC_ENABLED="false"
+      ;;
+  esac
+
   local default_reality="${REALITY_PORT_DEFAULT:-443}"
   local default_sni="${SNI_DEFAULT:-www.microsoft.com}"
   local default_ws="${WS_PORT_DEFAULT:-8444}"
   local default_hy2="${HY2_PORT_DEFAULT:-8443}"
+  local default_tuic="${TUIC_PORT_DEFAULT:-8445}"
 
   REALITY_PORT="${REALITY_PORT:-$default_reality}"
   SNI="${SNI:-$default_sni}"
   WS_PORT="${WS_PORT:-$default_ws}"
   HY2_PORT="${HY2_PORT:-$default_hy2}"
+  TUIC_PORT="${TUIC_PORT:-$default_tuic}"
 }
 
 fallback_load_client_info() {
@@ -550,7 +571,8 @@ output_info_json() {
   local warnings_json='[]'
   local has_ws=false
   local has_hy2=false
-  local uri_real='' uri_ws='' uri_hy2=''
+  local has_tuic=false
+  local uri_real='' uri_ws='' uri_hy2='' uri_tuic=''
 
   ensure_client_info_loaded
 
@@ -569,15 +591,19 @@ output_info_json() {
   WS_PORT="${WS_PORT:-8444}"
   HY2_PORT="${HY2_PORT:-8443}"
   HY2_PASS="${HY2_PASS:-}"
+  TUIC_PORT="${TUIC_PORT:-8445}"
+  TUIC_PASS="${TUIC_PASS:-}"
 
   if command -v export_uri >/dev/null 2>&1; then
     uri_real=$(export_uri reality)
     uri_ws=$(export_uri ws 2>/dev/null || true)
     uri_hy2=$(export_uri hy2 2>/dev/null || true)
+    uri_tuic=$(export_uri tuic 2>/dev/null || true)
   else
     uri_real="vless://${UUID:-}@${DOMAIN:-}:${REALITY_PORT}?encryption=none&security=reality&flow=xtls-rprx-vision&sni=${SNI}&pbk=${PUBLIC_KEY:-}&sid=${SHORT_ID:-}&type=tcp&fp=chrome#Reality-${DOMAIN:-}"
     uri_ws="vless://${UUID:-}@${DOMAIN:-}:${WS_PORT}?encryption=none&security=tls&type=ws&host=${DOMAIN:-}&path=/ws&sni=${DOMAIN:-}&fp=chrome#WS-TLS-${DOMAIN:-}"
     uri_hy2="hysteria2://${HY2_PASS}@${DOMAIN:-}:${HY2_PORT}/?sni=${DOMAIN:-}&alpn=h3&insecure=0#Hysteria2-${DOMAIN:-}"
+    uri_tuic="tuic://${UUID:-}:${TUIC_PASS}@${DOMAIN:-}:${TUIC_PORT}?congestion_control=bbr&alpn=h3&sni=${DOMAIN:-}&udp_relay_mode=native#TUIC-${DOMAIN:-}"
   fi
 
   if [[ "${WS_ENABLED:-false}" == "true" ]]; then
@@ -590,6 +616,12 @@ output_info_json() {
     has_hy2=true
   elif [[ -n "${CERT_FULLCHAIN:-}" && -n "${CERT_KEY:-}" ]]; then
     has_hy2=true
+  fi
+
+  if [[ "${TUIC_ENABLED:-false}" == "true" ]]; then
+    has_tuic=true
+  elif [[ -n "${TUIC_PORT:-}" || -n "${TUIC_PASS:-}" ]]; then
+    has_tuic=true
   fi
 
   if echo "${uri_real}" | grep -qE 'pbk=&|pbk=$|@:|//:'; then
@@ -616,10 +648,14 @@ output_info_json() {
     --arg hy2_port "${HY2_PORT}" \
     --arg hy2_pass "${HY2_PASS}" \
     --arg uri_hy2 "${uri_hy2}" \
+    --arg tuic_port "${TUIC_PORT}" \
+    --arg tuic_pass "${TUIC_PASS}" \
+    --arg uri_tuic "${uri_tuic}" \
     --arg cert_fullchain "${CERT_FULLCHAIN:-}" \
     --arg cert_key "${CERT_KEY:-}" \
     --argjson ws_enabled "${has_ws}" \
     --argjson hy2_enabled "${has_hy2}" \
+    --argjson tuic_enabled "${has_tuic}" \
     --argjson warnings "${warnings_json}" \
     '{
         command: $command,
@@ -648,6 +684,12 @@ output_info_json() {
             port: ($hy2_port | tonumber? // null),
             password: (if $hy2_enabled and $hy2_pass != "" then $hy2_pass else null end),
             uri: (if $hy2_enabled then $uri_hy2 else null end)
+          },
+          tuic: {
+            enabled: $tuic_enabled,
+            port: ($tuic_port | tonumber? // null),
+            password: (if $tuic_enabled and $tuic_pass != "" then $tuic_pass else null end),
+            uri: (if $tuic_enabled then $uri_tuic else null end)
           }
         }
       }'
@@ -785,6 +827,8 @@ case "${1:-}" in
       WS_PORT="${WS_PORT:-8444}"
       HY2_PORT="${HY2_PORT:-8443}"
       HY2_PASS="${HY2_PASS:-}"
+      TUIC_PORT="${TUIC_PORT:-8445}"
+      TUIC_PASS="${TUIC_PASS:-}"
       echo
       echo "INBOUND   : VLESS-WS-TLS   ${WS_PORT}/tcp"
       echo "  CERT     = ${CERT_FULLCHAIN}"
@@ -804,9 +848,21 @@ case "${1:-}" in
         URI_HY2="hysteria2://${HY2_PASS}@${DOMAIN:-}:${HY2_PORT}/?sni=${DOMAIN:-}&alpn=h3&insecure=0#Hysteria2-${DOMAIN:-}"
       fi
       echo "  URI      = ${URI_HY2}"
+
+      if [[ "${TUIC_ENABLED:-false}" == "true" || -n "${TUIC_PORT:-}" || -n "${TUIC_PASS:-}" ]]; then
+        echo
+        echo "INBOUND   : TUIC V5        ${TUIC_PORT}/udp"
+        echo "  CERT     = ${CERT_FULLCHAIN}"
+        if command -v export_uri >/dev/null 2>&1; then
+          URI_TUIC=$(export_uri tuic)
+        else
+          URI_TUIC="tuic://${UUID:-}:${TUIC_PASS}@${DOMAIN:-}:${TUIC_PORT}?congestion_control=bbr&alpn=h3&sni=${DOMAIN:-}&udp_relay_mode=native#TUIC-${DOMAIN:-}"
+        fi
+        echo "  URI      = ${URI_TUIC}"
+      fi
     fi
     echo
-    echo -e "${Y}Notes${N}: Reality/Hy2 suggest gray cloud; WS-TLS can use gray/orange cloud."
+    echo -e "${Y}Notes${N}: Reality/Hy2/TUIC suggest gray cloud; WS-TLS can use gray/orange cloud."
 
     # Optional: Generate QR codes
     if command -v qrencode >/dev/null 2>&1; then
@@ -938,7 +994,7 @@ case "${1:-}" in
         echo -e "${Y}Usage:${N}"
         echo "  sbx export v2rayn [reality|ws] [file]  - Export v2rayN config"
         echo "  sbx export clash [file]                - Export Clash config"
-        echo "  sbx export uri [protocol]              - Export share URIs"
+        echo "  sbx export uri [protocol]              - Export share URIs (reality|ws|hy2|tuic|all)"
         echo "  sbx export qr [output-dir]             - Generate QR codes"
         echo "  sbx export subscription [file]         - Generate subscription"
         exit 1

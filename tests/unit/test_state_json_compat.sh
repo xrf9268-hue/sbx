@@ -47,6 +47,11 @@ setup_state_fixture() {
       "enabled": true,
       "port": 8443,
       "password": "hy2pass123"
+    },
+    "tuic": {
+      "enabled": true,
+      "port": 8445,
+      "password": "tuicpass123"
     }
   }
 }
@@ -82,6 +87,7 @@ test_sbx_manager_reads_state_json() {
     assert_equals "0" "${rc}" "sbx-manager info works with state.json fallback"
     assert_contains "${output}" "Domain    : example.com" "state.json provides domain"
     assert_contains "${output}" "PublicKey = pubkey123" "state.json provides reality public key"
+    assert_contains "${output}" "INBOUND   : TUIC V5        8445/udp" "state.json provides tuic inbound"
 }
 
 test_export_reads_state_json() {
@@ -94,6 +100,16 @@ test_export_reads_state_json() {
     assert_equals "0" "${rc}" "export_uri works with state.json fallback"
     assert_contains "${uri}" "vless://" "state.json export returns reality URI"
     assert_contains "${uri}" "pbk=pubkey123" "state.json export includes public key"
+
+    local tuic_uri=''
+    set +e
+    tuic_uri=$(TEST_STATE_FILE="${STATE_FILE}" TEST_CLIENT_INFO="${TEST_TMP}/missing-client-info.txt" \
+      bash -c "source \"${PROJECT_ROOT}/lib/export.sh\"; export_uri tuic" 2>&1)
+    rc=$?
+
+    assert_equals "0" "${rc}" "tuic export works with state.json fallback"
+    assert_contains "${tuic_uri}" "tuic://" "state.json export returns tuic URI"
+    assert_contains "${tuic_uri}" "tuicpass123" "state.json export includes tuic password"
 }
 
 main() {

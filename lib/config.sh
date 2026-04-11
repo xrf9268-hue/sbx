@@ -306,8 +306,7 @@ _build_tls_block() {
       enabled: true,
       server_name: $domain,
       alpn: $alpn,
-      acme: $acme,
-      certificate: { store: "chrome" }
+      acme: $acme
     }' 2>/dev/null); then
     err "Failed to build ACME TLS block"
     return 1

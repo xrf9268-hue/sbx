@@ -47,6 +47,8 @@ SNI="www.microsoft.com"
 WS_PORT="8444"
 HY2_PORT="8443"
 HY2_PASS="pass123"
+TUIC_PORT="8445"
+TUIC_PASS="tuicpass123"
 CERT_FULLCHAIN="/tmp/fullchain.pem"
 CERT_KEY="/tmp/key.pem"
 EOF
@@ -105,12 +107,32 @@ EOF
     fail "info command should delegate to export_uri" "$info_output"
   fi
 
+  if echo "$info_output" | grep -q "stub-tuic"; then
+    pass "info command prints TUIC URI when configured"
+  else
+    fail "info command should print TUIC URI" "$info_output"
+  fi
+
   LIB_DIR="$stub_lib" TEST_CLIENT_INFO="$client_info" PATH="$TEST_TMP_DIR/bin:$PATH" bash "$PROJECT_ROOT/bin/sbx-manager.sh" qr >/dev/null 2>&1 || true
 
   if [[ -f "$QR_LOG" ]] && grep -q "stub-reality" "$QR_LOG"; then
     pass "qr command uses export_uri path"
   else
     fail "qr command should delegate to export_uri" "qrencode log missing stub URI"
+  fi
+}
+
+test_help_lists_tuic_export_protocol() {
+  echo ""
+  echo "Test: sbx-manager help lists TUIC export support"
+
+  local help_output
+  help_output=$(bash "$PROJECT_ROOT/bin/sbx-manager.sh" help)
+
+  if echo "$help_output" | grep -q "reality|ws|hy2|tuic|all"; then
+    pass "help output lists TUIC for export uri"
+  else
+    fail "help output should list TUIC for export uri" "$help_output"
   fi
 }
 
@@ -159,6 +181,7 @@ echo "Running test suite: sbx-manager URI paths"
 echo "=========================================="
 
 test_stubbed_export_uri_used_in_info_and_qr
+test_help_lists_tuic_export_protocol
 test_cli_uri_matches_export_module
 
 echo ""
