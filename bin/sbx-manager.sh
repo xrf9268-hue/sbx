@@ -26,6 +26,8 @@ if [[ -d "$LIB_DIR" ]]; then
   [[ -f "$LIB_DIR/backup.sh" ]] && source "$LIB_DIR/backup.sh"
   # shellcheck source=/dev/null
   [[ -f "$LIB_DIR/export.sh" ]] && source "$LIB_DIR/export.sh"
+  # shellcheck source=/dev/null
+  [[ -f "$LIB_DIR/users.sh" ]] && source "$LIB_DIR/users.sh"
 fi
 
 # Simple logo for management tool
@@ -39,7 +41,7 @@ show_sbx_logo() {
 
 # Show usage information
 show_usage() {
-  cat <<EOF
+  cat << EOF
 ${B}sbx-manager${N} - sing-box management tool
 
 ${B}Usage:${N}
@@ -57,6 +59,12 @@ ${B}Service Management:${N}
 ${B}Configuration:${N}
   info|show           Show configuration and URIs
   qr                  Display QR codes for client import
+
+${B}User Management:${N}
+  user add [--name NAME]        Add a new user (generates UUID)
+  user list                     List all users with names and UUIDs
+  user remove <UUID|NAME>       Remove a user (requires root)
+  user reset <UUID|NAME>        Regenerate user credentials (requires root)
 
 ${B}Backup & Restore:${N}
   backup create [--encrypt]         Create backup (optionally encrypted)
@@ -136,17 +144,17 @@ validate_state_info_file() {
 
   local resolved owner perm
   resolved=$(readlink -f "$state_file") || error_exit "Failed to resolve state file path: $state_file"
-  perm=$(stat -c '%a' "$resolved" 2>/dev/null || stat -f '%Lp' "$resolved" 2>/dev/null) || error_exit "Unable to read state file permissions."
+  perm=$(stat -c '%a' "$resolved" 2> /dev/null || stat -f '%Lp' "$resolved" 2> /dev/null) || error_exit "Unable to read state file permissions."
   [[ "$perm" == "600" ]] || error_exit "State file permissions must be 600 (found $perm)."
   [[ -s "$resolved" ]] || error_exit "State file is empty."
 
   if [[ -z "${TEST_STATE_FILE:-}" ]]; then
-    owner=$(stat -c '%u' "$resolved" 2>/dev/null || stat -f '%u' "$resolved" 2>/dev/null) || error_exit "Unable to read state file ownership."
+    owner=$(stat -c '%u' "$resolved" 2> /dev/null || stat -f '%u' "$resolved" 2> /dev/null) || error_exit "Unable to read state file ownership."
     [[ "$owner" -eq 0 ]] || error_exit "State file must be owned by root (uid 0)."
   fi
 
-  command -v jq >/dev/null 2>&1 || error_exit "jq is required to parse state file."
-  jq empty <"$resolved" 2>/dev/null || error_exit "State file is not valid JSON: $resolved"
+  command -v jq > /dev/null 2>&1 || error_exit "jq is required to parse state file."
+  jq empty < "$resolved" 2> /dev/null || error_exit "State file is not valid JSON: $resolved"
 
   echo "$resolved"
 }
@@ -181,7 +189,7 @@ parse_client_info_file() {
     { [[ "$value" == *'$('* ]] || [[ "$value" == *\`* ]]; } && error_exit "Suspicious characters in value for ${key}."
 
     client_info_map["$key"]="$value"
-  done <"$file"
+  done < "$file"
 
   for key in "${!client_info_map[@]}"; do
     printf -v "$key" '%s' "${client_info_map[$key]}"
@@ -272,7 +280,7 @@ fallback_load_client_info() {
 }
 
 ensure_client_info_loaded() {
-  if command -v load_client_info >/dev/null 2>&1; then
+  if command -v load_client_info > /dev/null 2>&1; then
     load_client_info
   else
     fallback_load_client_info
@@ -280,7 +288,7 @@ ensure_client_info_loaded() {
 }
 
 require_jq_for_json() {
-  if [[ "${JSON_OUTPUT}" == "1" ]] && ! command -v jq >/dev/null 2>&1; then
+  if [[ "${JSON_OUTPUT}" == "1" ]] && ! command -v jq > /dev/null 2>&1; then
     error_exit "jq is required for --json output"
   fi
 }
@@ -345,13 +353,13 @@ is_port_listening() {
   local ss_output=''
 
   if [[ "$proto" == "udp" ]]; then
-    ss_output=$(ss -lnup 2>/dev/null || true)
-    grep -q ":${port}[[:space:]]" <<<"${ss_output}"
+    ss_output=$(ss -lnup 2> /dev/null || true)
+    grep -q ":${port}[[:space:]]" <<< "${ss_output}"
     return $?
   fi
 
-  ss_output=$(ss -lntp 2>/dev/null || true)
-  grep -q ":${port}[[:space:]]" <<<"${ss_output}"
+  ss_output=$(ss -lntp 2> /dev/null || true)
+  grep -q ":${port}[[:space:]]" <<< "${ss_output}"
   return $?
 }
 
@@ -359,10 +367,10 @@ discover_health_ports() {
   local config_file="$1"
   local entries=''
 
-  command -v jq >/dev/null 2>&1 || return 1
+  command -v jq > /dev/null 2>&1 || return 1
   [[ -f "$config_file" ]] || return 1
 
-  entries=$(jq -r '.inbounds[]? | select(.listen_port != null) | [(.tag // .type // "inbound"), (.type // ""), (.listen_port | tostring)] | @tsv' "$config_file" 2>/dev/null) || return 1
+  entries=$(jq -r '.inbounds[]? | select(.listen_port != null) | [(.tag // .type // "inbound"), (.type // ""), (.listen_port | tostring)] | @tsv' "$config_file" 2> /dev/null) || return 1
   [[ -n "$entries" ]] || return 1
 
   local tag type port proto label
@@ -375,7 +383,7 @@ discover_health_ports() {
     fi
     label="${tag:-${type:-inbound}}"
     echo "${port}|${proto}|${label}"
-  done <<<"$entries"
+  done <<< "$entries"
 }
 
 run_health_check() {
@@ -393,7 +401,7 @@ run_health_check() {
   fi
 
   # 1) Service state
-  if systemctl is-active --quiet sing-box 2>/dev/null; then
+  if systemctl is-active --quiet sing-box 2> /dev/null; then
     health_ok "Service: active"
   else
     health_fail "Service: inactive"
@@ -404,17 +412,17 @@ run_health_check() {
     health_fail "Config: not found (${config_file})"
   elif [[ ! -x "$SBX_BIN" ]]; then
     health_fail "Config check unavailable (sing-box binary not executable: ${SBX_BIN})"
-  elif "$SBX_BIN" check -c "$config_file" >/dev/null 2>&1; then
+  elif "$SBX_BIN" check -c "$config_file" > /dev/null 2>&1; then
     health_ok "Config: valid"
   else
     health_fail "Config: invalid"
   fi
 
   # 3) Port listening checks (from configured inbounds)
-  if ! command -v ss >/dev/null 2>&1; then
+  if ! command -v ss > /dev/null 2>&1; then
     health_warn "Ports: skipped (ss command not available)"
   else
-    port_entries=$(discover_health_ports "$config_file" 2>/dev/null || true)
+    port_entries=$(discover_health_ports "$config_file" 2> /dev/null || true)
     if [[ -z "$port_entries" ]]; then
       health_warn "Ports: skipped (no parseable inbound listen_port entries)"
     else
@@ -431,23 +439,23 @@ run_health_check() {
         else
           health_fail "Port ${port}/${proto}: not listening (${label})"
         fi
-      done <<<"$port_entries"
+      done <<< "$port_entries"
     fi
   fi
 
   # 4) Certificate expiry checks (manual cert path only)
   if [[ -n "${CERT_FULLCHAIN:-}" ]]; then
     cert_path="${CERT_FULLCHAIN}"
-  elif command -v jq >/dev/null 2>&1 && [[ -f "$config_file" ]]; then
-    cert_path=$(jq -r '.inbounds[]? | .tls.certificate_path? // empty' "$config_file" 2>/dev/null | head -1)
+  elif command -v jq > /dev/null 2>&1 && [[ -f "$config_file" ]]; then
+    cert_path=$(jq -r '.inbounds[]? | .tls.certificate_path? // empty' "$config_file" 2> /dev/null | head -1)
   fi
 
   if [[ -n "$cert_path" ]]; then
     if [[ ! -f "$cert_path" ]]; then
       health_warn "Certificate: path not found (${cert_path})"
-    elif ! command -v openssl >/dev/null 2>&1; then
+    elif ! command -v openssl > /dev/null 2>&1; then
       health_warn "Certificate: cannot check expiry (openssl not available)"
-    elif openssl x509 -in "$cert_path" -checkend "$cert_warning_sec" -noout >/dev/null 2>&1; then
+    elif openssl x509 -in "$cert_path" -checkend "$cert_warning_sec" -noout > /dev/null 2>&1; then
       health_ok "Certificate: valid (${cert_path})"
     else
       health_warn "Certificate: expires within ${HEALTH_CERT_WARNING_DAYS} days (${cert_path})"
@@ -457,9 +465,9 @@ run_health_check() {
   fi
 
   # 5) Deprecated field checks
-  if command -v jq >/dev/null 2>&1 && [[ -f "$config_file" ]]; then
+  if command -v jq > /dev/null 2>&1 && [[ -f "$config_file" ]]; then
     local deprecated_inbounds=''
-    deprecated_inbounds=$(jq -r '.inbounds[]? | select(.sniff != null or .sniff_override_destination != null) | (.tag // .type // "unknown")' "$config_file" 2>/dev/null | paste -sd "," -)
+    deprecated_inbounds=$(jq -r '.inbounds[]? | select(.sniff != null or .sniff_override_destination != null) | (.tag // .type // "unknown")' "$config_file" 2> /dev/null | paste -sd "," -)
     if [[ -n "$deprecated_inbounds" ]]; then
       health_warn "Deprecated fields detected in inbounds: ${deprecated_inbounds}"
     else
@@ -501,10 +509,10 @@ output_status_json() {
   local active=false
   local pid='0'
 
-  if systemctl is-active --quiet sing-box 2>/dev/null; then
+  if systemctl is-active --quiet sing-box 2> /dev/null; then
     active=true
   fi
-  pid=$(systemctl show -p MainPID --value sing-box 2>/dev/null || echo "0")
+  pid=$(systemctl show -p MainPID --value sing-box 2> /dev/null || echo "0")
 
   jq -n \
     --arg command "status" \
@@ -525,7 +533,7 @@ output_check_json() {
 
   if [[ ! -x "${SBX_BIN}" ]]; then
     error_message="sing-box binary not executable: ${SBX_BIN}"
-  elif "${SBX_BIN}" check -c "${SBX_CONFIG_PATH}" >/dev/null 2>&1; then
+  elif "${SBX_BIN}" check -c "${SBX_CONFIG_PATH}" > /dev/null 2>&1; then
     valid=true
   else
     error_message="configuration validation failed"
@@ -570,10 +578,10 @@ output_info_json() {
   HY2_PORT="${HY2_PORT:-8443}"
   HY2_PASS="${HY2_PASS:-}"
 
-  if command -v export_uri >/dev/null 2>&1; then
+  if command -v export_uri > /dev/null 2>&1; then
     uri_real=$(export_uri reality)
-    uri_ws=$(export_uri ws 2>/dev/null || true)
-    uri_hy2=$(export_uri hy2 2>/dev/null || true)
+    uri_ws=$(export_uri ws 2> /dev/null || true)
+    uri_hy2=$(export_uri hy2 2> /dev/null || true)
   else
     uri_real="vless://${UUID:-}@${DOMAIN:-}:${REALITY_PORT}?encryption=none&security=reality&flow=xtls-rprx-vision&sni=${SNI}&pbk=${PUBLIC_KEY:-}&sid=${SHORT_ID:-}&type=tcp&fp=chrome#Reality-${DOMAIN:-}"
     uri_ws="vless://${UUID:-}@${DOMAIN:-}:${WS_PORT}?encryption=none&security=tls&type=ws&host=${DOMAIN:-}&path=/ws&sni=${DOMAIN:-}&fp=chrome#WS-TLS-${DOMAIN:-}"
@@ -665,18 +673,18 @@ output_backup_list_json() {
   while IFS= read -r backup_file; do
     local filename size encrypted mtime
     filename=$(basename "${backup_file}")
-    size=$(stat -c%s "${backup_file}" 2>/dev/null || stat -f%z "${backup_file}" 2>/dev/null || echo "0")
-    if command -v get_file_mtime >/dev/null 2>&1; then
-      mtime=$(get_file_mtime "${backup_file}" 2>/dev/null || echo "")
+    size=$(stat -c%s "${backup_file}" 2> /dev/null || stat -f%z "${backup_file}" 2> /dev/null || echo "0")
+    if command -v get_file_mtime > /dev/null 2>&1; then
+      mtime=$(get_file_mtime "${backup_file}" 2> /dev/null || echo "")
     else
-      mtime=$(stat -c %y "${backup_file}" 2>/dev/null | cut -d' ' -f1,2 | cut -d'.' -f1 ||
-        stat -f %Sm "${backup_file}" 2>/dev/null ||
-        echo "")
+      mtime=$(stat -c %y "${backup_file}" 2> /dev/null | cut -d' ' -f1,2 | cut -d'.' -f1 \
+        || stat -f %Sm "${backup_file}" 2> /dev/null \
+        || echo "")
     fi
     encrypted="false"
     [[ "${filename}" =~ \.enc$ ]] && encrypted="true"
     file_lines+="${filename}"$'\t'"${backup_file}"$'\t'"${size}"$'\t'"${encrypted}"$'\t'"${mtime}"$'\n'
-  done < <(find "${backup_dir}" -name "sbx-backup-*.tar.gz*" -type f 2>/dev/null | sort -r)
+  done < <(find "${backup_dir}" -name "sbx-backup-*.tar.gz*" -type f 2> /dev/null | sort -r)
 
   if [[ -z "${file_lines}" ]]; then
     jq -n --arg command "backup list" '{command: $command, count: 0, backups: []}'
@@ -768,7 +776,7 @@ case "${1:-}" in
     echo "  Short ID  = ${SHORT_ID:-[MISSING]}"
     echo "  UUID      = ${UUID:-[MISSING]}"
     # Use export_uri() if available (DRY), otherwise generate inline
-    if command -v export_uri >/dev/null 2>&1; then
+    if command -v export_uri > /dev/null 2>&1; then
       URI_REAL=$(export_uri reality)
     else
       URI_REAL="vless://${UUID:-}@${DOMAIN:-}:${REALITY_PORT}?encryption=none&security=reality&flow=xtls-rprx-vision&sni=${SNI}&pbk=${PUBLIC_KEY:-}&sid=${SHORT_ID:-}&type=tcp&fp=chrome#Reality-${DOMAIN:-}"
@@ -789,7 +797,7 @@ case "${1:-}" in
       echo "INBOUND   : VLESS-WS-TLS   ${WS_PORT}/tcp"
       echo "  CERT     = ${CERT_FULLCHAIN}"
       # Use export_uri() if available (DRY), otherwise generate inline
-      if command -v export_uri >/dev/null 2>&1; then
+      if command -v export_uri > /dev/null 2>&1; then
         URI_WS=$(export_uri ws)
       else
         URI_WS="vless://${UUID:-}@${DOMAIN:-}:${WS_PORT}?encryption=none&security=tls&type=ws&host=${DOMAIN:-}&path=/ws&sni=${DOMAIN:-}&fp=chrome#WS-TLS-${DOMAIN:-}"
@@ -798,7 +806,7 @@ case "${1:-}" in
       echo
       echo "INBOUND   : Hysteria2      ${HY2_PORT}/udp"
       echo "  CERT     = ${CERT_FULLCHAIN}"
-      if command -v export_uri >/dev/null 2>&1; then
+      if command -v export_uri > /dev/null 2>&1; then
         URI_HY2=$(export_uri hy2)
       else
         URI_HY2="hysteria2://${HY2_PASS}@${DOMAIN:-}:${HY2_PORT}/?sni=${DOMAIN:-}&alpn=h3&insecure=0#Hysteria2-${DOMAIN:-}"
@@ -809,7 +817,7 @@ case "${1:-}" in
     echo -e "${Y}Notes${N}: Reality/Hy2 suggest gray cloud; WS-TLS can use gray/orange cloud."
 
     # Optional: Generate QR codes
-    if command -v qrencode >/dev/null 2>&1; then
+    if command -v qrencode > /dev/null 2>&1; then
       echo
       echo -e "${CYAN}Commands:${N}"
       echo -e "  ${G}sbx qr${N}         - Show QR codes"
@@ -818,7 +826,7 @@ case "${1:-}" in
     ;;
 
   qr)
-    if ! command -v qrencode >/dev/null 2>&1; then
+    if ! command -v qrencode > /dev/null 2>&1; then
       echo -e "${R}[ERR]${N} qrencode not installed. Install with: apt install qrencode"
       exit 1
     fi
@@ -833,13 +841,13 @@ case "${1:-}" in
       echo -e "${G}VLESS-REALITY:${N}"
       echo "┌─────────────────────────────────────┐"
       # Use export_uri() if available (DRY), otherwise generate inline
-      if command -v export_uri >/dev/null 2>&1; then
+      if command -v export_uri > /dev/null 2>&1; then
         URI_REAL=$(export_uri reality)
       else
         # Fallback: inline URI generation
         URI_REAL="vless://${UUID}@${DOMAIN}:${REALITY_PORT}?encryption=none&security=reality&flow=xtls-rprx-vision&sni=${SNI}&pbk=${PUBLIC_KEY}&sid=${SHORT_ID}&type=tcp&fp=chrome#Reality-${DOMAIN}"
       fi
-      qrencode -t UTF8 -m 0 "$URI_REAL" 2>/dev/null || echo "QR code generation failed"
+      qrencode -t UTF8 -m 0 "$URI_REAL" 2> /dev/null || echo "QR code generation failed"
       echo "└─────────────────────────────────────┘"
     fi
 
@@ -848,23 +856,23 @@ case "${1:-}" in
       echo
       echo -e "${G}VLESS-WS-TLS:${N}"
       echo "┌─────────────────────────────────────┐"
-      if command -v export_uri >/dev/null 2>&1; then
+      if command -v export_uri > /dev/null 2>&1; then
         URI_WS=$(export_uri ws)
       else
         URI_WS="vless://${UUID}@${DOMAIN}:${WS_PORT}?encryption=none&security=tls&type=ws&host=${DOMAIN}&path=/ws&sni=${DOMAIN}&fp=chrome#WS-TLS-${DOMAIN}"
       fi
-      qrencode -t UTF8 -m 0 "$URI_WS" 2>/dev/null || echo "QR code generation failed"
+      qrencode -t UTF8 -m 0 "$URI_WS" 2> /dev/null || echo "QR code generation failed"
       echo "└─────────────────────────────────────┘"
 
       echo
       echo -e "${G}Hysteria2:${N}"
       echo "┌─────────────────────────────────────┐"
-      if command -v export_uri >/dev/null 2>&1; then
+      if command -v export_uri > /dev/null 2>&1; then
         URI_HY2=$(export_uri hy2)
       else
         URI_HY2="hysteria2://${HY2_PASS}@${DOMAIN}:${HY2_PORT}/?sni=${DOMAIN}&alpn=h3&insecure=0#Hysteria2-${DOMAIN}"
       fi
-      qrencode -t UTF8 -m 0 "$URI_HY2" 2>/dev/null || echo "QR code generation failed"
+      qrencode -t UTF8 -m 0 "$URI_HY2" 2> /dev/null || echo "QR code generation failed"
       echo "└─────────────────────────────────────┘"
     fi
 
@@ -873,7 +881,7 @@ case "${1:-}" in
     ;;
 
   backup)
-    if ! command -v backup_create >/dev/null 2>&1; then
+    if ! command -v backup_create > /dev/null 2>&1; then
       echo -e "${R}[ERR]${N} Backup module not loaded. Please reinstall sbx-lite."
       exit 1
     fi
@@ -913,7 +921,7 @@ case "${1:-}" in
     ;;
 
   export)
-    if ! command -v export_config >/dev/null 2>&1; then
+    if ! command -v export_config > /dev/null 2>&1; then
       echo -e "${R}[ERR]${N} Export module not loaded. Please reinstall sbx-lite."
       exit 1
     fi
@@ -995,9 +1003,9 @@ case "${1:-}" in
       output_check_json
     else
       echo -e "${CYAN}Checking configuration...${N}"
-      "${SBX_BIN}" check -c "${SBX_CONFIG_PATH}" &&
-        echo -e "${G}✓ Configuration valid${N}" ||
-        echo -e "${R}✗ Configuration invalid${N}"
+      "${SBX_BIN}" check -c "${SBX_CONFIG_PATH}" \
+        && echo -e "${G}✓ Configuration valid${N}" \
+        || echo -e "${R}✗ Configuration invalid${N}"
     fi
     ;;
 
@@ -1038,11 +1046,11 @@ case "${1:-}" in
 
     echo
     echo -e "${G}[*]${N} Stopping and disabling sing-box service..."
-    systemctl disable --now sing-box 2>/dev/null || true
+    systemctl disable --now sing-box 2> /dev/null || true
 
     # Wait for service to stop
     retry=0
-    while systemctl is-active sing-box >/dev/null 2>&1 && [[ ${retry} -lt 10 ]]; do
+    while systemctl is-active sing-box > /dev/null 2>&1 && [[ ${retry} -lt 10 ]]; do
       sleep 1
       ((retry++))
     done
@@ -1055,6 +1063,72 @@ case "${1:-}" in
 
     echo
     echo -e "${G}✓${N} sing-box uninstalled successfully"
+    ;;
+
+  user)
+    if ! declare -f user_add > /dev/null 2>&1; then
+      echo -e "${R}[ERR]${N} User management module not loaded. Please reinstall sbx-lite."
+      exit 1
+    fi
+
+    case "${2:-}" in
+      add)
+        if [[ "$(id -u)" -ne 0 ]]; then
+          echo -e "${R}[ERR]${N} Please run as root (sudo sbx user add)"
+          exit 1
+        fi
+        shift 2
+        user_add "$@" || exit 1
+        if sync_users_to_config 2> /dev/null; then
+          systemctl restart sing-box 2> /dev/null \
+            && echo -e "${G}✓${N} Service restarted with updated user list" \
+            || true
+        fi
+        ;;
+      list)
+        user_list
+        ;;
+      remove)
+        if [[ "$(id -u)" -ne 0 ]]; then
+          echo -e "${R}[ERR]${N} Please run as root (sudo sbx user remove)"
+          exit 1
+        fi
+        [[ -n "${3:-}" ]] || {
+          echo -e "${R}[ERR]${N} Usage: sbx user remove <UUID|NAME>"
+          exit 1
+        }
+        user_remove "${3}" || exit 1
+        if sync_users_to_config 2> /dev/null; then
+          systemctl restart sing-box 2> /dev/null \
+            && echo -e "${G}✓${N} Service restarted" \
+            || true
+        fi
+        ;;
+      reset)
+        if [[ "$(id -u)" -ne 0 ]]; then
+          echo -e "${R}[ERR]${N} Please run as root (sudo sbx user reset)"
+          exit 1
+        fi
+        [[ -n "${3:-}" ]] || {
+          echo -e "${R}[ERR]${N} Usage: sbx user reset <UUID|NAME>"
+          exit 1
+        }
+        user_reset "${3}" || exit 1
+        if sync_users_to_config 2> /dev/null; then
+          systemctl restart sing-box 2> /dev/null \
+            && echo -e "${G}✓${N} Service restarted" \
+            || true
+        fi
+        ;;
+      *)
+        echo -e "${Y}Usage:${N}"
+        echo "  sbx user add [--name NAME]    Add a new user"
+        echo "  sbx user list                 List all users"
+        echo "  sbx user remove <UUID|NAME>   Remove a user"
+        echo "  sbx user reset <UUID|NAME>    Regenerate user credentials"
+        exit 1
+        ;;
+    esac
     ;;
 
   help | --help | -h | "")
