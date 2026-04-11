@@ -48,7 +48,7 @@ _load_users() {
 
   # Prefer structured users array
   local users=''
-  users=$(jq -r '.protocols.reality.users // empty' "${state_file}" 2> /dev/null || true)
+  users=$(jq -r '.protocols.reality.users // empty' "${state_file}" 2>/dev/null || true)
 
   if [[ -n "${users}" && "${users}" != "null" ]]; then
     echo "${users}"
@@ -57,11 +57,11 @@ _load_users() {
 
   # Legacy migration: wrap single uuid in a users array
   local legacy_uuid=''
-  legacy_uuid=$(jq -r '.protocols.reality.uuid // empty' "${state_file}" 2> /dev/null || true)
+  legacy_uuid=$(jq -r '.protocols.reality.uuid // empty' "${state_file}" 2>/dev/null || true)
 
   if [[ -n "${legacy_uuid}" ]]; then
     local installed_at=''
-    installed_at=$(jq -r '.installed_at // empty' "${state_file}" 2> /dev/null || true)
+    installed_at=$(jq -r '.installed_at // empty' "${state_file}" 2>/dev/null || true)
     jq -n \
       --arg uuid "${legacy_uuid}" \
       --arg created_at "${installed_at}" \
@@ -88,7 +88,7 @@ _save_users() {
   fi
 
   local first_uuid=''
-  first_uuid=$(echo "${users_json}" | jq -r '.[0].uuid // empty' 2> /dev/null || true)
+  first_uuid=$(echo "${users_json}" | jq -r '.[0].uuid // empty' 2>/dev/null || true)
 
   local tmp_file=''
   tmp_file=$(mktemp "${state_file}.XXXXXX")
@@ -98,11 +98,11 @@ _save_users() {
     --arg first_uuid "${first_uuid}" \
     '.protocols.reality.users = $users |
      if $first_uuid != "" then .protocols.reality.uuid = $first_uuid else . end' \
-    "${state_file}" > "${tmp_file}" 2> /dev/null; then
+    "${state_file}" >"${tmp_file}" 2>/dev/null; then
     chmod 600 "${tmp_file}"
     # Skip ownership enforcement in test mode (TEST_STATE_FILE set)
     if [[ -z "${TEST_STATE_FILE:-}" ]]; then
-      chown root:root "${tmp_file}" 2> /dev/null || true
+      chown root:root "${tmp_file}" 2>/dev/null || true
     fi
     mv "${tmp_file}" "${state_file}"
   else
@@ -158,7 +158,7 @@ user_add() {
 
   # Check name uniqueness
   local existing=''
-  existing=$(echo "${users}" | jq -r --arg name "${name}" '.[] | select(.name == $name) | .name' 2> /dev/null || true)
+  existing=$(echo "${users}" | jq -r --arg name "${name}" '.[] | select(.name == $name) | .name' 2>/dev/null || true)
   if [[ -n "${existing}" ]]; then
     err "User with name '${name}' already exists"
     return 1
@@ -171,7 +171,7 @@ user_add() {
   }
 
   local created_at=''
-  created_at=$(date -Iseconds 2> /dev/null || date)
+  created_at=$(date -Iseconds 2>/dev/null || date)
 
   local new_user=''
   new_user=$(jq -n \
@@ -236,7 +236,7 @@ user_remove() {
   # Find user and remove in one pass
   local found_info=''
   found_info=$(echo "${users}" | jq -r --arg id "${id}" \
-    '(.[] | select(.uuid == $id or .name == $id) | [(.name // "?"), .uuid]) | @tsv' 2> /dev/null | head -1 || true)
+    '(.[] | select(.uuid == $id or .name == $id) | [(.name // "?"), .uuid]) | @tsv' 2>/dev/null | head -1 || true)
 
   if [[ -z "${found_info}" ]]; then
     err "User not found: ${id}"
@@ -244,7 +244,7 @@ user_remove() {
   fi
 
   local found_name='' found_uuid=''
-  IFS=$'\t' read -r found_name found_uuid <<< "${found_info}"
+  IFS=$'\t' read -r found_name found_uuid <<<"${found_info}"
 
   local updated_users=''
   updated_users=$(echo "${users}" | jq --arg id "${id}" \
@@ -272,7 +272,7 @@ user_reset() {
   # Find user by UUID or name
   local found_info=''
   found_info=$(echo "${users}" | jq -r --arg id "${id}" \
-    '(.[] | select(.uuid == $id or .name == $id) | [(.name // "?"), .uuid]) | @tsv' 2> /dev/null | head -1 || true)
+    '(.[] | select(.uuid == $id or .name == $id) | [(.name // "?"), .uuid]) | @tsv' 2>/dev/null | head -1 || true)
 
   if [[ -z "${found_info}" ]]; then
     err "User not found: ${id}"
@@ -280,7 +280,7 @@ user_reset() {
   fi
 
   local found_name='' old_uuid=''
-  IFS=$'\t' read -r found_name old_uuid <<< "${found_info}"
+  IFS=$'\t' read -r found_name old_uuid <<<"${found_info}"
 
   local new_uuid=''
   new_uuid=$(generate_uuid) || {
@@ -342,7 +342,7 @@ sync_users_to_config() {
     '$cfg[0] |
      (.inbounds[] | select(.tag == "in-reality") | .users) = input.reality |
      (.inbounds[] | select(.tag == "in-ws") | .users) = input.ws' \
-    > "${tmp_file}" 2> /dev/null; then
+    >"${tmp_file}" 2>/dev/null; then
     chmod 600 "${tmp_file}"
     mv "${tmp_file}" "${config_file}"
     return 0

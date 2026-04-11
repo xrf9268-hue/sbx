@@ -115,7 +115,7 @@ get_file_size() {
   # Cross-platform file size retrieval
   # Linux: stat -c%s
   # BSD/macOS: stat -f%z
-  stat -c%s "${file}" 2> /dev/null || stat -f%z "${file}" 2> /dev/null || echo "0"
+  stat -c%s "${file}" 2>/dev/null || stat -f%z "${file}" 2>/dev/null || echo "0"
 }
 
 # Temporary create_temp_dir implementation for bootstrapping
@@ -124,14 +124,14 @@ create_temp_dir() {
   local prefix="${1:-sbx}"
   local temp_dir=''
 
-  if ! temp_dir=$(mktemp -d -t "${prefix}.XXXXXX" 2> /dev/null); then
+  if ! temp_dir=$(mktemp -d -t "${prefix}.XXXXXX" 2>/dev/null); then
     echo "ERROR: Failed to create temporary directory" >&2
     return 1
   fi
 
-  chmod "${SECURE_DIR_PERMISSIONS}" "${temp_dir}" 2> /dev/null || {
+  chmod "${SECURE_DIR_PERMISSIONS}" "${temp_dir}" 2>/dev/null || {
     echo "ERROR: Failed to set permissions on temporary directory: ${temp_dir}" >&2
-    rm -rf "${temp_dir}" 2> /dev/null || true
+    rm -rf "${temp_dir}" 2>/dev/null || true
     return 1
   }
 
@@ -141,7 +141,7 @@ create_temp_dir() {
 
 # Print usage help (must work before module loading)
 _print_help() {
-  cat << 'EOF'
+  cat <<'EOF'
 sbx-lite sing-box installer
 
 Usage:
@@ -194,13 +194,13 @@ _download_single_module() {
   [[ "${DEBUG:-0}" == "1" ]] && echo "DEBUG: Downloading ${module} from ${module_url}" >&2
 
   # Download module
-  if command -v curl > /dev/null 2>&1; then
+  if command -v curl >/dev/null 2>&1; then
     if ! curl -fsSL --connect-timeout "${DOWNLOAD_CONNECT_TIMEOUT_SEC}" --max-time "${DOWNLOAD_MAX_TIMEOUT_SEC}" "${module_url}" -o "${module_file}" 2>&1; then
       echo "DOWNLOAD_FAILED:${module}" >&2
       [[ "${DEBUG:-0}" == "1" ]] && echo "DEBUG: curl failed for ${module}" >&2
       return 1
     fi
-  elif command -v wget > /dev/null 2>&1; then
+  elif command -v wget >/dev/null 2>&1; then
     if ! wget -q --timeout="${DOWNLOAD_MAX_TIMEOUT_SEC}" "${module_url}" -O "${module_file}" 2>&1; then
       echo "DOWNLOAD_FAILED:${module}" >&2
       [[ "${DEBUG:-0}" == "1" ]] && echo "DEBUG: wget failed for ${module}" >&2
@@ -229,7 +229,7 @@ _download_single_module() {
   fi
 
   # Validate bash syntax
-  if ! bash -n "${module_file}" 2> /dev/null; then
+  if ! bash -n "${module_file}" 2>/dev/null; then
     echo "SYNTAX_ERROR:${module}" >&2
     [[ "${DEBUG:-0}" == "1" ]] && echo "DEBUG: Syntax check failed for ${module}" >&2
     return 1
@@ -324,15 +324,15 @@ _download_modules_sequential() {
     printf "  [%d/%d] Downloading %s..." "${current}" "${total}" "${module}.sh"
 
     # Download
-    if command -v curl > /dev/null 2>&1; then
-      if ! curl -fsSL --connect-timeout "${DOWNLOAD_CONNECT_TIMEOUT_SEC}" --max-time "${DOWNLOAD_MAX_TIMEOUT_SEC}" "${module_url}" -o "${module_file}" 2> /dev/null; then
+    if command -v curl >/dev/null 2>&1; then
+      if ! curl -fsSL --connect-timeout "${DOWNLOAD_CONNECT_TIMEOUT_SEC}" --max-time "${DOWNLOAD_MAX_TIMEOUT_SEC}" "${module_url}" -o "${module_file}" 2>/dev/null; then
         echo " ✗ FAILED"
         rm -rf "${temp_lib_dir}"
         _show_download_error_help "${module}" "${module_url}"
         return 1
       fi
-    elif command -v wget > /dev/null 2>&1; then
-      if ! wget -q --timeout="${DOWNLOAD_MAX_TIMEOUT_SEC}" "${module_url}" -O "${module_file}" 2> /dev/null; then
+    elif command -v wget >/dev/null 2>&1; then
+      if ! wget -q --timeout="${DOWNLOAD_MAX_TIMEOUT_SEC}" "${module_url}" -O "${module_file}" 2>/dev/null; then
         echo " ✗ FAILED"
         rm -rf "${temp_lib_dir}"
         _show_download_error_help "${module}" "${module_url}"
@@ -356,7 +356,7 @@ _download_modules_sequential() {
       return 1
     fi
 
-    if ! bash -n "${module_file}" 2> /dev/null; then
+    if ! bash -n "${module_file}" 2>/dev/null; then
       echo " ✗ SYNTAX ERROR"
       rm -rf "${temp_lib_dir}"
       _show_syntax_error "${module}"
@@ -449,15 +449,15 @@ _download_and_validate_manager_script() {
   [[ "${DEBUG:-0}" == "1" ]] && echo "DEBUG: Creating ${installer_dir}/bin directory" >&2
   mkdir -p "${installer_dir}/bin"
 
-  if command -v curl > /dev/null 2>&1; then
+  if command -v curl >/dev/null 2>&1; then
     [[ "${DEBUG:-0}" == "1" ]] && echo "DEBUG: Downloading sbx-manager.sh via curl from ${manager_url}" >&2
     if curl -fsSL --connect-timeout "${DOWNLOAD_CONNECT_TIMEOUT_SEC}" \
-      --max-time "${DOWNLOAD_MAX_TIMEOUT_SEC}" "${manager_url}" -o "${manager_file}" 2> /dev/null; then
+      --max-time "${DOWNLOAD_MAX_TIMEOUT_SEC}" "${manager_url}" -o "${manager_file}" 2>/dev/null; then
       download_success=1
     fi
-  elif command -v wget > /dev/null 2>&1; then
+  elif command -v wget >/dev/null 2>&1; then
     [[ "${DEBUG:-0}" == "1" ]] && echo "DEBUG: Downloading sbx-manager.sh via wget from ${manager_url}" >&2
-    if wget -q --timeout="${DOWNLOAD_MAX_TIMEOUT_SEC}" "${manager_url}" -O "${manager_file}" 2> /dev/null; then
+    if wget -q --timeout="${DOWNLOAD_MAX_TIMEOUT_SEC}" "${manager_url}" -O "${manager_file}" 2>/dev/null; then
       download_success=1
     fi
   else
@@ -487,7 +487,7 @@ _download_and_validate_manager_script() {
     return 1
   fi
 
-  if ! bash -n "${manager_file}" 2> /dev/null; then
+  if ! bash -n "${manager_file}" 2>/dev/null; then
     echo "ERROR: Invalid bash syntax in downloaded sbx-manager.sh"
     echo "       File may be corrupted."
     return 1
@@ -527,7 +527,7 @@ _load_modules() {
     fi
 
     # Download modules (parallel with fallback to sequential on failure)
-    if [[ ${use_parallel} -eq 1 ]] && command -v xargs > /dev/null 2>&1; then
+    if [[ ${use_parallel} -eq 1 ]] && command -v xargs >/dev/null 2>&1; then
       # Try parallel download first
       if ! _download_modules_parallel "${temp_lib_dir}" "${github_repo}" "${modules[@]}"; then
         # Parallel failed, fallback to sequential
@@ -644,7 +644,7 @@ _verify_module_apis() {
     local missing_functions=()
 
     for func in ${required_functions}; do
-      if ! declare -F "${func}" > /dev/null 2>&1; then
+      if ! declare -F "${func}" >/dev/null 2>&1; then
         missing_functions+=("${func}")
         all_ok=false
       fi
@@ -736,8 +736,8 @@ detect_libc() {
   fi
 
   # Method 2: Parse ldd output
-  if command -v ldd > /dev/null 2>&1; then
-    if ldd /bin/sh 2> /dev/null | grep -q musl; then
+  if command -v ldd >/dev/null 2>&1; then
+    if ldd /bin/sh 2>/dev/null | grep -q musl; then
       msg "Detected musl libc via ldd"
       echo "-musl"
       return
@@ -763,7 +763,7 @@ get_installed_version() {
   local version=''
   if [[ -x "${SB_BIN}" ]]; then
     # Match version with or without 'v' prefix (e.g., "v1.12.12" or "1.12.12")
-    version=$("${SB_BIN}" version 2> /dev/null | head -1 | grep -oE 'v?[0-9]+\.[0-9]+\.[0-9]+' || echo "unknown")
+    version=$("${SB_BIN}" version 2>/dev/null | head -1 | grep -oE 'v?[0-9]+\.[0-9]+\.[0-9]+' || echo "unknown")
 
     # Ensure version has 'v' prefix for consistency with the rest of the codebase
     if [[ "${version}" != "unknown" && "${version}" != v* ]]; then
@@ -813,8 +813,8 @@ compare_versions() {
   fi
 
   # Semantic version comparison (major.minor.patch)
-  IFS='.' read -r -a current_parts <<< "${current}"
-  IFS='.' read -r -a latest_parts <<< "${latest}"
+  IFS='.' read -r -a current_parts <<<"${current}"
+  IFS='.' read -r -a latest_parts <<<"${latest}"
 
   # Compare each component
   for i in 0 1 2; do
@@ -1091,7 +1091,7 @@ download_singbox() {
   # Stop service before replacing binary (prevents "Text file busy" error)
   # The service will be restarted by setup_service or restart_service in main flow
   local service_was_running=0
-  if check_service_status 2> /dev/null; then
+  if check_service_status 2>/dev/null; then
     msg "Stopping sing-box service for binary replacement..."
     stop_service
     service_was_running=1
@@ -1100,7 +1100,7 @@ download_singbox() {
   cp "${extracted_bin}" "${SB_BIN}" || {
     rm -rf "${tmp}"
     # Try to restart service if we stopped it
-    [[ "${service_was_running}" -eq 1 ]] && start_service_with_retry 2> /dev/null
+    [[ "${service_was_running}" -eq 1 ]] && start_service_with_retry 2>/dev/null
     die_with_code "SBX-DOWNLOAD-008" "Failed to install sing-box binary to target path." \
       "Check filesystem permissions and mount flags for /usr/local/bin." \
       "ls -ld /usr/local/bin && id"
@@ -1254,7 +1254,7 @@ _configure_reality_sni() {
     return 0
   fi
 
-  if ! command -v select_reality_sni_domain > /dev/null 2>&1; then
+  if ! command -v select_reality_sni_domain >/dev/null 2>&1; then
     warn "SNI probe helper unavailable, using ${preferred_sni}"
     export SNI="${preferred_sni}"
     return 0
@@ -1293,7 +1293,7 @@ _generate_credentials() {
     "Ensure openssl is available and retry." \
     "openssl rand -hex 32"
   export PRIV PUB
-  read -r PRIV PUB <<< "${keypair}"
+  read -r PRIV PUB <<<"${keypair}"
   success "  ✓ Reality keypair generated"
 
   export SID
@@ -1386,7 +1386,7 @@ gen_materials() {
 save_client_info() {
   msg "Saving client information..."
 
-  cat > "${CLIENT_INFO}" << EOF
+  cat >"${CLIENT_INFO}" <<EOF
 # sing-box client configuration
 # Generated: $(date)
 
@@ -1400,34 +1400,34 @@ EOF
 
   if [[ "${REALITY_ONLY_MODE:-0}" != "1" ]]; then
     if [[ "${ENABLE_WS:-0}" == "1" ]]; then
-      cat >> "${CLIENT_INFO}" << EOF
+      cat >>"${CLIENT_INFO}" <<EOF
 WS_PORT="${WS_PORT_CHOSEN}"
 EOF
     fi
 
     if [[ "${ENABLE_HY2:-0}" == "1" ]]; then
-      cat >> "${CLIENT_INFO}" << EOF
+      cat >>"${CLIENT_INFO}" <<EOF
 HY2_PORT="${HY2_PORT_CHOSEN}"
 HY2_PASS="${HY2_PASS}"
 EOF
     fi
 
     if [[ "${ENABLE_TUIC:-0}" == "1" ]]; then
-      cat >> "${CLIENT_INFO}" << EOF
+      cat >>"${CLIENT_INFO}" <<EOF
 TUIC_PORT="${TUIC_PORT_CHOSEN}"
 TUIC_PASS="${TUIC_PASS}"
 EOF
     fi
 
     if [[ "${ENABLE_TROJAN:-0}" == "1" ]]; then
-      cat >> "${CLIENT_INFO}" << EOF
+      cat >>"${CLIENT_INFO}" <<EOF
 TROJAN_PORT="${TROJAN_PORT_CHOSEN}"
 TROJAN_PASS="${TROJAN_PASS}"
 EOF
     fi
 
     if [[ -n "${CERT_FULLCHAIN:-}" || -n "${CERT_KEY:-}" ]]; then
-      cat >> "${CLIENT_INFO}" << EOF
+      cat >>"${CLIENT_INFO}" <<EOF
 CERT_FULLCHAIN="${CERT_FULLCHAIN}"
 CERT_KEY="${CERT_KEY}"
 EOF
@@ -1457,10 +1457,10 @@ save_state_info() {
   local hy2_pass=''
 
   [[ "${REALITY_ONLY_MODE:-0}" == "1" ]] && mode="reality_only"
-  installed_at=$(date -Iseconds 2> /dev/null || date)
-  resolved_version=$(get_installed_version 2> /dev/null || echo "")
+  installed_at=$(date -Iseconds 2>/dev/null || date)
+  resolved_version=$(get_installed_version 2>/dev/null || echo "")
 
-  if validate_ip_address "${DOMAIN}" > /dev/null 2>&1; then
+  if validate_ip_address "${DOMAIN}" >/dev/null 2>&1; then
     server_ip="${DOMAIN}"
   else
     server_domain="${DOMAIN}"
@@ -1576,7 +1576,7 @@ save_state_info() {
           password: (if $trojan_enabled and $trojan_pass != "" then $trojan_pass else null end)
         }
       }
-    }' > "${state_file}"
+    }' >"${state_file}"
 
   chmod "${SECURE_FILE_PERMISSIONS}" "${state_file}"
   success "  ✓ State saved to: ${state_file}"
@@ -1649,7 +1649,7 @@ install_manager_script() {
     err "Creating minimal fallback version (limited functionality)..."
 
     # Fallback to inline version if template not found
-    cat > /usr/local/bin/sbx-manager << 'EOF'
+    cat >/usr/local/bin/sbx-manager <<'EOF'
 #!/bin/bash
 case "$1" in
     info)
@@ -1702,15 +1702,15 @@ open_firewall() {
   # Try different firewall managers
   if have firewall-cmd; then
     for port in "${ports_to_open[@]}"; do
-      firewall-cmd --permanent --add-port="${port}/tcp" 2> /dev/null || true
-      _is_udp_port "${port}" && firewall-cmd --permanent --add-port="${port}/udp" 2> /dev/null || true
+      firewall-cmd --permanent --add-port="${port}/tcp" 2>/dev/null || true
+      _is_udp_port "${port}" && firewall-cmd --permanent --add-port="${port}/udp" 2>/dev/null || true
     done
-    firewall-cmd --reload 2> /dev/null || true
+    firewall-cmd --reload 2>/dev/null || true
     success "  ✓ Firewall configured (firewalld)"
   elif have ufw; then
     for port in "${ports_to_open[@]}"; do
-      ufw allow "${port}/tcp" 2> /dev/null || true
-      _is_udp_port "${port}" && ufw allow "${port}/udp" 2> /dev/null || true
+      ufw allow "${port}/tcp" 2>/dev/null || true
+      _is_udp_port "${port}" && ufw allow "${port}/udp" 2>/dev/null || true
     done
     success "  ✓ Firewall configured (ufw)"
   else
@@ -1848,7 +1848,7 @@ dry_run_flow() {
     export REALITY_ONLY_MODE=1
     mode_desc="Reality-only (no domain specified)"
     display_domain="<auto-detect during install>"
-  elif validate_ip_address "${DOMAIN}" > /dev/null 2>&1; then
+  elif validate_ip_address "${DOMAIN}" >/dev/null 2>&1; then
     export REALITY_ONLY_MODE=1
     mode_desc="Reality-only (ip: ${DOMAIN})"
     display_domain="${DOMAIN}"
@@ -1911,7 +1911,7 @@ dry_run_flow() {
     echo "  Certificates: ${cert_desc}"
   fi
 
-  arch_desc=$(uname -m 2> /dev/null || echo "unknown")
+  arch_desc=$(uname -m 2>/dev/null || echo "unknown")
   echo "  SNI: ${sni_preview} (validated during real install)"
   echo "  Binary: sing-box ${SINGBOX_VERSION:-stable} (${arch_desc})"
   echo "  Config: ${SB_CONF}"

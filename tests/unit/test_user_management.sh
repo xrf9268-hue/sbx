@@ -12,12 +12,12 @@ set -o pipefail
 
 # Source dependencies in order
 # shellcheck source=/dev/null
-source "${PROJECT_ROOT}/lib/common.sh" 2> /dev/null || {
+source "${PROJECT_ROOT}/lib/common.sh" 2>/dev/null || {
   echo "ERROR: Failed to load lib/common.sh"
   exit 1
 }
 # shellcheck source=/dev/null
-source "${PROJECT_ROOT}/lib/users.sh" 2> /dev/null || {
+source "${PROJECT_ROOT}/lib/users.sh" 2>/dev/null || {
   echo "ERROR: Failed to load lib/users.sh"
   exit 1
 }
@@ -53,7 +53,7 @@ test_result() {
 _make_legacy_state() {
   local f="$1"
   local uuid="${2:-aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee}"
-  cat > "${f}" << JSON
+  cat >"${f}" <<JSON
 {
   "version": "1.0",
   "installed_at": "2026-01-01T00:00:00Z",
@@ -77,7 +77,7 @@ JSON
 # Create a temporary state file pre-populated with a users array
 _make_state_with_users() {
   local f="$1"
-  cat > "${f}" << 'JSON'
+  cat >"${f}" <<'JSON'
 {
   "version": "1.0",
   "installed_at": "2026-01-01T00:00:00Z",
@@ -115,25 +115,25 @@ test_legacy_migration() {
   export TEST_STATE_FILE="${tmp}"
 
   local users
-  users=$(_load_users 2> /dev/null) || true
+  users=$(_load_users 2>/dev/null) || true
 
   # Should produce a one-element array with name "default"
   local count name uuid
-  count=$(echo "${users}" | jq 'length' 2> /dev/null || echo 0)
-  name=$(echo "${users}" | jq -r '.[0].name // empty' 2> /dev/null || true)
-  uuid=$(echo "${users}" | jq -r '.[0].uuid // empty' 2> /dev/null || true)
+  count=$(echo "${users}" | jq 'length' 2>/dev/null || echo 0)
+  name=$(echo "${users}" | jq -r '.[0].name // empty' 2>/dev/null || true)
+  uuid=$(echo "${users}" | jq -r '.[0].uuid // empty' 2>/dev/null || true)
 
-  [[ "${count}" -eq 1 ]] \
-    && test_result "migrates single legacy UUID to array" "pass" \
-    || test_result "migrates single legacy UUID to array (count=${count})" "fail"
+  [[ "${count}" -eq 1 ]] &&
+    test_result "migrates single legacy UUID to array" "pass" ||
+    test_result "migrates single legacy UUID to array (count=${count})" "fail"
 
-  [[ "${name}" == "default" ]] \
-    && test_result "auto-names migrated user 'default'" "pass" \
-    || test_result "auto-names migrated user 'default' (got '${name}')" "fail"
+  [[ "${name}" == "default" ]] &&
+    test_result "auto-names migrated user 'default'" "pass" ||
+    test_result "auto-names migrated user 'default' (got '${name}')" "fail"
 
-  [[ "${uuid}" == "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee" ]] \
-    && test_result "preserves legacy UUID value" "pass" \
-    || test_result "preserves legacy UUID value (got '${uuid}')" "fail"
+  [[ "${uuid}" == "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee" ]] &&
+    test_result "preserves legacy UUID value" "pass" ||
+    test_result "preserves legacy UUID value (got '${uuid}')" "fail"
 
   unset TEST_STATE_FILE
   rm -f "${tmp}"
@@ -152,12 +152,12 @@ test_user_add_generates_uuid() {
   _make_state_with_users "${tmp}"
   export TEST_STATE_FILE="${tmp}"
 
-  user_add --name "bob" > /dev/null 2>&1
+  user_add --name "bob" >/dev/null 2>&1
 
   local users
-  users=$(_load_users 2> /dev/null) || true
+  users=$(_load_users 2>/dev/null) || true
   local bob_uuid
-  bob_uuid=$(echo "${users}" | jq -r '.[] | select(.name == "bob") | .uuid' 2> /dev/null || true)
+  bob_uuid=$(echo "${users}" | jq -r '.[] | select(.name == "bob") | .uuid' 2>/dev/null || true)
 
   if [[ "${bob_uuid}" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]]; then
     test_result "generates valid UUID for new user" "pass"
@@ -178,16 +178,16 @@ test_user_add_custom_name() {
   _make_state_with_users "${tmp}"
   export TEST_STATE_FILE="${tmp}"
 
-  user_add --name "carol" > /dev/null 2>&1
+  user_add --name "carol" >/dev/null 2>&1
 
   local users
-  users=$(_load_users 2> /dev/null) || true
+  users=$(_load_users 2>/dev/null) || true
   local found
-  found=$(echo "${users}" | jq -r '.[] | select(.name == "carol") | .name' 2> /dev/null || true)
+  found=$(echo "${users}" | jq -r '.[] | select(.name == "carol") | .name' 2>/dev/null || true)
 
-  [[ "${found}" == "carol" ]] \
-    && test_result "stores user with given name" "pass" \
-    || test_result "stores user with given name (found='${found}')" "fail"
+  [[ "${found}" == "carol" ]] &&
+    test_result "stores user with given name" "pass" ||
+    test_result "stores user with given name (found='${found}')" "fail"
 
   unset TEST_STATE_FILE
   rm -f "${tmp}"
@@ -203,16 +203,16 @@ test_user_add_auto_name() {
   export TEST_STATE_FILE="${tmp}"
 
   # First add should become user2 (default is user1 from migration)
-  user_add > /dev/null 2>&1
+  user_add >/dev/null 2>&1
 
   local users
-  users=$(_load_users 2> /dev/null) || true
+  users=$(_load_users 2>/dev/null) || true
   local found
-  found=$(echo "${users}" | jq -r '.[] | select(.name == "user2") | .name' 2> /dev/null || true)
+  found=$(echo "${users}" | jq -r '.[] | select(.name == "user2") | .name' 2>/dev/null || true)
 
-  [[ "${found}" == "user2" ]] \
-    && test_result "auto-names second user 'user2'" "pass" \
-    || test_result "auto-names second user 'user2' (found='${found}')" "fail"
+  [[ "${found}" == "user2" ]] &&
+    test_result "auto-names second user 'user2'" "pass" ||
+    test_result "auto-names second user 'user2' (found='${found}')" "fail"
 
   unset TEST_STATE_FILE
   rm -f "${tmp}"
@@ -233,12 +233,12 @@ test_user_add_duplicate_name_fails() {
 
   # Count should still be 1
   local users count
-  users=$(_load_users 2> /dev/null) || true
-  count=$(echo "${users}" | jq 'length' 2> /dev/null || echo 0)
+  users=$(_load_users 2>/dev/null) || true
+  count=$(echo "${users}" | jq 'length' 2>/dev/null || echo 0)
 
-  [[ "${count}" -eq 1 ]] \
-    && test_result "rejects duplicate name and leaves count unchanged" "pass" \
-    || test_result "rejects duplicate name (count=${count}, expected 1)" "fail"
+  [[ "${count}" -eq 1 ]] &&
+    test_result "rejects duplicate name and leaves count unchanged" "pass" ||
+    test_result "rejects duplicate name (count=${count}, expected 1)" "fail"
 
   unset TEST_STATE_FILE
   rm -f "${tmp}"
@@ -258,19 +258,19 @@ test_user_list_shows_table() {
   export TEST_STATE_FILE="${tmp}"
 
   local output
-  output=$(user_list 2> /dev/null) || true
+  output=$(user_list 2>/dev/null) || true
 
-  echo "${output}" | grep -q "NAME" \
-    && test_result "output contains NAME header" "pass" \
-    || test_result "output contains NAME header" "fail"
+  echo "${output}" | grep -q "NAME" &&
+    test_result "output contains NAME header" "pass" ||
+    test_result "output contains NAME header" "fail"
 
-  echo "${output}" | grep -q "UUID" \
-    && test_result "output contains UUID header" "pass" \
-    || test_result "output contains UUID header" "fail"
+  echo "${output}" | grep -q "UUID" &&
+    test_result "output contains UUID header" "pass" ||
+    test_result "output contains UUID header" "fail"
 
-  echo "${output}" | grep -q "alice" \
-    && test_result "output contains existing user name" "pass" \
-    || test_result "output contains existing user name" "fail"
+  echo "${output}" | grep -q "alice" &&
+    test_result "output contains existing user name" "pass" ||
+    test_result "output contains existing user name" "fail"
 
   unset TEST_STATE_FILE
   rm -f "${tmp}"
@@ -290,23 +290,23 @@ test_user_remove_by_name() {
   export TEST_STATE_FILE="${tmp}"
 
   # Add a second user first so we can remove alice
-  user_add --name "bob" > /dev/null 2>&1
-  user_remove "alice" > /dev/null 2>&1
+  user_add --name "bob" >/dev/null 2>&1
+  user_remove "alice" >/dev/null 2>&1
 
   local users
-  users=$(_load_users 2> /dev/null) || true
+  users=$(_load_users 2>/dev/null) || true
   local found
-  found=$(echo "${users}" | jq -r '.[] | select(.name == "alice") | .name' 2> /dev/null || true)
+  found=$(echo "${users}" | jq -r '.[] | select(.name == "alice") | .name' 2>/dev/null || true)
   local count
-  count=$(echo "${users}" | jq 'length' 2> /dev/null || echo 0)
+  count=$(echo "${users}" | jq 'length' 2>/dev/null || echo 0)
 
-  [[ -z "${found}" ]] \
-    && test_result "removes user by name" "pass" \
-    || test_result "removes user by name (alice still present)" "fail"
+  [[ -z "${found}" ]] &&
+    test_result "removes user by name" "pass" ||
+    test_result "removes user by name (alice still present)" "fail"
 
-  [[ "${count}" -eq 1 ]] \
-    && test_result "count decrements after removal" "pass" \
-    || test_result "count decrements after removal (count=${count})" "fail"
+  [[ "${count}" -eq 1 ]] &&
+    test_result "count decrements after removal" "pass" ||
+    test_result "count decrements after removal (count=${count})" "fail"
 
   unset TEST_STATE_FILE
   rm -f "${tmp}"
@@ -322,16 +322,16 @@ test_user_remove_by_uuid() {
   export TEST_STATE_FILE="${tmp}"
 
   # Add second user then remove alice by UUID
-  user_add --name "bob" > /dev/null 2>&1
-  user_remove "11111111-1111-1111-1111-111111111111" > /dev/null 2>&1
+  user_add --name "bob" >/dev/null 2>&1
+  user_remove "11111111-1111-1111-1111-111111111111" >/dev/null 2>&1
 
   local users found
-  users=$(_load_users 2> /dev/null) || true
-  found=$(echo "${users}" | jq -r '.[] | select(.uuid == "11111111-1111-1111-1111-111111111111") | .uuid' 2> /dev/null || true)
+  users=$(_load_users 2>/dev/null) || true
+  found=$(echo "${users}" | jq -r '.[] | select(.uuid == "11111111-1111-1111-1111-111111111111") | .uuid' 2>/dev/null || true)
 
-  [[ -z "${found}" ]] \
-    && test_result "removes user by UUID" "pass" \
-    || test_result "removes user by UUID (UUID still present)" "fail"
+  [[ -z "${found}" ]] &&
+    test_result "removes user by UUID" "pass" ||
+    test_result "removes user by UUID (UUID still present)" "fail"
 
   unset TEST_STATE_FILE
   rm -f "${tmp}"
@@ -347,15 +347,15 @@ test_user_remove_last_fails() {
   export TEST_STATE_FILE="${tmp}"
 
   # Only alice exists — removal should fail
-  user_remove "alice" > /dev/null 2>&1
+  user_remove "alice" >/dev/null 2>&1
 
   local users count
-  users=$(_load_users 2> /dev/null) || true
-  count=$(echo "${users}" | jq 'length' 2> /dev/null || echo 0)
+  users=$(_load_users 2>/dev/null) || true
+  count=$(echo "${users}" | jq 'length' 2>/dev/null || echo 0)
 
-  [[ "${count}" -eq 1 ]] \
-    && test_result "refuses to remove last user" "pass" \
-    || test_result "refuses to remove last user (count=${count})" "fail"
+  [[ "${count}" -eq 1 ]] &&
+    test_result "refuses to remove last user" "pass" ||
+    test_result "refuses to remove last user (count=${count})" "fail"
 
   unset TEST_STATE_FILE
   rm -f "${tmp}"
@@ -375,20 +375,20 @@ test_user_reset_changes_uuid() {
   export TEST_STATE_FILE="${tmp}"
 
   local old_uuid="11111111-1111-1111-1111-111111111111"
-  user_reset "alice" > /dev/null 2>&1
+  user_reset "alice" >/dev/null 2>&1
 
   local users new_uuid name
-  users=$(_load_users 2> /dev/null) || true
-  new_uuid=$(echo "${users}" | jq -r '.[] | select(.name == "alice") | .uuid' 2> /dev/null || true)
-  name=$(echo "${users}" | jq -r '.[] | select(.name == "alice") | .name' 2> /dev/null || true)
+  users=$(_load_users 2>/dev/null) || true
+  new_uuid=$(echo "${users}" | jq -r '.[] | select(.name == "alice") | .uuid' 2>/dev/null || true)
+  name=$(echo "${users}" | jq -r '.[] | select(.name == "alice") | .name' 2>/dev/null || true)
 
-  [[ "${new_uuid}" != "${old_uuid}" && -n "${new_uuid}" ]] \
-    && test_result "UUID changes after reset" "pass" \
-    || test_result "UUID changes after reset (old=${old_uuid}, new=${new_uuid})" "fail"
+  [[ "${new_uuid}" != "${old_uuid}" && -n "${new_uuid}" ]] &&
+    test_result "UUID changes after reset" "pass" ||
+    test_result "UUID changes after reset (old=${old_uuid}, new=${new_uuid})" "fail"
 
-  [[ "${name}" == "alice" ]] \
-    && test_result "name is preserved after reset" "pass" \
-    || test_result "name is preserved after reset (got '${name}')" "fail"
+  [[ "${name}" == "alice" ]] &&
+    test_result "name is preserved after reset" "pass" ||
+    test_result "name is preserved after reset (got '${name}')" "fail"
 
   unset TEST_STATE_FILE
   rm -f "${tmp}"
@@ -408,29 +408,29 @@ test_save_load_roundtrip() {
   export TEST_STATE_FILE="${tmp}"
 
   # Load (migrating from legacy), add a user, save, reload
-  user_add --name "dave" > /dev/null 2>&1
+  user_add --name "dave" >/dev/null 2>&1
 
   local users count dave_name
-  users=$(_load_users 2> /dev/null) || true
-  count=$(echo "${users}" | jq 'length' 2> /dev/null || echo 0)
-  dave_name=$(echo "${users}" | jq -r '.[] | select(.name == "dave") | .name' 2> /dev/null || true)
+  users=$(_load_users 2>/dev/null) || true
+  count=$(echo "${users}" | jq 'length' 2>/dev/null || echo 0)
+  dave_name=$(echo "${users}" | jq -r '.[] | select(.name == "dave") | .name' 2>/dev/null || true)
 
-  [[ "${count}" -eq 2 ]] \
-    && test_result "state persists two users after add" "pass" \
-    || test_result "state persists two users after add (count=${count})" "fail"
+  [[ "${count}" -eq 2 ]] &&
+    test_result "state persists two users after add" "pass" ||
+    test_result "state persists two users after add (count=${count})" "fail"
 
-  [[ "${dave_name}" == "dave" ]] \
-    && test_result "newly added user survives save/load" "pass" \
-    || test_result "newly added user survives save/load (got '${dave_name}')" "fail"
+  [[ "${dave_name}" == "dave" ]] &&
+    test_result "newly added user survives save/load" "pass" ||
+    test_result "newly added user survives save/load (got '${dave_name}')" "fail"
 
   # Verify legacy uuid field updated to first user's UUID
   local top_uuid first_uuid
-  top_uuid=$(jq -r '.protocols.reality.uuid' "${tmp}" 2> /dev/null || true)
-  first_uuid=$(echo "${users}" | jq -r '.[0].uuid' 2> /dev/null || true)
+  top_uuid=$(jq -r '.protocols.reality.uuid' "${tmp}" 2>/dev/null || true)
+  first_uuid=$(echo "${users}" | jq -r '.[0].uuid' 2>/dev/null || true)
 
-  [[ "${top_uuid}" == "${first_uuid}" ]] \
-    && test_result "legacy .protocols.reality.uuid stays in sync" "pass" \
-    || test_result "legacy .protocols.reality.uuid stays in sync (top=${top_uuid}, first=${first_uuid})" "fail"
+  [[ "${top_uuid}" == "${first_uuid}" ]] &&
+    test_result "legacy .protocols.reality.uuid stays in sync" "pass" ||
+    test_result "legacy .protocols.reality.uuid stays in sync (top=${top_uuid}, first=${first_uuid})" "fail"
 
   unset TEST_STATE_FILE
   rm -f "${tmp}"
