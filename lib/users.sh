@@ -233,17 +233,18 @@ user_remove() {
     return 1
   fi
 
-  # Verify the user exists
-  local found_name='' found_uuid=''
-  found_name=$(echo "${users}" | jq -r --arg id "${id}" \
-    '.[] | select(.uuid == $id or .name == $id) | .name // "?"' 2> /dev/null | head -1 || true)
-  found_uuid=$(echo "${users}" | jq -r --arg id "${id}" \
-    '.[] | select(.uuid == $id or .name == $id) | .uuid' 2> /dev/null | head -1 || true)
+  # Find user and remove in one pass
+  local found_info=''
+  found_info=$(echo "${users}" | jq -r --arg id "${id}" \
+    '(.[] | select(.uuid == $id or .name == $id) | [(.name // "?"), .uuid]) | @tsv' 2> /dev/null | head -1 || true)
 
-  if [[ -z "${found_uuid}" ]]; then
+  if [[ -z "${found_info}" ]]; then
     err "User not found: ${id}"
     return 1
   fi
+
+  local found_name='' found_uuid=''
+  IFS=$'\t' read -r found_name found_uuid <<< "${found_info}"
 
   local updated_users=''
   updated_users=$(echo "${users}" | jq --arg id "${id}" \
@@ -268,17 +269,18 @@ user_reset() {
   local users=''
   users=$(_load_users)
 
-  # Verify the user exists
-  local found_name='' old_uuid=''
-  found_name=$(echo "${users}" | jq -r --arg id "${id}" \
-    '.[] | select(.uuid == $id or .name == $id) | .name // "?"' 2> /dev/null | head -1 || true)
-  old_uuid=$(echo "${users}" | jq -r --arg id "${id}" \
-    '.[] | select(.uuid == $id or .name == $id) | .uuid' 2> /dev/null | head -1 || true)
+  # Find user by UUID or name
+  local found_info=''
+  found_info=$(echo "${users}" | jq -r --arg id "${id}" \
+    '(.[] | select(.uuid == $id or .name == $id) | [(.name // "?"), .uuid]) | @tsv' 2> /dev/null | head -1 || true)
 
-  if [[ -z "${old_uuid}" ]]; then
+  if [[ -z "${found_info}" ]]; then
     err "User not found: ${id}"
     return 1
   fi
+
+  local found_name='' old_uuid=''
+  IFS=$'\t' read -r found_name old_uuid <<< "${found_info}"
 
   local new_uuid=''
   new_uuid=$(generate_uuid) || {
@@ -328,24 +330,19 @@ sync_users_to_config() {
 
   local flow="${REALITY_FLOW_VISION:-xtls-rprx-vision}"
 
-  # Build sing-box reality users array (uuid + flow only)
-  local reality_users=''
-  reality_users=$(echo "${users}" | jq --arg flow "${flow}" \
-    '[.[] | {uuid: .uuid, flow: $flow}]')
-
-  # Build sing-box ws users array (uuid only, no flow)
-  local ws_users=''
-  ws_users=$(echo "${users}" | jq '[.[] | {uuid: .uuid}]')
+  # Build both reality (uuid+flow) and ws (uuid-only) user arrays in one jq call
+  local sb_users=''
+  sb_users=$(echo "${users}" | jq --arg flow "${flow}" \
+    '{reality: [.[] | {uuid: .uuid, flow: $flow}], ws: [.[] | {uuid: .uuid}]}')
 
   local tmp_file=''
   tmp_file=$(mktemp "${config_file}.XXXXXX")
 
-  if jq \
-    --argjson reality_users "${reality_users}" \
-    --argjson ws_users "${ws_users}" \
-    '(.inbounds[] | select(.tag == "in-reality") | .users) = $reality_users |
-     (.inbounds[] | select(.tag == "in-ws") | .users) = $ws_users' \
-    "${config_file}" > "${tmp_file}" 2> /dev/null; then
+  if echo "${sb_users}" | jq --slurpfile cfg "${config_file}" \
+    '$cfg[0] |
+     (.inbounds[] | select(.tag == "in-reality") | .users) = input.reality |
+     (.inbounds[] | select(.tag == "in-ws") | .users) = input.ws' \
+    > "${tmp_file}" 2> /dev/null; then
     chmod 600 "${tmp_file}"
     mv "${tmp_file}" "${config_file}"
     return 0

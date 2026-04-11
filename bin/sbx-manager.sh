@@ -1073,52 +1073,40 @@ case "${1:-}" in
 
     case "${2:-}" in
       add)
-        if [[ "$(id -u)" -ne 0 ]]; then
-          echo -e "${R}[ERR]${N} Please run as root (sudo sbx user add)"
-          exit 1
-        fi
+        need_root || exit 1
         shift 2
         user_add "$@" || exit 1
-        if sync_users_to_config 2> /dev/null; then
-          systemctl restart sing-box 2> /dev/null \
-            && echo -e "${G}✓${N} Service restarted with updated user list" \
-            || true
-        fi
+        sync_users_to_config 2> /dev/null || true
+        systemctl restart sing-box 2> /dev/null \
+          && echo -e "${G}✓${N} Service restarted with updated user list" \
+          || true
         ;;
       list)
         user_list
         ;;
       remove)
-        if [[ "$(id -u)" -ne 0 ]]; then
-          echo -e "${R}[ERR]${N} Please run as root (sudo sbx user remove)"
-          exit 1
-        fi
+        need_root || exit 1
         [[ -n "${3:-}" ]] || {
           echo -e "${R}[ERR]${N} Usage: sbx user remove <UUID|NAME>"
           exit 1
         }
         user_remove "${3}" || exit 1
-        if sync_users_to_config 2> /dev/null; then
-          systemctl restart sing-box 2> /dev/null \
-            && echo -e "${G}✓${N} Service restarted" \
-            || true
-        fi
+        sync_users_to_config 2> /dev/null || true
+        systemctl restart sing-box 2> /dev/null \
+          && echo -e "${G}✓${N} Service restarted" \
+          || true
         ;;
       reset)
-        if [[ "$(id -u)" -ne 0 ]]; then
-          echo -e "${R}[ERR]${N} Please run as root (sudo sbx user reset)"
-          exit 1
-        fi
+        need_root || exit 1
         [[ -n "${3:-}" ]] || {
           echo -e "${R}[ERR]${N} Usage: sbx user reset <UUID|NAME>"
           exit 1
         }
         user_reset "${3}" || exit 1
-        if sync_users_to_config 2> /dev/null; then
-          systemctl restart sing-box 2> /dev/null \
-            && echo -e "${G}✓${N} Service restarted" \
-            || true
-        fi
+        sync_users_to_config 2> /dev/null || true
+        systemctl restart sing-box 2> /dev/null \
+          && echo -e "${G}✓${N} Service restarted" \
+          || true
         ;;
       *)
         echo -e "${Y}Usage:${N}"
