@@ -28,21 +28,11 @@ readonly PORT_HOP_SYSTEMD_UNIT="sbx-port-hop.service"
 # Internal Helpers
 #==============================================================================
 
-# Log error with port hopping prefix
-_port_hop_die() {
-  local code="$1"
-  shift
-  err "[${code}] $*"
-  return 1
-}
-
-# Create nftables DNAT rules
 _create_nftables_rules() {
   local target_port="$1"
   local range_start="$2"
   local range_end="$3"
 
-  # Delete existing table if present (idempotent)
   nft delete table inet "${PORT_HOP_NFTABLES_TABLE}" 2> /dev/null || true
 
   nft add table inet "${PORT_HOP_NFTABLES_TABLE}"
@@ -52,14 +42,12 @@ _create_nftables_rules() {
     udp dport "${range_start}-${range_end}" redirect to :"${target_port}"
 }
 
-# Create iptables DNAT rules (IPv4 + IPv6)
 _create_iptables_rules() {
   local target_port="$1"
   local range_start="$2"
   local range_end="$3"
 
-  # Remove existing rules first (idempotent)
-  _remove_iptables_rules "${target_port}" "${range_start}" "${range_end}" 2> /dev/null || true
+  _remove_iptables_rules 2> /dev/null || true
 
   iptables -t nat -A PREROUTING -p udp --dport "${range_start}:${range_end}" \
     -j REDIRECT --to-ports "${target_port}" \
@@ -72,35 +60,26 @@ _create_iptables_rules() {
   fi
 }
 
-# Remove nftables DNAT rules
 _remove_nftables_rules() {
   nft delete table inet "${PORT_HOP_NFTABLES_TABLE}" 2> /dev/null || true
 }
 
-# Remove iptables DNAT rules (IPv4 + IPv6)
-_remove_iptables_rules() {
-  local target_port="$1"
-  local range_start="$2"
-  local range_end="$3"
-
-  # Remove matching rules by comment
+# Remove all sbx-port-hop iptables rules by comment match
+_remove_rules_for_cmd() {
+  local cmd="$1"
   local rule_num=""
-  while rule_num=$(iptables -t nat -L PREROUTING --line-numbers -n 2> /dev/null \
+  while rule_num=$("${cmd}" -t nat -L PREROUTING --line-numbers -n 2> /dev/null \
     | grep "${PORT_HOP_IPTABLES_COMMENT}" | head -1 | awk '{print $1}'); do
     [[ -z "${rule_num}" ]] && break
-    iptables -t nat -D PREROUTING "${rule_num}" 2> /dev/null || break
+    "${cmd}" -t nat -D PREROUTING "${rule_num}" 2> /dev/null || break
   done
-
-  if have ip6tables; then
-    while rule_num=$(ip6tables -t nat -L PREROUTING --line-numbers -n 2> /dev/null \
-      | grep "${PORT_HOP_IPTABLES_COMMENT}" | head -1 | awk '{print $1}'); do
-      [[ -z "${rule_num}" ]] && break
-      ip6tables -t nat -D PREROUTING "${rule_num}" 2> /dev/null || break
-    done
-  fi
 }
 
-# Persist nftables rules to config file
+_remove_iptables_rules() {
+  _remove_rules_for_cmd iptables
+  have ip6tables && _remove_rules_for_cmd ip6tables
+}
+
 _persist_nftables_rules() {
   local target_port="$1"
   local range_start="$2"
@@ -119,13 +98,11 @@ table inet ${PORT_HOP_NFTABLES_TABLE} {
 }
 EOF
 
-  # Ensure nftables.conf includes the drop-in directory
   if [[ -f /etc/nftables.conf ]] && ! grep -q 'nftables.d' /etc/nftables.conf 2> /dev/null; then
     echo 'include "/etc/nftables.d/*.conf"' >> /etc/nftables.conf
   fi
 }
 
-# Persist iptables rules via netfilter-persistent or systemd unit
 _persist_iptables_rules() {
   local target_port="$1"
   local range_start="$2"
@@ -136,7 +113,6 @@ _persist_iptables_rules() {
     return 0
   fi
 
-  # Fallback: create a systemd unit that restores rules on boot
   cat > "/etc/systemd/system/${PORT_HOP_SYSTEMD_UNIT}" << EOF
 [Unit]
 Description=sbx Hysteria2 port hopping DNAT rules
@@ -157,19 +133,15 @@ EOF
   systemctl enable "${PORT_HOP_SYSTEMD_UNIT}" 2> /dev/null || true
 }
 
-# Remove persisted rules (nftables config or systemd unit)
 _remove_persisted_rules() {
-  # nftables config
   rm -f "${PORT_HOP_NFTABLES_CONF}"
 
-  # systemd unit
   if [[ -f "/etc/systemd/system/${PORT_HOP_SYSTEMD_UNIT}" ]]; then
     systemctl disable "${PORT_HOP_SYSTEMD_UNIT}" 2> /dev/null || true
     rm -f "/etc/systemd/system/${PORT_HOP_SYSTEMD_UNIT}"
     systemctl daemon-reload
   fi
 
-  # netfilter-persistent
   if have netfilter-persistent; then
     netfilter-persistent save 2> /dev/null || true
   fi
@@ -179,51 +151,47 @@ _remove_persisted_rules() {
 # Public API
 #==============================================================================
 
-# Validate a port range string (e.g., "20000-40000")
 # Returns 0 on success, 1 on failure with error message
 validate_port_range() {
   local range_str="${1:-}"
 
   [[ -z "${range_str}" ]] && {
-    _port_hop_die "SBX-PORTHOP-001" "Port range cannot be empty"
+    err "[SBX-PORTHOP-001] Port range cannot be empty"
     return 1
   }
 
-  # Check format: START-END
   if ! echo "${range_str}" | grep -qE '^[0-9]+-[0-9]+$'; then
-    _port_hop_die "SBX-PORTHOP-002" "Invalid port range format: ${range_str} (expected: START-END, e.g., 20000-40000)"
+    err "[SBX-PORTHOP-002] Invalid port range format: ${range_str} (expected: START-END, e.g., 20000-40000)"
     return 1
   fi
 
   local range_start="${range_str%%-*}"
   local range_end="${range_str##*-}"
 
-  # Check numeric bounds
   if [[ "${range_start}" -lt "${PORT_HOP_MIN_PORT}" ]]; then
-    _port_hop_die "SBX-PORTHOP-003" "Port range start ${range_start} is below minimum ${PORT_HOP_MIN_PORT}"
+    err "[SBX-PORTHOP-003] Port range start ${range_start} is below minimum ${PORT_HOP_MIN_PORT}"
     return 1
   fi
 
   if [[ "${range_end}" -gt "${PORT_HOP_MAX_PORT}" ]]; then
-    _port_hop_die "SBX-PORTHOP-004" "Port range end ${range_end} exceeds maximum ${PORT_HOP_MAX_PORT}"
+    err "[SBX-PORTHOP-004] Port range end ${range_end} exceeds maximum ${PORT_HOP_MAX_PORT}"
     return 1
   fi
 
   if [[ "${range_start}" -ge "${range_end}" ]]; then
-    _port_hop_die "SBX-PORTHOP-005" "Port range start ${range_start} must be less than end ${range_end}"
+    err "[SBX-PORTHOP-005] Port range start ${range_start} must be less than end ${range_end}"
     return 1
   fi
 
   local range_size=$((range_end - range_start))
   if [[ "${range_size}" -gt "${PORT_HOP_MAX_RANGE_SIZE}" ]]; then
-    _port_hop_die "SBX-PORTHOP-006" "Port range size ${range_size} exceeds maximum ${PORT_HOP_MAX_RANGE_SIZE}"
+    err "[SBX-PORTHOP-006] Port range size ${range_size} exceeds maximum ${PORT_HOP_MAX_RANGE_SIZE}"
     return 1
   fi
 
   return 0
 }
 
-# Auto-detect NAT backend (nftables preferred over iptables)
 # Prints "nftables" or "iptables"
 detect_nat_backend() {
   if have nft; then
@@ -231,13 +199,11 @@ detect_nat_backend() {
   elif have iptables; then
     echo "iptables"
   else
-    _port_hop_die "SBX-PORTHOP-010" "Neither nftables (nft) nor iptables found. Install one to enable port hopping."
+    err "[SBX-PORTHOP-010] Neither nftables (nft) nor iptables found. Install one to enable port hopping."
     return 1
   fi
 }
 
-# Apply DNAT rules for port hopping
-# Args: target_port range_start range_end
 apply_port_hopping_rules() {
   local target_port="${1:?target_port required}"
   local range_start="${2:?range_start required}"
@@ -260,28 +226,22 @@ apply_port_hopping_rules() {
   success "  ✓ Port hopping rules applied (${backend})"
 }
 
-# Remove DNAT rules for port hopping
-# Args: target_port range_start range_end
 remove_port_hopping_rules() {
   local target_port="${1:-}"
   local range_start="${2:-}"
   local range_end="${3:-}"
 
-  # Try nftables cleanup regardless of args (table-based, self-contained)
   _remove_nftables_rules 2> /dev/null || true
 
-  # Try iptables cleanup if args are provided
   if [[ -n "${target_port}" && -n "${range_start}" && -n "${range_end}" ]]; then
-    _remove_iptables_rules "${target_port}" "${range_start}" "${range_end}" 2> /dev/null || true
+    _remove_iptables_rules 2> /dev/null || true
   fi
 
-  # Remove persisted rules
   _remove_persisted_rules
 
   msg "  Port hopping rules removed"
 }
 
-# Persist current DNAT rules to survive reboot
 persist_port_hopping_rules() {
   local target_port="${1:?target_port required}"
   local range_start="${2:?range_start required}"
@@ -302,18 +262,16 @@ persist_port_hopping_rules() {
   success "  ✓ Port hopping rules persisted (${backend})"
 }
 
-# Display current port hopping status
 show_port_hopping_status() {
   local state_file="${TEST_STATE_FILE:-${STATE_FILE:-/etc/sing-box/state.json}}"
   local port_range=""
   local hy2_port=""
   local hy2_enabled=""
 
-  # Read state
   if [[ -f "${state_file}" ]]; then
-    port_range=$(jq -r '.protocols.hysteria2.port_range // empty' "${state_file}" 2> /dev/null) || true
-    hy2_port=$(jq -r '.protocols.hysteria2.port // empty' "${state_file}" 2> /dev/null) || true
-    hy2_enabled=$(jq -r '.protocols.hysteria2.enabled // empty' "${state_file}" 2> /dev/null) || true
+    eval "$(jq -r '.protocols.hysteria2 // {} |
+      "port_range=\(.port_range // "")\nhy2_port=\(.port // "")\nhy2_enabled=\(.enabled // "")"' \
+      "${state_file}" 2> /dev/null)" || true
   fi
 
   echo "=== Hysteria2 Port Hopping Status ==="
@@ -335,7 +293,6 @@ show_port_hopping_status() {
 
   echo
 
-  # Show active NAT rules
   local backend=""
   backend=$(detect_nat_backend 2> /dev/null) || true
 

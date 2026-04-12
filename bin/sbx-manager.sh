@@ -1259,8 +1259,7 @@ case "${1:-}" in
       disable)
         need_root || exit 1
         _ph_range="" _ph_port=""
-        _ph_range=$(jq -r '.protocols.hysteria2.port_range // empty' "${STATE_INFO_PATH}" 2> /dev/null)
-        _ph_port=$(jq -r '.protocols.hysteria2.port // empty' "${STATE_INFO_PATH}" 2> /dev/null)
+        eval "$(jq -r '.protocols.hysteria2 // {} | "_ph_range=\(.port_range // "")\n_ph_port=\(.port // "")"' "${STATE_INFO_PATH}" 2> /dev/null)" || true
         if [[ -z "${_ph_range}" ]]; then
           echo "Port hopping is not currently enabled."
           exit 0
