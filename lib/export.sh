@@ -25,7 +25,7 @@ _export_die() {
   local resolution="${3:-}"
   local example="${4:-}"
 
-  if declare -f die_with_code > /dev/null 2>&1; then
+  if declare -f die_with_code >/dev/null 2>&1; then
     die_with_code "${code}" "${reason}" "${resolution}" "${example}"
   fi
 
@@ -50,7 +50,7 @@ load_client_info() {
       "install -m 600 /dev/null /etc/sing-box/state.json"
     resolved=$(readlink -f "${state_file}") || _export_die "SBX-EXPORT-002" "Failed to resolve state path: ${state_file}" \
       "Ensure state path exists and is readable."
-    perm=$(stat -c '%a' "${resolved}" 2> /dev/null || stat -f '%Lp' "${resolved}" 2> /dev/null) || _export_die "SBX-EXPORT-003" "Unable to read state file permissions" \
+    perm=$(stat -c '%a' "${resolved}" 2>/dev/null || stat -f '%Lp' "${resolved}" 2>/dev/null) || _export_die "SBX-EXPORT-003" "Unable to read state file permissions" \
       "Check file permissions and stat command availability."
     [[ "${perm}" == "600" ]] || _export_die "SBX-EXPORT-004" "State file permissions must be 600 (found ${perm})" \
       "Restrict state file permissions to owner read/write only." \
@@ -59,17 +59,17 @@ load_client_info() {
       "Re-run install or restore state.json from backup."
 
     if [[ -z "${TEST_STATE_FILE:-}" ]]; then
-      owner=$(stat -c '%u' "${resolved}" 2> /dev/null || stat -f '%u' "${resolved}" 2> /dev/null) || _export_die "SBX-EXPORT-006" "Unable to read state file ownership" \
+      owner=$(stat -c '%u' "${resolved}" 2>/dev/null || stat -f '%u' "${resolved}" 2>/dev/null) || _export_die "SBX-EXPORT-006" "Unable to read state file ownership" \
         "Ensure stat command works and file metadata is accessible."
       [[ "${owner}" -eq 0 ]] || _export_die "SBX-EXPORT-007" "State file must be owned by root (uid 0)" \
         "Fix ownership to root:root." \
         "chown root:root /etc/sing-box/state.json"
     fi
 
-    command -v jq > /dev/null 2>&1 || _export_die "SBX-EXPORT-008" "jq is required to parse state file" \
+    command -v jq >/dev/null 2>&1 || _export_die "SBX-EXPORT-008" "jq is required to parse state file" \
       "Install jq, then retry export commands." \
       "apt install -y jq"
-    jq empty < "${resolved}" 2> /dev/null || _export_die "SBX-EXPORT-009" "State file is not valid JSON: ${resolved}" \
+    jq empty <"${resolved}" 2>/dev/null || _export_die "SBX-EXPORT-009" "State file is not valid JSON: ${resolved}" \
       "Repair or regenerate state.json."
 
     DOMAIN=$(jq -r '.server.domain // .server.ip // empty' "${resolved}")
@@ -147,7 +147,7 @@ load_client_info() {
   resolved=$(readlink -f "${client_info_file}") || _export_die "SBX-EXPORT-023" "Failed to resolve client info path: ${client_info_file}" \
     "Ensure path exists and is readable."
   # Cross-platform stat: Linux uses -c, BSD/macOS uses -f
-  perm=$(stat -c '%a' "${resolved}" 2> /dev/null || stat -f '%Lp' "${resolved}" 2> /dev/null) || _export_die "SBX-EXPORT-024" "Unable to read client info permissions" \
+  perm=$(stat -c '%a' "${resolved}" 2>/dev/null || stat -f '%Lp' "${resolved}" 2>/dev/null) || _export_die "SBX-EXPORT-024" "Unable to read client info permissions" \
     "Ensure stat command works and file metadata is accessible."
   [[ "${perm}" == "600" ]] || _export_die "SBX-EXPORT-025" "Client info permissions must be 600 (found ${perm})" \
     "Restrict client-info.txt to owner read/write only." \
@@ -159,7 +159,7 @@ load_client_info() {
   # Skip this check in test mode (TEST_CLIENT_INFO set) to allow non-root CI
   if [[ -z "${TEST_CLIENT_INFO:-}" ]]; then
     # Cross-platform stat: Linux uses -c, BSD/macOS uses -f
-    owner=$(stat -c '%u' "${resolved}" 2> /dev/null || stat -f '%u' "${resolved}" 2> /dev/null) || _export_die "SBX-EXPORT-027" "Unable to read client info ownership" \
+    owner=$(stat -c '%u' "${resolved}" 2>/dev/null || stat -f '%u' "${resolved}" 2>/dev/null) || _export_die "SBX-EXPORT-027" "Unable to read client info ownership" \
       "Ensure stat command works and file metadata is accessible."
     [[ "${owner}" -eq 0 ]] || _export_die "SBX-EXPORT-028" "Client info must be owned by root (uid 0)" \
       "Fix ownership to root:root." \
@@ -198,7 +198,7 @@ load_client_info() {
       "Remove command substitutions/backticks from values."
 
     client_info_map["${key}"]="${value}"
-  done < "${resolved}"
+  done <"${resolved}"
 
   # Export parsed values into the environment
   for key in "${!client_info_map[@]}"; do
@@ -251,7 +251,7 @@ export_v2rayn_json() {
   case "${protocol}" in
     reality)
       config=$(
-        cat << EOF
+        cat <<EOF
 {
   "log": { "loglevel": "warning" },
   "inbounds": [{
@@ -291,7 +291,7 @@ EOF
       [[ -n "${WS_PORT}" ]] || _export_die "SBX-EXPORT-040" "WS-TLS not configured" \
         "Enable WS during install or export Reality only."
       config=$(
-        cat << EOF
+        cat <<EOF
 {
   "log": { "loglevel": "warning" },
   "inbounds": [{
@@ -345,7 +345,7 @@ EOF
 export_clash_yaml() {
   load_client_info
 
-  cat << EOF
+  cat <<EOF
 proxies:
   - name: "sbx-reality-${DOMAIN}"
     type: vless
@@ -363,7 +363,7 @@ proxies:
 EOF
 
   if [[ -n "${WS_PORT}" && -n "${CERT_FULLCHAIN}" ]]; then
-    cat << EOF
+    cat <<EOF
 
   - name: "sbx-ws-${DOMAIN}"
     type: vless
@@ -388,14 +388,14 @@ EOF
     skip-cert-verify: false
 EOF
     if [[ -n "${HY2_PORT_RANGE:-}" ]]; then
-      cat << EOF
+      cat <<EOF
     ports: ${HY2_PORT_RANGE}
 EOF
     fi
   fi
 
   if [[ "${TUIC_ENABLED:-false}" == "true" && -n "${TUIC_PORT:-}" && -n "${TUIC_PASS:-}" ]]; then
-    cat << EOF
+    cat <<EOF
 
   - name: "sbx-tuic-${DOMAIN}"
     type: tuic
@@ -412,7 +412,7 @@ EOF
   fi
 
   if [[ "${TROJAN_ENABLED:-false}" == "true" && -n "${TROJAN_PORT:-}" && -n "${TROJAN_PASS:-}" ]]; then
-    cat << EOF
+    cat <<EOF
 
   - name: "sbx-trojan-${DOMAIN}"
     type: trojan
@@ -425,7 +425,7 @@ EOF
 EOF
   fi
 
-  cat << EOF
+  cat <<EOF
 
 proxy-groups:
   - name: "sbx-lite"
@@ -435,20 +435,20 @@ proxy-groups:
 EOF
 
   if [[ -n "${WS_PORT}" ]]; then
-    cat << EOF
+    cat <<EOF
       - "sbx-ws-${DOMAIN}"
       - "sbx-hysteria2-${DOMAIN}"
 EOF
   fi
 
   if [[ "${TUIC_ENABLED:-false}" == "true" ]]; then
-    cat << EOF
+    cat <<EOF
       - "sbx-tuic-${DOMAIN}"
 EOF
   fi
 
   if [[ "${TROJAN_ENABLED:-false}" == "true" ]]; then
-    cat << EOF
+    cat <<EOF
       - "sbx-trojan-${DOMAIN}"
 EOF
   fi
@@ -514,7 +514,7 @@ export_qr_codes() {
   local reality_uri='' ws_uri='' hy2_uri='' tuic_uri='' trojan_uri=''
   load_client_info
 
-  command -v qrencode > /dev/null || _export_die "SBX-EXPORT-044" "qrencode not installed." \
+  command -v qrencode >/dev/null || _export_die "SBX-EXPORT-044" "qrencode not installed." \
     "Install qrencode then retry QR export." \
     "apt install -y qrencode"
 
@@ -586,13 +586,13 @@ export_subscription() {
 
   # Save to file
   mkdir -p "$(dirname "${output_file}")"
-  echo "${subscription}" > "${output_file}"
+  echo "${subscription}" >"${output_file}"
   chmod 644 "${output_file}"
 
   success "Subscription link generated: ${output_file}"
 
   # Display access URL if web server detected
-  if systemctl is-active nginx > /dev/null 2>&1 || systemctl is-active apache2 > /dev/null 2>&1; then
+  if systemctl is-active nginx >/dev/null 2>&1 || systemctl is-active apache2 >/dev/null 2>&1; then
     sub_url="http://${DOMAIN}/$(basename "${output_file}")"
     info "Subscription URL: ${sub_url}"
   fi
@@ -635,7 +635,7 @@ export_config() {
 
   # Output to file or stdout
   if [[ -n "${output_file}" ]]; then
-    echo "${config}" > "${output_file}"
+    echo "${config}" >"${output_file}"
     success "Configuration exported to: ${output_file}"
   else
     echo "${config}"
