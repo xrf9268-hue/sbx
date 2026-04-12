@@ -33,7 +33,7 @@ _create_nftables_rules() {
   local range_start="$2"
   local range_end="$3"
 
-  nft delete table inet "${PORT_HOP_NFTABLES_TABLE}" 2> /dev/null || true
+  nft delete table inet "${PORT_HOP_NFTABLES_TABLE}" 2>/dev/null || true
 
   nft add table inet "${PORT_HOP_NFTABLES_TABLE}"
   nft add chain inet "${PORT_HOP_NFTABLES_TABLE}" prerouting \
@@ -47,7 +47,7 @@ _create_iptables_rules() {
   local range_start="$2"
   local range_end="$3"
 
-  _remove_iptables_rules 2> /dev/null || true
+  _remove_iptables_rules 2>/dev/null || true
 
   iptables -t nat -A PREROUTING -p udp --dport "${range_start}:${range_end}" \
     -j REDIRECT --to-ports "${target_port}" \
@@ -61,17 +61,17 @@ _create_iptables_rules() {
 }
 
 _remove_nftables_rules() {
-  nft delete table inet "${PORT_HOP_NFTABLES_TABLE}" 2> /dev/null || true
+  nft delete table inet "${PORT_HOP_NFTABLES_TABLE}" 2>/dev/null || true
 }
 
 # Remove all sbx-port-hop iptables rules by comment match
 _remove_rules_for_cmd() {
   local cmd="$1"
   local rule_num=""
-  while rule_num=$("${cmd}" -t nat -L PREROUTING --line-numbers -n 2> /dev/null \
-    | grep "${PORT_HOP_IPTABLES_COMMENT}" | head -1 | awk '{print $1}'); do
+  while rule_num=$("${cmd}" -t nat -L PREROUTING --line-numbers -n 2>/dev/null |
+    grep "${PORT_HOP_IPTABLES_COMMENT}" | head -1 | awk '{print $1}'); do
     [[ -z "${rule_num}" ]] && break
-    "${cmd}" -t nat -D PREROUTING "${rule_num}" 2> /dev/null || break
+    "${cmd}" -t nat -D PREROUTING "${rule_num}" 2>/dev/null || break
   done
 }
 
@@ -87,7 +87,7 @@ _persist_nftables_rules() {
 
   mkdir -p "$(dirname "${PORT_HOP_NFTABLES_CONF}")"
 
-  cat > "${PORT_HOP_NFTABLES_CONF}" << EOF
+  cat >"${PORT_HOP_NFTABLES_CONF}" <<EOF
 #!/usr/sbin/nft -f
 # Port hopping rules for Hysteria2 (managed by sbx)
 table inet ${PORT_HOP_NFTABLES_TABLE} {
@@ -98,8 +98,8 @@ table inet ${PORT_HOP_NFTABLES_TABLE} {
 }
 EOF
 
-  if [[ -f /etc/nftables.conf ]] && ! grep -q 'nftables.d' /etc/nftables.conf 2> /dev/null; then
-    echo 'include "/etc/nftables.d/*.conf"' >> /etc/nftables.conf
+  if [[ -f /etc/nftables.conf ]] && ! grep -q 'nftables.d' /etc/nftables.conf 2>/dev/null; then
+    echo 'include "/etc/nftables.d/*.conf"' >>/etc/nftables.conf
   fi
 }
 
@@ -109,11 +109,11 @@ _persist_iptables_rules() {
   local range_end="$3"
 
   if have netfilter-persistent; then
-    netfilter-persistent save 2> /dev/null || true
+    netfilter-persistent save 2>/dev/null || true
     return 0
   fi
 
-  cat > "/etc/systemd/system/${PORT_HOP_SYSTEMD_UNIT}" << EOF
+  cat >"/etc/systemd/system/${PORT_HOP_SYSTEMD_UNIT}" <<EOF
 [Unit]
 Description=sbx Hysteria2 port hopping DNAT rules
 Before=sing-box.service
@@ -130,20 +130,20 @@ WantedBy=multi-user.target
 EOF
 
   systemctl daemon-reload
-  systemctl enable "${PORT_HOP_SYSTEMD_UNIT}" 2> /dev/null || true
+  systemctl enable "${PORT_HOP_SYSTEMD_UNIT}" 2>/dev/null || true
 }
 
 _remove_persisted_rules() {
   rm -f "${PORT_HOP_NFTABLES_CONF}"
 
   if [[ -f "/etc/systemd/system/${PORT_HOP_SYSTEMD_UNIT}" ]]; then
-    systemctl disable "${PORT_HOP_SYSTEMD_UNIT}" 2> /dev/null || true
+    systemctl disable "${PORT_HOP_SYSTEMD_UNIT}" 2>/dev/null || true
     rm -f "/etc/systemd/system/${PORT_HOP_SYSTEMD_UNIT}"
     systemctl daemon-reload
   fi
 
   if have netfilter-persistent; then
-    netfilter-persistent save 2> /dev/null || true
+    netfilter-persistent save 2>/dev/null || true
   fi
 }
 
@@ -231,10 +231,10 @@ remove_port_hopping_rules() {
   local range_start="${2:-}"
   local range_end="${3:-}"
 
-  _remove_nftables_rules 2> /dev/null || true
+  _remove_nftables_rules 2>/dev/null || true
 
   if [[ -n "${target_port}" && -n "${range_start}" && -n "${range_end}" ]]; then
-    _remove_iptables_rules 2> /dev/null || true
+    _remove_iptables_rules 2>/dev/null || true
   fi
 
   _remove_persisted_rules
@@ -269,9 +269,9 @@ show_port_hopping_status() {
   local hy2_enabled=""
 
   if [[ -f "${state_file}" ]]; then
-    eval "$(jq -r '.protocols.hysteria2 // {} |
-      "port_range=\(.port_range // "")\nhy2_port=\(.port // "")\nhy2_enabled=\(.enabled // "")"' \
-      "${state_file}" 2> /dev/null)" || true
+    port_range=$(jq -r '.protocols.hysteria2.port_range // empty' "${state_file}" 2>/dev/null) || true
+    hy2_port=$(jq -r '.protocols.hysteria2.port // empty' "${state_file}" 2>/dev/null) || true
+    hy2_enabled=$(jq -r '.protocols.hysteria2.enabled // empty' "${state_file}" 2>/dev/null) || true
   fi
 
   echo "=== Hysteria2 Port Hopping Status ==="
@@ -294,11 +294,11 @@ show_port_hopping_status() {
   echo
 
   local backend=""
-  backend=$(detect_nat_backend 2> /dev/null) || true
+  backend=$(detect_nat_backend 2>/dev/null) || true
 
   if [[ "${backend}" == "nftables" ]]; then
     echo "Active nftables rules:"
-    if nft list table inet "${PORT_HOP_NFTABLES_TABLE}" 2> /dev/null; then
+    if nft list table inet "${PORT_HOP_NFTABLES_TABLE}" 2>/dev/null; then
       :
     else
       echo "  (no rules found)"
@@ -306,7 +306,7 @@ show_port_hopping_status() {
   elif [[ "${backend}" == "iptables" ]]; then
     echo "Active iptables NAT rules:"
     local rules=""
-    rules=$(iptables -t nat -L PREROUTING -n 2> /dev/null | grep "${PORT_HOP_IPTABLES_COMMENT}" || true)
+    rules=$(iptables -t nat -L PREROUTING -n 2>/dev/null | grep "${PORT_HOP_IPTABLES_COMMENT}" || true)
     if [[ -n "${rules}" ]]; then
       echo "${rules}" | sed 's/^/  /'
     else
