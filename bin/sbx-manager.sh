@@ -26,6 +26,8 @@ if [[ -d "$LIB_DIR" ]]; then
   [[ -f "$LIB_DIR/backup.sh" ]] && source "$LIB_DIR/backup.sh"
   # shellcheck source=/dev/null
   [[ -f "$LIB_DIR/export.sh" ]] && source "$LIB_DIR/export.sh"
+  # shellcheck source=/dev/null
+  [[ -f "$LIB_DIR/users.sh" ]] && source "$LIB_DIR/users.sh"
 fi
 
 # Simple logo for management tool
@@ -57,6 +59,12 @@ ${B}Service Management:${N}
 ${B}Configuration:${N}
   info|show           Show configuration and URIs
   qr                  Display QR codes for client import
+
+${B}User Management:${N}
+  user add [--name NAME]        Add a new user (generates UUID)
+  user list                     List all users with names and UUIDs
+  user remove <UUID|NAME>       Remove a user (requires root)
+  user reset <UUID|NAME>        Regenerate user credentials (requires root)
 
 ${B}Backup & Restore:${N}
   backup create [--encrypt]         Create backup (optionally encrypted)
@@ -1152,6 +1160,60 @@ case "${1:-}" in
 
     echo
     echo -e "${G}✓${N} sing-box uninstalled successfully"
+    ;;
+
+  user)
+    if ! declare -f user_add >/dev/null 2>&1; then
+      echo -e "${R}[ERR]${N} User management module not loaded. Please reinstall sbx-lite."
+      exit 1
+    fi
+
+    case "${2:-}" in
+      add)
+        need_root || exit 1
+        shift 2
+        user_add "$@" || exit 1
+        sync_users_to_config 2>/dev/null || true
+        systemctl restart sing-box 2>/dev/null &&
+          echo -e "${G}✓${N} Service restarted with updated user list" ||
+          true
+        ;;
+      list)
+        user_list
+        ;;
+      remove)
+        need_root || exit 1
+        [[ -n "${3:-}" ]] || {
+          echo -e "${R}[ERR]${N} Usage: sbx user remove <UUID|NAME>"
+          exit 1
+        }
+        user_remove "${3}" || exit 1
+        sync_users_to_config 2>/dev/null || true
+        systemctl restart sing-box 2>/dev/null &&
+          echo -e "${G}✓${N} Service restarted" ||
+          true
+        ;;
+      reset)
+        need_root || exit 1
+        [[ -n "${3:-}" ]] || {
+          echo -e "${R}[ERR]${N} Usage: sbx user reset <UUID|NAME>"
+          exit 1
+        }
+        user_reset "${3}" || exit 1
+        sync_users_to_config 2>/dev/null || true
+        systemctl restart sing-box 2>/dev/null &&
+          echo -e "${G}✓${N} Service restarted" ||
+          true
+        ;;
+      *)
+        echo -e "${Y}Usage:${N}"
+        echo "  sbx user add [--name NAME]    Add a new user"
+        echo "  sbx user list                 List all users"
+        echo "  sbx user remove <UUID|NAME>   Remove a user"
+        echo "  sbx user reset <UUID|NAME>    Regenerate user credentials"
+        exit 1
+        ;;
+    esac
     ;;
 
   help | --help | -h | "")

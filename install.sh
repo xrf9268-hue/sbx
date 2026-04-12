@@ -505,7 +505,7 @@ _download_and_validate_manager_script() {
 _load_modules() {
   local github_repo="https://raw.githubusercontent.com/xrf9268-hue/sbx/main"
   # Module loading order: colors first (required by common and logging), then common loads logging and generators, tools after common
-  local modules=(colors common logging generators tools retry download network validation checksum version certificate caddy_cleanup config config_validator schema_validator service ui backup export messages)
+  local modules=(colors common logging generators tools retry download network validation checksum version certificate caddy_cleanup config config_validator schema_validator service ui backup export messages users)
   local temp_lib_dir=""
 
   # Check if lib directory exists
@@ -635,6 +635,7 @@ _verify_module_apis() {
     ["version"]="resolve_singbox_version"
     ["config"]="write_config create_reality_inbound add_route_config"
     ["service"]="setup_service validate_port_listening restart_service"
+    ["users"]="user_add user_list user_remove user_reset sync_users_to_config"
   )
 
   # Verify each module's API contract
@@ -1520,6 +1521,7 @@ save_state_info() {
     --arg reality_short_id "${SID}" \
     --arg reality_sni "${SNI:-${SNI_DEFAULT}}" \
     --argjson reality_port "${REALITY_PORT_CHOSEN:-0}" \
+    --arg default_user_name "default" \
     --argjson ws_enabled "${ws_enabled}" \
     --argjson ws_port "${ws_port:-0}" \
     --arg cert_path "${cert_path}" \
@@ -1547,6 +1549,7 @@ save_state_info() {
           enabled: true,
           port: (if $reality_port == 0 then null else $reality_port end),
           uuid: $reality_uuid,
+          users: [{name: $default_user_name, uuid: $reality_uuid, created_at: $installed_at}],
           public_key: $reality_public_key,
           short_id: $reality_short_id,
           sni: $reality_sni

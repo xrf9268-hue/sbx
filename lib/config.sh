@@ -119,22 +119,44 @@ create_base_config() {
 #==============================================================================
 
 # Create Reality inbound configuration
+#
+# Args:
+#   users_json  JSON array of user objects [{uuid, ...}, ...]. A plain UUID
+#               string is also accepted for backward compatibility and will be
+#               wrapped in a single-element array automatically.
+#   port        TCP port number
+#   listen_addr Listen address
+#   sni         SNI / handshake server
+#   priv_key    X25519 private key
+#   short_id    Reality short ID (1-8 hex chars)
 create_reality_inbound() {
-  local uuid="$1"
+  local users_json="$1"
   local port="$2"
   local listen_addr="$3"
   local sni="$4"
   local priv_key="$5"
   local short_id="$6"
 
-  # Input validation with helpful guidance
-  [[ -n "${uuid}" ]] || {
-    format_validation_error_with_example "UUID" "(empty)" \
-      "a1b2c3d4-e5f6-7890-abcd-ef1234567890" \
-      "UUID cannot be empty" \
-      "Generate: sing-box generate uuid OR uuidgen"
+  # Backward compat: if a plain UUID string is passed, wrap it in an array
+  if [[ "${users_json}" != "["* ]]; then
+    local _plain_uuid="${users_json}"
+    [[ -n "${_plain_uuid}" ]] || {
+      format_validation_error_with_example "UUID" "(empty)" \
+        "a1b2c3d4-e5f6-7890-abcd-ef1234567890" \
+        "UUID cannot be empty" \
+        "Generate: sing-box generate uuid OR uuidgen"
+      return 1
+    }
+    users_json=$(jq -n --arg uuid "${_plain_uuid}" '[{uuid: $uuid}]')
+  fi
+
+  # Validate users array is non-empty
+  local users_count=0
+  users_count=$(echo "${users_json}" | jq 'length' 2>/dev/null || echo 0)
+  if [[ "${users_count}" -eq 0 ]]; then
+    err "users_json must contain at least one user"
     return 1
-  }
+  fi
 
   [[ -n "${priv_key}" ]] || {
     format_validation_error_with_command "Reality private key" "(empty)" \
@@ -166,18 +188,25 @@ create_reality_inbound() {
     return 1
   fi
 
+  # Build sing-box users array: keep only uuid + flow fields
+  local sb_users=''
+  sb_users=$(echo "${users_json}" | jq --arg flow "${REALITY_FLOW_VISION}" \
+    '[.[] | {uuid: .uuid, flow: $flow}]') || {
+    err "Failed to build Reality users array from input"
+    return 1
+  }
+
   local reality_config=''
 
   msg "  - Creating Reality inbound configuration..."
 
   if ! reality_config=$(jq -n \
-    --arg uuid "${uuid}" \
+    --argjson users "${sb_users}" \
     --arg port "${port}" \
     --arg listen_addr "${listen_addr}" \
     --arg sni "${sni}" \
     --arg priv "${priv_key}" \
     --arg sid "${short_id}" \
-    --arg flow "${REALITY_FLOW_VISION}" \
     --arg max_time_diff "${REALITY_MAX_TIME_DIFF}" \
     --arg alpn_h2 "${REALITY_ALPN_H2}" \
     --arg alpn_http11 "${REALITY_ALPN_HTTP11}" \
@@ -187,7 +216,7 @@ create_reality_inbound() {
       tag: "in-reality",
       listen: $listen_addr,
       listen_port: ($port | tonumber),
-      users: [{ uuid: $uuid, flow: $flow }],
+      users: $users,
       multiplex: {
         enabled: false,
         padding: false,
@@ -316,18 +345,38 @@ _build_tls_block() {
 }
 
 # Create WS-TLS inbound configuration
-# Args: uuid port listen_addr domain tls_json
+#
+# Args:
+#   users_json  JSON array of user objects [{uuid, ...}, ...]. A plain UUID
+#               string is also accepted for backward compatibility.
+#   port        TCP port number
+#   listen_addr Listen address
+#   domain      Server domain (unused in config body but kept for signature compat)
+#   tls_json    TLS configuration JSON object
 create_ws_inbound() {
-  local uuid="$1"
+  local users_json="$1"
   local port="$2"
   local listen_addr="$3"
   local domain="$4"
   local tls_json="$5"
 
+  # Backward compat: if a plain UUID string is passed, wrap it in an array
+  if [[ "${users_json}" != "["* ]]; then
+    local _plain_uuid="${users_json}"
+    users_json=$(jq -n --arg uuid "${_plain_uuid}" '[{uuid: $uuid}]')
+  fi
+
+  # Build sing-box users array (uuid only, no flow for WS-TLS)
+  local sb_users=''
+  sb_users=$(echo "${users_json}" | jq '[.[] | {uuid: .uuid}]') || {
+    err "Failed to build WS-TLS users array from input"
+    return 1
+  }
+
   local ws_config=''
 
   if ! ws_config=$(jq -n \
-    --arg uuid "${uuid}" \
+    --argjson users "${sb_users}" \
     --arg port "${port}" \
     --arg listen_addr "${listen_addr}" \
     --argjson tls "${tls_json}" \
@@ -336,7 +385,7 @@ create_ws_inbound() {
       tag: "in-ws",
       listen: $listen_addr,
       listen_port: ($port | tonumber),
-      users: [{ uuid: $uuid }],
+      users: $users,
       multiplex: {
         enabled: false,
         padding: false,
@@ -634,10 +683,17 @@ _create_all_inbounds() {
   local enable_tuic="${ENABLE_TUIC:-0}"
   local enable_trojan="${ENABLE_TROJAN:-0}"
 
+  # Resolve users JSON: prefer USERS_JSON env var (multi-user), fall back to
+  # wrapping the positional uuid argument in a single-element array.
+  local users_json="${USERS_JSON:-}"
+  if [[ -z "${users_json}" ]]; then
+    users_json=$(jq -n --arg uuid "${uuid}" '[{uuid: $uuid}]')
+  fi
+
   # Add Reality inbound (if enabled and port is set)
   if [[ "${enable_reality}" == "1" && -n "${reality_port}" ]]; then
     local reality_config=''
-    reality_config=$(create_reality_inbound "${uuid}" "${reality_port}" "${listen_addr}" \
+    reality_config=$(create_reality_inbound "${users_json}" "${reality_port}" "${listen_addr}" \
       "${sni}" "${priv_key}" "${short_id}") ||
       _config_die "SBX-CONFIG-030" "Failed to create Reality inbound" \
         "Check Reality parameters (UUID/ports/keys/SNI) and retry."
@@ -673,7 +729,7 @@ _create_all_inbounds() {
           "Check certificate mode and TLS inputs."
 
       local ws_config=''
-      ws_config=$(create_ws_inbound "${uuid}" "${WS_PORT_CHOSEN}" "${listen_addr}" \
+      ws_config=$(create_ws_inbound "${users_json}" "${WS_PORT_CHOSEN}" "${listen_addr}" \
         "${DOMAIN}" "${ws_tls}") ||
         _config_die "SBX-CONFIG-033" "Failed to create WS-TLS inbound" \
           "Verify WS port/domain/TLS settings."
