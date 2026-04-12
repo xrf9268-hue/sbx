@@ -81,6 +81,7 @@ load_client_info() {
     WS_PORT=$(jq -r '.protocols.ws_tls.port // empty' "${resolved}")
     HY2_PORT=$(jq -r '.protocols.hysteria2.port // empty' "${resolved}")
     HY2_PASS=$(jq -r '.protocols.hysteria2.password // empty' "${resolved}")
+    HY2_PORT_RANGE=$(jq -r '.protocols.hysteria2.port_range // empty' "${resolved}")
     TUIC_PORT=$(jq -r '.protocols.tuic.port // empty' "${resolved}")
     TUIC_PASS=$(jq -r '.protocols.tuic.password // empty' "${resolved}")
     TROJAN_PORT=$(jq -r '.protocols.trojan.port // empty' "${resolved}")
@@ -386,6 +387,11 @@ EOF
     sni: ${DOMAIN}
     skip-cert-verify: false
 EOF
+    if [[ -n "${HY2_PORT_RANGE:-}" ]]; then
+      cat <<EOF
+    ports: ${HY2_PORT_RANGE}
+EOF
+    fi
   fi
 
   if [[ "${TUIC_ENABLED:-false}" == "true" && -n "${TUIC_PORT:-}" && -n "${TUIC_PASS:-}" ]]; then
@@ -469,7 +475,10 @@ export_uri() {
     hysteria2 | hy2)
       [[ -n "${HY2_PORT}" ]] || _export_die "SBX-EXPORT-042" "Hysteria2 not configured" \
         "Enable Hysteria2 during install or export Reality only."
-      echo "hysteria2://${HY2_PASS}@${DOMAIN}:${HY2_PORT}/?sni=${DOMAIN}&alpn=h3&insecure=0#Hysteria2-${DOMAIN}"
+      local hy2_uri="hysteria2://${HY2_PASS}@${DOMAIN}:${HY2_PORT}/?sni=${DOMAIN}&alpn=h3&insecure=0"
+      [[ -n "${HY2_PORT_RANGE:-}" ]] && hy2_uri+="&mport=${HY2_PORT_RANGE}"
+      hy2_uri+="#Hysteria2-${DOMAIN}"
+      echo "${hy2_uri}"
       ;;
     tuic)
       [[ -n "${TUIC_PORT:-}" && -n "${TUIC_PASS:-}" ]] || _export_die "SBX-EXPORT-046" "TUIC not configured" \

@@ -76,6 +76,7 @@ readonly REALITY_SHORT_ID_MAX_LENGTH=8
 readonly REALITY_PORT_DEFAULT=443
 readonly WS_PORT_DEFAULT=8444
 readonly HY2_PORT_DEFAULT=8443
+readonly HY2_PORT_RANGE_DEFAULT="" # Empty = port hopping disabled
 readonly TUIC_PORT_DEFAULT=8445
 readonly TROJAN_PORT_DEFAULT=8446
 
@@ -505,7 +506,7 @@ _download_and_validate_manager_script() {
 _load_modules() {
   local github_repo="https://raw.githubusercontent.com/xrf9268-hue/sbx/main"
   # Module loading order: colors first (required by common and logging), then common loads logging and generators, tools after common
-  local modules=(colors common logging generators tools retry download network validation checksum version certificate caddy_cleanup config config_validator schema_validator service ui backup export messages users)
+  local modules=(colors common logging generators tools retry download network validation checksum version certificate caddy_cleanup config config_validator schema_validator service ui backup export messages users port_hopping)
   local temp_lib_dir=""
 
   # Check if lib directory exists
@@ -636,6 +637,7 @@ _verify_module_apis() {
     ["config"]="write_config create_reality_inbound add_route_config"
     ["service"]="setup_service validate_port_listening restart_service"
     ["users"]="user_add user_list user_remove user_reset sync_users_to_config"
+    ["port_hopping"]="validate_port_range apply_port_hopping_rules remove_port_hopping_rules show_port_hopping_status"
   )
 
   # Verify each module's API contract
@@ -689,6 +691,7 @@ _load_modules
 : "${WS_PORT_FALLBACK:=24444}"
 : "${HY2_PORT:=8443}"
 : "${HY2_PORT_FALLBACK:=24445}"
+: "${HY2_PORT_RANGE:=}"
 : "${SNI_DEFAULT:=www.microsoft.com}"
 : "${CERT_DIR_BASE:=/etc/ssl/sbx}"
 : "${CERT_FULLCHAIN:=}"
@@ -1349,6 +1352,16 @@ _allocate_ports() {
         "HY2_PORT=30445 bash install.sh"
       HY2_PASS=$(generate_hex_string 16)
       success "  ✓ Hysteria2 port: ${HY2_PORT_CHOSEN}"
+
+      # Validate port hopping range if provided
+      if [[ -n "${HY2_PORT_RANGE:-}" ]]; then
+        validate_port_range "${HY2_PORT_RANGE}" || die_with_code "SBX-NETWORK-010" "Invalid port range: ${HY2_PORT_RANGE}" \
+          "Use format START-END (e.g., 20000-40000) with ports in 1024-65535." \
+          "HY2_PORT_RANGE=20000-40000 bash install.sh"
+        HY2_PORT_RANGE_START="${HY2_PORT_RANGE%%-*}"
+        HY2_PORT_RANGE_END="${HY2_PORT_RANGE##*-}"
+        success "  ✓ Hysteria2 port hopping range: ${HY2_PORT_RANGE}"
+      fi
     fi
 
     if [[ "${ENABLE_TUIC:-0}" == "1" ]]; then
@@ -1410,6 +1423,11 @@ EOF
 HY2_PORT="${HY2_PORT_CHOSEN}"
 HY2_PASS="${HY2_PASS}"
 EOF
+      if [[ -n "${HY2_PORT_RANGE:-}" ]]; then
+        cat >>"${CLIENT_INFO}" <<EOF
+HY2_PORT_RANGE="${HY2_PORT_RANGE}"
+EOF
+      fi
     fi
 
     if [[ "${ENABLE_TUIC:-0}" == "1" ]]; then
@@ -1529,6 +1547,7 @@ save_state_info() {
     --argjson hy2_enabled "${hy2_enabled}" \
     --argjson hy2_port "${hy2_port:-0}" \
     --arg hy2_pass "${hy2_pass}" \
+    --arg hy2_port_range "${HY2_PORT_RANGE:-}" \
     --argjson tuic_enabled "${tuic_enabled}" \
     --argjson tuic_port "${tuic_port:-0}" \
     --arg tuic_pass "${tuic_pass}" \
@@ -1563,7 +1582,8 @@ save_state_info() {
         hysteria2: {
           enabled: $hy2_enabled,
           port: (if $hy2_enabled and $hy2_port != 0 then $hy2_port else null end),
-          password: (if $hy2_enabled and $hy2_pass != "" then $hy2_pass else null end)
+          password: (if $hy2_enabled and $hy2_pass != "" then $hy2_pass else null end),
+          port_range: (if $hy2_enabled and $hy2_port_range != "" then $hy2_port_range else null end)
         },
         tuic: {
           enabled: $tuic_enabled,
@@ -1717,6 +1737,18 @@ open_firewall() {
     info "  ℹ No firewall manager detected (firewall-cmd/ufw)"
     info "  ℹ Manually open ports: ${ports_to_open[*]}"
   fi
+
+  # Open port hopping range if configured
+  if [[ -n "${HY2_PORT_RANGE:-}" && "${ENABLE_HY2:-0}" == "1" ]]; then
+    local range_start="${HY2_PORT_RANGE%%-*}"
+    local range_end="${HY2_PORT_RANGE##*-}"
+    if have firewall-cmd; then
+      firewall-cmd --permanent --add-port="${range_start}-${range_end}/udp" 2>/dev/null || true
+      firewall-cmd --reload 2>/dev/null || true
+    elif have ufw; then
+      ufw allow "${range_start}:${range_end}/udp" 2>/dev/null || true
+    fi
+  fi
 }
 
 # Print installation summary
@@ -1749,7 +1781,11 @@ print_summary() {
       echo "  • VLESS-WS-TLS (port ${WS_PORT_CHOSEN})"
     fi
     if [[ "${enable_hy2}" == "1" && -n "${HY2_PORT_CHOSEN:-}" ]]; then
-      echo "  • Hysteria2 (port ${HY2_PORT_CHOSEN})"
+      if [[ -n "${HY2_PORT_RANGE:-}" ]]; then
+        echo "  • Hysteria2 (port ${HY2_PORT_CHOSEN}, port hopping ${HY2_PORT_RANGE})"
+      else
+        echo "  • Hysteria2 (port ${HY2_PORT_CHOSEN})"
+      fi
     fi
     if [[ "${enable_tuic}" == "1" && -n "${TUIC_PORT_CHOSEN:-}" ]]; then
       echo "  • TUIC V5 (port ${TUIC_PORT_CHOSEN})"
@@ -1793,7 +1829,9 @@ print_summary() {
 
     if [[ "${enable_hy2}" == "1" && -n "${HY2_PORT_CHOSEN:-}" ]]; then
       echo
-      local uri_hy2="hysteria2://${HY2_PASS}@${DOMAIN}:${HY2_PORT_CHOSEN}/?sni=${DOMAIN}&alpn=h3&insecure=0#Hysteria2-${DOMAIN}"
+      local uri_hy2="hysteria2://${HY2_PASS}@${DOMAIN}:${HY2_PORT_CHOSEN}/?sni=${DOMAIN}&alpn=h3&insecure=0"
+      [[ -n "${HY2_PORT_RANGE:-}" ]] && uri_hy2+="&mport=${HY2_PORT_RANGE}"
+      uri_hy2+="#Hysteria2-${DOMAIN}"
       echo -e "${G}Hysteria2:${N}"
       echo "  ${uri_hy2}"
     fi
@@ -1979,6 +2017,12 @@ install_flow() {
   # Configure firewall
   open_firewall
 
+  # Apply port hopping DNAT rules if configured
+  if [[ -n "${HY2_PORT_RANGE:-}" && "${ENABLE_HY2:-0}" == "1" && -n "${HY2_PORT_CHOSEN:-}" ]]; then
+    apply_port_hopping_rules "${HY2_PORT_CHOSEN}" "${HY2_PORT_RANGE_START}" "${HY2_PORT_RANGE_END}"
+    persist_port_hopping_rules "${HY2_PORT_CHOSEN}" "${HY2_PORT_RANGE_START}" "${HY2_PORT_RANGE_END}"
+  fi
+
   # Show summary
   if [[ "${SKIP_CONFIG_GEN:-0}" != "1" ]]; then
     print_summary
@@ -2016,6 +2060,17 @@ uninstall_flow() {
 
   echo
   msg "Removing sing-box..."
+
+  # Remove port hopping DNAT rules if configured
+  if [[ -f "${STATE_FILE}" ]]; then
+    local _ph_range="" _ph_port=""
+    _ph_range=$(jq -r '.protocols.hysteria2.port_range // empty' "${STATE_FILE}" 2>/dev/null) || true
+    _ph_port=$(jq -r '.protocols.hysteria2.port // empty' "${STATE_FILE}" 2>/dev/null) || true
+    if [[ -n "${_ph_range}" && -n "${_ph_port}" ]]; then
+      msg "Removing port hopping rules..."
+      remove_port_hopping_rules "${_ph_port}" "${_ph_range%%-*}" "${_ph_range##*-}" 2>/dev/null || true
+    fi
+  fi
 
   # Stop and disable service
   if check_service_status; then

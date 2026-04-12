@@ -37,7 +37,7 @@ fail() {
 
 create_client_info() {
   local path="$1"
-  cat >"$path" <<'EOF'
+  cat > "$path" << 'EOF'
 DOMAIN="example.com"
 UUID="11111111-2222-3333-4444-555555555555"
 PUBLIC_KEY="pubkey123"
@@ -59,12 +59,12 @@ EOF
 create_stub_lib() {
   local lib_dir="$1"
   mkdir -p "$lib_dir"
-  cat >"${lib_dir}/common.sh" <<'EOF'
+  cat > "${lib_dir}/common.sh" << 'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 EOF
 
-  cat >"${lib_dir}/export.sh" <<'EOF'
+  cat > "${lib_dir}/export.sh" << 'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 export_uri() {
@@ -90,7 +90,7 @@ EOF
 
 create_non_tuic_client_info() {
   local path="$1"
-  cat >"$path" <<'EOF'
+  cat > "$path" << 'EOF'
 DOMAIN="example.com"
 UUID="11111111-2222-3333-4444-555555555555"
 PUBLIC_KEY="pubkey123"
@@ -108,7 +108,7 @@ EOF
 
 create_acme_client_info() {
   local path="$1"
-  cat >"$path" <<'EOF'
+  cat > "$path" << 'EOF'
 DOMAIN="example.com"
 UUID="11111111-2222-3333-4444-555555555555"
 PUBLIC_KEY="pubkey123"
@@ -138,7 +138,7 @@ test_stubbed_export_uri_used_in_info_and_qr() {
   create_stub_lib "$stub_lib"
 
   mkdir -p "$TEST_TMP_DIR/bin"
-  cat >"$TEST_TMP_DIR/bin/qrencode" <<'EOF'
+  cat > "$TEST_TMP_DIR/bin/qrencode" << 'EOF'
 #!/usr/bin/env bash
 echo "$@" >>"$QR_LOG"
 EOF
@@ -160,7 +160,7 @@ EOF
     fail "info command should print TUIC URI" "$info_output"
   fi
 
-  LIB_DIR="$stub_lib" TEST_CLIENT_INFO="$client_info" PATH="$TEST_TMP_DIR/bin:$PATH" bash "$PROJECT_ROOT/bin/sbx-manager.sh" qr >/dev/null 2>&1 || true
+  LIB_DIR="$stub_lib" TEST_CLIENT_INFO="$client_info" PATH="$TEST_TMP_DIR/bin:$PATH" bash "$PROJECT_ROOT/bin/sbx-manager.sh" qr > /dev/null 2>&1 || true
 
   if [[ -f "$QR_LOG" ]] && grep -q "stub-reality" "$QR_LOG"; then
     pass "qr command uses export_uri path"
@@ -274,6 +274,37 @@ test_cli_uri_matches_export_module() {
   fi
 }
 
+test_hy2_uri_mport_param() {
+  echo ""
+  echo "Test: Hysteria2 URI includes mport when port hopping is configured"
+  echo "-------------------------------------------------------------------"
+
+  local client_info="$TEST_TMP_DIR/client-info-mport.txt"
+  create_client_info "$client_info"
+
+  # URI without port hopping should not contain mport
+  local uri_no_hop=""
+  uri_no_hop=$(HY2_PORT_RANGE="" TEST_CLIENT_INFO="$client_info" \
+    bash -c "source \"$PROJECT_ROOT/lib/export.sh\"; export_uri hy2" 2> /dev/null) || true
+
+  if [[ "$uri_no_hop" != *"mport"* ]]; then
+    pass "HY2 URI without port hopping has no mport"
+  else
+    fail "HY2 URI without port hopping should not have mport" "uri='$uri_no_hop'"
+  fi
+
+  # URI with port hopping should contain mport
+  local uri_with_hop=""
+  uri_with_hop=$(HY2_PORT_RANGE="20000-40000" TEST_CLIENT_INFO="${client_info}" \
+    bash -c "source \"$PROJECT_ROOT/lib/export.sh\"; export_uri hy2" 2> /dev/null) || true
+
+  if [[ "$uri_with_hop" == *"mport=20000-40000"* ]]; then
+    pass "HY2 URI with port hopping includes mport=20000-40000"
+  else
+    fail "HY2 URI with port hopping should include mport param" "uri='$uri_with_hop'"
+  fi
+}
+
 echo ""
 echo "=========================================="
 echo "Running test suite: sbx-manager URI paths"
@@ -284,6 +315,7 @@ test_help_lists_tuic_export_protocol
 test_info_skips_tuic_when_not_configured
 test_info_prints_acme_managed_protocols
 test_cli_uri_matches_export_module
+test_hy2_uri_mport_param
 
 echo ""
 echo "=========================================="

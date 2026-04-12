@@ -28,6 +28,8 @@ if [[ -d "$LIB_DIR" ]]; then
   [[ -f "$LIB_DIR/export.sh" ]] && source "$LIB_DIR/export.sh"
   # shellcheck source=/dev/null
   [[ -f "$LIB_DIR/users.sh" ]] && source "$LIB_DIR/users.sh"
+  # shellcheck source=/dev/null
+  [[ -f "$LIB_DIR/port_hopping.sh" ]] && source "$LIB_DIR/port_hopping.sh"
 fi
 
 # Simple logo for management tool
@@ -79,6 +81,11 @@ ${B}Configuration Export:${N}
   export qr [output-dir]            Generate QR code images
   export subscription [file]        Generate subscription link
 
+${B}Port Hopping:${N}
+  hy2-ports [status]              Show port hopping status
+  hy2-ports enable <START-END>    Enable port hopping (e.g., 20000-40000)
+  hy2-ports disable               Disable port hopping
+
 ${B}System:${N}
   uninstall|remove    Complete uninstall (requires root)
   help                Show this help message
@@ -96,7 +103,7 @@ EOF
 
 CLIENT_INFO_PATH="${CLIENT_INFO:-/etc/sing-box/client-info.txt}"
 STATE_INFO_PATH="${STATE_FILE:-/etc/sing-box/state.json}"
-CLIENT_INFO_ALLOWED_KEYS_REGEX="^(DOMAIN|UUID|PUBLIC_KEY|SHORT_ID|SNI|REALITY_PORT|WS_PORT|HY2_PORT|HY2_PASS|TUIC_PORT|TUIC_PASS|CERT_FULLCHAIN|CERT_KEY)$"
+CLIENT_INFO_ALLOWED_KEYS_REGEX="^(DOMAIN|UUID|PUBLIC_KEY|SHORT_ID|SNI|REALITY_PORT|WS_PORT|HY2_PORT|HY2_PASS|HY2_PORT_RANGE|TUIC_PORT|TUIC_PASS|CERT_FULLCHAIN|CERT_KEY)$"
 SBX_BIN="${SBX_BIN:-${SB_BIN:-/usr/local/bin/sing-box}}"
 SBX_CONFIG_PATH="${SBX_CONFIG_PATH:-${SB_CONF:-/etc/sing-box/config.json}}"
 HEALTH_CERT_WARNING_DAYS="${HEALTH_CERT_WARNING_DAYS:-30}"
@@ -887,11 +894,15 @@ case "${1:-}" in
       if [[ "${has_hy2_in_info}" == "true" ]]; then
         echo
         echo "INBOUND   : Hysteria2      ${HY2_PORT}/udp"
+        [[ -n "${HY2_PORT_RANGE:-}" ]] && echo "  RANGE    = ${HY2_PORT_RANGE} (port hopping)"
         echo "  CERT     = ${cert_label}"
         if command -v export_uri >/dev/null 2>&1; then
           URI_HY2=$(export_uri hy2)
         else
-          URI_HY2="hysteria2://${HY2_PASS}@${DOMAIN:-}:${HY2_PORT}/?sni=${DOMAIN:-}&alpn=h3&insecure=0#Hysteria2-${DOMAIN:-}"
+          _hy2_uri="hysteria2://${HY2_PASS}@${DOMAIN:-}:${HY2_PORT}/?sni=${DOMAIN:-}&alpn=h3&insecure=0"
+          [[ -n "${HY2_PORT_RANGE:-}" ]] && _hy2_uri+="&mport=${HY2_PORT_RANGE}"
+          _hy2_uri+="#Hysteria2-${DOMAIN:-}"
+          URI_HY2="${_hy2_uri}"
         fi
         echo "  URI      = ${URI_HY2}"
       fi
@@ -1211,6 +1222,71 @@ case "${1:-}" in
         echo "  sbx user list                 List all users"
         echo "  sbx user remove <UUID|NAME>   Remove a user"
         echo "  sbx user reset <UUID|NAME>    Regenerate user credentials"
+        exit 1
+        ;;
+    esac
+    ;;
+
+  hy2-ports)
+    if ! declare -f show_port_hopping_status >/dev/null 2>&1; then
+      echo -e "${R}[ERR]${N} Port hopping module not loaded. Please reinstall sbx-lite."
+      exit 1
+    fi
+
+    case "${2:-}" in
+      status | "")
+        show_port_hopping_status
+        ;;
+      enable)
+        need_root || exit 1
+        [[ -n "${3:-}" ]] || {
+          echo -e "${R}[ERR]${N} Usage: sbx hy2-ports enable <START-END>"
+          exit 1
+        }
+        validate_port_range "${3}" || exit 1
+        _ph_hy2_port=""
+        _ph_hy2_port=$(jq -r '.protocols.hysteria2.port // empty' "${STATE_INFO_PATH}" 2>/dev/null)
+        [[ -n "${_ph_hy2_port}" ]] || {
+          echo -e "${R}[ERR]${N} Hysteria2 is not configured. Install with ENABLE_HY2=1 first."
+          exit 1
+        }
+        apply_port_hopping_rules "${_ph_hy2_port}" "${3%%-*}" "${3##*-}"
+        persist_port_hopping_rules "${_ph_hy2_port}" "${3%%-*}" "${3##*-}"
+        # Update state.json atomically
+        _ph_tmp=$(mktemp)
+        if ! jq --arg range "${3}" '.protocols.hysteria2.port_range = $range' "${STATE_INFO_PATH}" >"${_ph_tmp}" || ! mv "${_ph_tmp}" "${STATE_INFO_PATH}"; then
+          rm -f "${_ph_tmp}"
+          echo -e "${R}[ERR]${N} Failed to update state.json. DNAT rules were applied but state is stale."
+          exit 1
+        fi
+        chmod 600 "${STATE_INFO_PATH}"
+        echo -e "${G}✓${N} Port hopping enabled: UDP ${3} → ${_ph_hy2_port}"
+        ;;
+      disable)
+        need_root || exit 1
+        _ph_range=""
+        _ph_port=""
+        _ph_range=$(jq -r '.protocols.hysteria2.port_range // empty' "${STATE_INFO_PATH}" 2>/dev/null) || true
+        _ph_port=$(jq -r '.protocols.hysteria2.port // empty' "${STATE_INFO_PATH}" 2>/dev/null) || true
+        if [[ -z "${_ph_range}" ]]; then
+          echo "Port hopping is not currently enabled."
+          exit 0
+        fi
+        remove_port_hopping_rules "${_ph_port}" "${_ph_range%%-*}" "${_ph_range##*-}"
+        _ph_tmp=$(mktemp)
+        if ! jq '.protocols.hysteria2.port_range = null' "${STATE_INFO_PATH}" >"${_ph_tmp}" || ! mv "${_ph_tmp}" "${STATE_INFO_PATH}"; then
+          rm -f "${_ph_tmp}"
+          echo -e "${R}[ERR]${N} Failed to update state.json. DNAT rules were removed but state is stale."
+          exit 1
+        fi
+        chmod 600 "${STATE_INFO_PATH}"
+        echo -e "${G}✓${N} Port hopping disabled"
+        ;;
+      *)
+        echo -e "${Y}Usage:${N}"
+        echo "  sbx hy2-ports [status]              Show port hopping status"
+        echo "  sbx hy2-ports enable <START-END>     Enable port hopping"
+        echo "  sbx hy2-ports disable                Disable port hopping"
         exit 1
         ;;
     esac

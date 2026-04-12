@@ -8,7 +8,7 @@
 set -euo pipefail
 
 # Check if jq is available (required to parse hook input)
-if ! command -v jq > /dev/null 2>&1; then
+if ! command -v jq >/dev/null 2>&1; then
   echo "ERROR: jq required for hooks. Install: apt install jq (or brew install jq)" >&2
   exit 1
 fi
@@ -56,13 +56,13 @@ FORMATTED=false
 SHFMT_AVAILABLE=false
 SHFMT_WARNING_FILE="${TMP_DIR}/sbx-${SAFE_PROJECT_ID}-shfmt-warning-shown${MARKER_SUFFIX}"
 
-if command -v shfmt > /dev/null 2>&1; then
+if command -v shfmt >/dev/null 2>&1; then
   SHFMT_AVAILABLE=true
 
   # Check if file needs formatting (dry-run)
-  if ! shfmt -d -i 2 -bn -ci -sr "$FILE_PATH" > /dev/null 2>&1; then
+  if ! shfmt -d -i 2 -ci "$FILE_PATH" >/dev/null 2>&1; then
     # Format the file in-place
-    if shfmt -w -i 2 -bn -ci -sr "$FILE_PATH" 2> /dev/null; then
+    if shfmt -w -i 2 -ci "$FILE_PATH" 2>/dev/null; then
       echo "✓ Formatted: $(basename "$FILE_PATH")" >&2
       FORMATTED=true
     else
@@ -86,7 +86,7 @@ SHELLCHECK_AVAILABLE=false
 LINT_PASSED=false
 SHELLCHECK_WARNING_FILE="${TMP_DIR}/sbx-${SAFE_PROJECT_ID}-shellcheck-warning-shown${MARKER_SUFFIX}"
 
-if command -v shellcheck > /dev/null 2>&1; then
+if command -v shellcheck >/dev/null 2>&1; then
   SHELLCHECK_AVAILABLE=true
 
   # Prefer repo config when available (hook CWD is not guaranteed)
