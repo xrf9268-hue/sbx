@@ -30,6 +30,8 @@ if [[ -d "$LIB_DIR" ]]; then
   [[ -f "$LIB_DIR/users.sh" ]] && source "$LIB_DIR/users.sh"
   # shellcheck source=/dev/null
   [[ -f "$LIB_DIR/port_hopping.sh" ]] && source "$LIB_DIR/port_hopping.sh"
+  # shellcheck source=/dev/null
+  [[ -f "$LIB_DIR/subscription.sh" ]] && source "$LIB_DIR/subscription.sh"
 fi
 
 # Simple logo for management tool
@@ -85,6 +87,13 @@ ${B}Port Hopping:${N}
   hy2-ports [status]              Show port hopping status
   hy2-ports enable <START-END>    Enable port hopping (e.g., 20000-40000)
   hy2-ports disable               Disable port hopping
+
+${B}Subscription Endpoint:${N}
+  subscription on                 Start the adaptive subscription HTTP endpoint
+  subscription off                Stop the subscription endpoint
+  subscription status             Show subscription service status
+  subscription url                Print the full subscription URL
+  subscription rotate             Rotate the subscription token
 
 ${B}System:${N}
   uninstall|remove    Complete uninstall (requires root)
@@ -1260,6 +1269,7 @@ case "${1:-}" in
           exit 1
         fi
         chmod 600 "${STATE_INFO_PATH}"
+        declare -f subscription_refresh_cache >/dev/null 2>&1 && subscription_refresh_cache || true
         echo -e "${G}✓${N} Port hopping enabled: UDP ${3} → ${_ph_hy2_port}"
         ;;
       disable)
@@ -1280,6 +1290,7 @@ case "${1:-}" in
           exit 1
         fi
         chmod 600 "${STATE_INFO_PATH}"
+        declare -f subscription_refresh_cache >/dev/null 2>&1 && subscription_refresh_cache || true
         echo -e "${G}✓${N} Port hopping disabled"
         ;;
       *)
@@ -1287,6 +1298,44 @@ case "${1:-}" in
         echo "  sbx hy2-ports [status]              Show port hopping status"
         echo "  sbx hy2-ports enable <START-END>     Enable port hopping"
         echo "  sbx hy2-ports disable                Disable port hopping"
+        exit 1
+        ;;
+    esac
+    ;;
+
+  subscription | sub)
+    if ! declare -f subscription_render >/dev/null 2>&1; then
+      echo -e "${R}[ERR]${N} Subscription module not loaded. Please reinstall sbx-lite."
+      exit 1
+    fi
+
+    case "${2:-status}" in
+      on | enable | start)
+        need_root || exit 1
+        shift 2 2>/dev/null || true
+        subscription_enable "$@"
+        ;;
+      off | disable | stop)
+        need_root || exit 1
+        subscription_disable
+        ;;
+      rotate)
+        need_root || exit 1
+        subscription_rotate
+        ;;
+      status | "")
+        subscription_status
+        ;;
+      url)
+        subscription_url
+        ;;
+      *)
+        echo -e "${Y}Usage:${N}"
+        echo "  sbx subscription on      Start subscription endpoint"
+        echo "  sbx subscription off     Stop subscription endpoint"
+        echo "  sbx subscription status  Show status"
+        echo "  sbx subscription url     Print subscription URL"
+        echo "  sbx subscription rotate  Rotate subscription token"
         exit 1
         ;;
     esac

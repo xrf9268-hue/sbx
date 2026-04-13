@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# sbx-sub-server - thin launcher for the sbx adaptive subscription endpoint.
+# Invoked by the sbx-subscription.service systemd unit.
+set -euo pipefail
+
+SERVER_PY="${SBX_SUB_SERVER_PY:-/usr/local/lib/sbx/subscription/server.py}"
+
+if [[ ! -f "${SERVER_PY}" ]]; then
+  echo "sbx-sub-server: missing ${SERVER_PY}" >&2
+  exit 1
+fi
+
+if ! command -v python3 >/dev/null 2>&1; then
+  echo "sbx-sub-server: python3 is required but not found" >&2
+  exit 1
+fi
+
+exec python3 "${SERVER_PY}" "$@"

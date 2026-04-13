@@ -506,7 +506,7 @@ _download_and_validate_manager_script() {
 _load_modules() {
   local github_repo="https://raw.githubusercontent.com/xrf9268-hue/sbx/main"
   # Module loading order: colors first (required by common and logging), then common loads logging and generators, tools after common
-  local modules=(colors common logging generators tools retry download network validation checksum version certificate caddy_cleanup config config_validator schema_validator service ui backup export messages users port_hopping)
+  local modules=(colors common logging generators tools retry download network validation checksum version certificate caddy_cleanup config config_validator schema_validator service ui backup export messages users port_hopping subscription)
   local temp_lib_dir=""
 
   # Check if lib directory exists
@@ -558,6 +558,24 @@ _load_modules() {
     rmdir "${temp_lib_dir}"
 
     _download_and_validate_manager_script "${github_repo}" "${SCRIPT_DIR}" || exit 1
+
+    # Download subscription runtime assets (server.py + launcher)
+    mkdir -p "${SCRIPT_DIR}/lib/subscription"
+    local _sub_base="${github_repo}/lib/subscription"
+    local _bin_base="${github_repo}/bin"
+    if command -v curl >/dev/null 2>&1; then
+      curl -fsSL --connect-timeout "${DOWNLOAD_CONNECT_TIMEOUT_SEC}" \
+        --max-time "${DOWNLOAD_MAX_TIMEOUT_SEC}" \
+        "${_sub_base}/server.py" -o "${SCRIPT_DIR}/lib/subscription/server.py" 2>/dev/null || true
+      curl -fsSL --connect-timeout "${DOWNLOAD_CONNECT_TIMEOUT_SEC}" \
+        --max-time "${DOWNLOAD_MAX_TIMEOUT_SEC}" \
+        "${_bin_base}/sbx-sub-server" -o "${SCRIPT_DIR}/bin/sbx-sub-server" 2>/dev/null || true
+    elif command -v wget >/dev/null 2>&1; then
+      wget -q --timeout="${DOWNLOAD_MAX_TIMEOUT_SEC}" \
+        "${_sub_base}/server.py" -O "${SCRIPT_DIR}/lib/subscription/server.py" 2>/dev/null || true
+      wget -q --timeout="${DOWNLOAD_MAX_TIMEOUT_SEC}" \
+        "${_bin_base}/sbx-sub-server" -O "${SCRIPT_DIR}/bin/sbx-sub-server" 2>/dev/null || true
+    fi
 
     # Remember the generated directory so shared cleanup can purge it later
     INSTALLER_TEMP_DIR="${SCRIPT_DIR}"
@@ -638,6 +656,7 @@ _verify_module_apis() {
     ["service"]="setup_service validate_port_listening restart_service"
     ["users"]="user_add user_list user_remove user_reset sync_users_to_config"
     ["port_hopping"]="validate_port_range apply_port_hopping_rules remove_port_hopping_rules show_port_hopping_status"
+    ["subscription"]="subscription_render subscription_enable subscription_disable subscription_status subscription_url subscription_ensure_state_block"
   )
 
   # Verify each module's API contract
@@ -1554,6 +1573,9 @@ save_state_info() {
     --argjson trojan_enabled "${trojan_enabled}" \
     --argjson trojan_port "${trojan_port:-0}" \
     --arg trojan_pass "${trojan_pass}" \
+    --argjson sub_port "${SUBSCRIPTION_PORT_DEFAULT:-8838}" \
+    --arg sub_bind "${SUBSCRIPTION_BIND_DEFAULT:-127.0.0.1}" \
+    --arg sub_path "${SUBSCRIPTION_PATH_DEFAULT:-/sub}" \
     '{
       version: $version,
       installed_at: $installed_at,
@@ -1595,6 +1617,14 @@ save_state_info() {
           port: (if $trojan_enabled and $trojan_port != 0 then $trojan_port else null end),
           password: (if $trojan_enabled and $trojan_pass != "" then $trojan_pass else null end)
         }
+      },
+      subscription: {
+        enabled: false,
+        port: $sub_port,
+        bind: $sub_bind,
+        token: "",
+        path: $sub_path,
+        created_at: null
       }
     }' >"${state_file}"
 
@@ -1658,6 +1688,29 @@ install_manager_script() {
     mkdir -p "${lib_path}"
     cp "${SCRIPT_DIR}"/lib/*.sh "${lib_path}/"
     chmod 644 "${lib_path}"/*.sh
+
+    # Install subscription helper files (server.py + launcher) if present
+    if [[ -d "${SCRIPT_DIR}/lib/subscription" ]]; then
+      mkdir -p "${lib_path}/subscription"
+      cp "${SCRIPT_DIR}/lib/subscription/server.py" "${lib_path}/subscription/server.py"
+      chmod 644 "${lib_path}/subscription/server.py"
+    fi
+
+    if [[ -f "${SCRIPT_DIR}/bin/sbx-sub-server" ]]; then
+      install -m 755 "${SCRIPT_DIR}/bin/sbx-sub-server" /usr/local/bin/sbx-sub-server
+    fi
+
+    # Create unprivileged system user for the subscription HTTP listener.
+    # Idempotent: skipped if the user already exists.
+    if ! id -u "${SUBSCRIPTION_SYSTEM_USER}" >/dev/null 2>&1; then
+      if have useradd; then
+        useradd --system --no-create-home --shell /usr/sbin/nologin \
+          "${SUBSCRIPTION_SYSTEM_USER}" 2>/dev/null || true
+      elif have adduser; then
+        adduser --system --no-create-home --group \
+          "${SUBSCRIPTION_SYSTEM_USER}" 2>/dev/null || true
+      fi
+    fi
 
     success "  ✓ Management commands installed: sbx-manager, sbx"
     success "  ✓ Library modules installed to ${lib_path}/"
@@ -2079,6 +2132,27 @@ uninstall_flow() {
 
   # Remove service
   remove_service
+
+  # Remove subscription endpoint (unit, cache, launcher, system user)
+  if declare -f subscription_remove_unit >/dev/null 2>&1; then
+    subscription_remove_unit || true
+  else
+    systemctl stop "${SUBSCRIPTION_SERVICE_NAME}" 2>/dev/null || true
+    systemctl disable "${SUBSCRIPTION_SERVICE_NAME}" 2>/dev/null || true
+    rm -f "/etc/systemd/system/${SUBSCRIPTION_SERVICE_NAME}.service"
+    systemctl daemon-reload 2>/dev/null || true
+  fi
+  rm -f /usr/local/bin/sbx-sub-server
+  rm -rf "${SUBSCRIPTION_CACHE_DIR}"
+  if id -u "${SUBSCRIPTION_SYSTEM_USER}" >/dev/null 2>&1; then
+    if have userdel; then
+      userdel "${SUBSCRIPTION_SYSTEM_USER}" 2>/dev/null || true
+    elif have deluser; then
+      deluser "${SUBSCRIPTION_SYSTEM_USER}" 2>/dev/null || true
+    fi
+  fi
+  # Clean up the sbx state-root if empty after removing the cache subdir
+  rmdir /var/lib/sbx 2>/dev/null || true
 
   # Remove files
   msg "Removing files..."

@@ -187,6 +187,33 @@ if [[ -z "${HTTP_DOWNLOAD_TIMEOUT_SEC:-}" ]]; then
 fi
 
 #==============================================================================
+# Subscription Endpoint Constants
+#==============================================================================
+
+# Adaptive subscription HTTP endpoint (see lib/subscription.sh)
+if [[ -z "${SUBSCRIPTION_PORT_DEFAULT:-}" ]]; then
+  declare -gr SUBSCRIPTION_PORT_DEFAULT=8838
+fi
+if [[ -z "${SUBSCRIPTION_BIND_DEFAULT:-}" ]]; then
+  declare -gr SUBSCRIPTION_BIND_DEFAULT="127.0.0.1"
+fi
+if [[ -z "${SUBSCRIPTION_PATH_DEFAULT:-}" ]]; then
+  declare -gr SUBSCRIPTION_PATH_DEFAULT="/sub"
+fi
+if [[ -z "${SUBSCRIPTION_CACHE_DIR:-}" ]]; then
+  declare -gr SUBSCRIPTION_CACHE_DIR="/var/lib/sbx/subscription"
+fi
+if [[ -z "${SUBSCRIPTION_SYSTEM_USER:-}" ]]; then
+  declare -gr SUBSCRIPTION_SYSTEM_USER="sbx-sub"
+fi
+if [[ -z "${SUBSCRIPTION_SERVICE_NAME:-}" ]]; then
+  declare -gr SUBSCRIPTION_SERVICE_NAME="sbx-subscription"
+fi
+if [[ -z "${SUBSCRIPTION_TOKEN_LENGTH:-}" ]]; then
+  declare -gr SUBSCRIPTION_TOKEN_LENGTH=32
+fi
+
+#==============================================================================
 # Cloudflare API Token Constants
 #==============================================================================
 
