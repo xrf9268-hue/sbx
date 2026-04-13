@@ -46,12 +46,6 @@ _LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 : "${CLOUDFLARED_RELEASE_BASE:=https://github.com/cloudflare/cloudflared/releases}"
 : "${CLOUDFLARED_SERVICE_NAME:=cloudflared}"
 
-# Default upstream (sing-box WS-TLS inbound) used when no explicit port given.
-# NOTE: This is a compile-time fallback. Runtime callers should use
-# cloudflared_resolve_upstream_port (below), which consults state.json so the
-# currently-chosen WS port wins over the frozen default.
-: "${CLOUDFLARED_DEFAULT_UPSTREAM_PORT:=${WS_PORT_DEFAULT:-8444}}"
-
 #==============================================================================
 # Upstream port resolution
 #==============================================================================
@@ -59,15 +53,13 @@ _LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # cloudflared_resolve_upstream_port
 # Resolves the upstream WS-TLS port for cloudflared's local proxy.
 # Prefers the actually-chosen port from state.json (.protocols.ws_tls.port),
-# falling back to WS_PORT_DEFAULT (compile-time default) when state is absent
-# or unreadable. Callers that receive an explicit port from the CLI should
-# pass it through instead of calling this helper.
+# falling back to WS_PORT_DEFAULT when state is absent or unreadable.
 cloudflared_resolve_upstream_port() {
   local state_file="${TEST_STATE_FILE:-${STATE_FILE:-${SB_CONF_DIR:-/etc/sing-box}/state.json}}"
   if [[ -f "${state_file}" ]] && command -v jq >/dev/null 2>&1; then
     local p=""
     p=$(jq -r '.protocols.ws_tls.port // empty' "${state_file}" 2>/dev/null)
-    if [[ -n "${p}" && "${p}" != "null" ]]; then
+    if [[ -n "${p}" ]]; then
       echo "${p}"
       return 0
     fi
