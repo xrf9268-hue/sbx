@@ -298,6 +298,9 @@ EOF
     ws)
       [[ -n "${WS_PORT}" ]] || _export_die "SBX-EXPORT-040" "WS-TLS not configured" \
         "Enable WS during install or export Reality only."
+      local ws_host="" ws_port=""
+      ws_host=$(_effective_ws_host)
+      ws_port=$(_effective_ws_port)
       config=$(
         cat <<EOF
 {
@@ -311,8 +314,8 @@ EOF
     "protocol": "vless",
     "settings": {
       "vnext": [{
-        "address": "${DOMAIN}",
-        "port": ${WS_PORT},
+        "address": "${ws_host}",
+        "port": ${ws_port},
         "users": [{
           "id": "${UUID}",
           "encryption": "none"
@@ -324,10 +327,10 @@ EOF
       "security": "tls",
       "wsSettings": {
         "path": "/ws",
-        "headers": { "Host": "${DOMAIN}" }
+        "headers": { "Host": "${ws_host}" }
       },
       "tlsSettings": {
-        "serverName": "${DOMAIN}",
+        "serverName": "${ws_host}",
         "fingerprint": "${REALITY_FINGERPRINT_DEFAULT}"
       }
     }
@@ -370,22 +373,32 @@ proxies:
     servername: ${SNI}
 EOF
 
-  if [[ -n "${WS_PORT}" && -n "${CERT_FULLCHAIN}" ]]; then
+  # WS-TLS proxy: rendered when WS is configured and either a local cert
+  # exists (direct mode) or Cloudflare Tunnel terminates TLS at the edge.
+  if [[ -n "${WS_PORT}" && (-n "${CERT_FULLCHAIN}" || "${TUNNEL_ENABLED:-false}" == "true") ]]; then
+    local ws_host="" ws_port=""
+    ws_host=$(_effective_ws_host)
+    ws_port=$(_effective_ws_port)
     cat <<EOF
 
   - name: "sbx-ws-${DOMAIN}"
     type: vless
-    server: ${DOMAIN}
-    port: ${WS_PORT}
+    server: ${ws_host}
+    port: ${ws_port}
     uuid: ${UUID}
     tls: true
     network: ws
     ws-opts:
       path: /ws
       headers:
-        Host: ${DOMAIN}
-    servername: ${DOMAIN}
+        Host: ${ws_host}
+    servername: ${ws_host}
     client-fingerprint: ${REALITY_FINGERPRINT_DEFAULT}
+EOF
+  fi
+
+  if [[ -n "${WS_PORT}" && -n "${CERT_FULLCHAIN}" ]]; then
+    cat <<EOF
 
   - name: "sbx-hysteria2-${DOMAIN}"
     type: hysteria2
@@ -442,9 +455,13 @@ proxy-groups:
       - "sbx-reality-${DOMAIN}"
 EOF
 
-  if [[ -n "${WS_PORT}" ]]; then
+  if [[ -n "${WS_PORT}" && (-n "${CERT_FULLCHAIN}" || "${TUNNEL_ENABLED:-false}" == "true") ]]; then
     cat <<EOF
       - "sbx-ws-${DOMAIN}"
+EOF
+  fi
+  if [[ -n "${WS_PORT}" && -n "${CERT_FULLCHAIN}" ]]; then
+    cat <<EOF
       - "sbx-hysteria2-${DOMAIN}"
 EOF
   fi

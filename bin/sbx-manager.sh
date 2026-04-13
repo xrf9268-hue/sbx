@@ -32,6 +32,8 @@ if [[ -d "$LIB_DIR" ]]; then
   [[ -f "$LIB_DIR/port_hopping.sh" ]] && source "$LIB_DIR/port_hopping.sh"
   # shellcheck source=/dev/null
   [[ -f "$LIB_DIR/subscription.sh" ]] && source "$LIB_DIR/subscription.sh"
+  # shellcheck source=/dev/null
+  [[ -f "$LIB_DIR/cloudflare_tunnel.sh" ]] && source "$LIB_DIR/cloudflare_tunnel.sh"
 fi
 
 # Simple logo for management tool
