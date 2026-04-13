@@ -559,6 +559,24 @@ _load_modules() {
 
     _download_and_validate_manager_script "${github_repo}" "${SCRIPT_DIR}" || exit 1
 
+    # Download subscription runtime assets (server.py + launcher)
+    mkdir -p "${SCRIPT_DIR}/lib/subscription"
+    local _sub_base="${github_repo}/lib/subscription"
+    local _bin_base="${github_repo}/bin"
+    if command -v curl >/dev/null 2>&1; then
+      curl -fsSL --connect-timeout "${DOWNLOAD_CONNECT_TIMEOUT_SEC}" \
+        --max-time "${DOWNLOAD_MAX_TIMEOUT_SEC}" \
+        "${_sub_base}/server.py" -o "${SCRIPT_DIR}/lib/subscription/server.py" 2>/dev/null || true
+      curl -fsSL --connect-timeout "${DOWNLOAD_CONNECT_TIMEOUT_SEC}" \
+        --max-time "${DOWNLOAD_MAX_TIMEOUT_SEC}" \
+        "${_bin_base}/sbx-sub-server" -o "${SCRIPT_DIR}/bin/sbx-sub-server" 2>/dev/null || true
+    elif command -v wget >/dev/null 2>&1; then
+      wget -q --timeout="${DOWNLOAD_MAX_TIMEOUT_SEC}" \
+        "${_sub_base}/server.py" -O "${SCRIPT_DIR}/lib/subscription/server.py" 2>/dev/null || true
+      wget -q --timeout="${DOWNLOAD_MAX_TIMEOUT_SEC}" \
+        "${_bin_base}/sbx-sub-server" -O "${SCRIPT_DIR}/bin/sbx-sub-server" 2>/dev/null || true
+    fi
+
     # Remember the generated directory so shared cleanup can purge it later
     INSTALLER_TEMP_DIR="${SCRIPT_DIR}"
 

@@ -226,6 +226,23 @@ _subscription_state_get() {
   jq -r ".subscription.${field} // empty" "${state_file}" 2>/dev/null || echo ""
 }
 
+# Grant the subscription system user read access to state.json so the
+# unprivileged HTTP server can load token/enabled/path at runtime.
+# Widens mode from 600 to 640 and sets group to the service user.
+_subscription_grant_state_read() {
+  local state_file=''
+  local user="${SUB_SYSTEM_USER_OVERRIDE:-${SUBSCRIPTION_SYSTEM_USER}}"
+  state_file=$(_subscription_state_file)
+  [[ -f "${state_file}" ]] || return 0
+  # Only touch permissions when running as root on a real system
+  if [[ -z "${SUB_CACHE_DIR_OVERRIDE:-}" ]] && [[ "${EUID:-$(id -u)}" -eq 0 ]]; then
+    if id -u "${user}" >/dev/null 2>&1; then
+      chgrp "${user}" "${state_file}" 2>/dev/null || true
+      chmod 640 "${state_file}" 2>/dev/null || true
+    fi
+  fi
+}
+
 # Atomically update a single subscription field in state.json.
 # Usage: _subscription_state_set <field> <value> [json]
 #   Pass "json" as $3 to use --argjson (for booleans/numbers), otherwise --arg.
@@ -252,8 +269,11 @@ _subscription_state_set() {
     err "Failed to update state.json field subscription.${field}"
     return 1
   fi
+  # Preserve existing ownership/permissions (may include group-read for sbx-sub)
+  chmod --reference="${state_file}" "${tmp}" 2>/dev/null ||
+    chmod 600 "${tmp}" 2>/dev/null || true
+  chown --reference="${state_file}" "${tmp}" 2>/dev/null || true
   mv -f "${tmp}" "${state_file}"
-  chmod 600 "${state_file}" 2>/dev/null || true
 }
 
 # Merge a default subscription block into state.json if it's missing.
@@ -286,8 +306,10 @@ subscription_ensure_state_block() {
     rm -f "${tmp}"
     return 1
   fi
+  chmod --reference="${state_file}" "${tmp}" 2>/dev/null ||
+    chmod 600 "${tmp}" 2>/dev/null || true
+  chown --reference="${state_file}" "${tmp}" 2>/dev/null || true
   mv -f "${tmp}" "${state_file}"
-  chmod 600 "${state_file}" 2>/dev/null || true
 }
 
 #==============================================================================
@@ -391,6 +413,7 @@ subscription_enable() {
   _subscription_state_set created_at "${now}" || true
   _subscription_state_set enabled true json || return 1
 
+  _subscription_grant_state_read
   subscription_refresh_cache || true
   subscription_install_unit || return 1
 
