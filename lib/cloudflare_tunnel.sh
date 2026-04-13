@@ -181,10 +181,7 @@ cloudflared_uninstall() {
   need_root || return 1
   msg "Removing cloudflared..."
 
-  if systemctl list-unit-files "${CLOUDFLARED_SERVICE_NAME}.service" >/dev/null 2>&1; then
-    systemctl disable --now "${CLOUDFLARED_SERVICE_NAME}" 2>/dev/null || true
-  fi
-
+  systemctl disable --now "${CLOUDFLARED_SERVICE_NAME}" 2>/dev/null || true
   rm -f "${CLOUDFLARED_SVC}" "${CLOUDFLARED_BIN}"
   rm -rf "${CLOUDFLARED_CONF_DIR}"
   systemctl daemon-reload 2>/dev/null || true
@@ -206,7 +203,6 @@ cloudflared_write_env_file() {
   }
 
   mkdir -p "${CLOUDFLARED_CONF_DIR}"
-  # Write atomically so we never expose a half-written file.
   local tmp=""
   tmp=$(create_temp_file_in_dir "${CLOUDFLARED_CONF_DIR}" "tunnel.env") || return 1
   {
@@ -314,11 +310,7 @@ cloudflared_update_state() {
     return 1
   }
 
-  # Normalize boolean
-  case "${enabled}" in
-    true | 1 | yes | on) enabled="true" ;;
-    *) enabled="false" ;;
-  esac
+  [[ "${enabled}" == "true" ]] || enabled="false"
 
   local tmp=""
   tmp=$(create_temp_file "tunnel-state") || return 1
@@ -386,7 +378,7 @@ cloudflared_enable_token() {
     return 1
   }
 
-  cloudflared_update_state "true" "token" "${hostname}" "${upstream_port}" || true
+  cloudflared_update_state "true" "token" "${hostname}" "${upstream_port}"
 
   success "  ✓ Cloudflare Tunnel active at https://${hostname}"
 }
@@ -395,16 +387,12 @@ cloudflared_disable() {
   need_root || return 1
   msg "Disabling Cloudflare Tunnel..."
 
-  if systemctl list-unit-files "${CLOUDFLARED_SERVICE_NAME}.service" >/dev/null 2>&1; then
-    systemctl disable --now "${CLOUDFLARED_SERVICE_NAME}" 2>/dev/null || true
-  fi
+  systemctl disable --now "${CLOUDFLARED_SERVICE_NAME}" 2>/dev/null || true
 
   # Scrub the token file but keep config.yml so operators can inspect history.
-  if [[ -f "${CLOUDFLARED_ENV_FILE}" ]]; then
-    shred -u "${CLOUDFLARED_ENV_FILE}" 2>/dev/null || rm -f "${CLOUDFLARED_ENV_FILE}"
-  fi
+  shred -uf "${CLOUDFLARED_ENV_FILE}" 2>/dev/null || rm -f "${CLOUDFLARED_ENV_FILE}"
 
-  cloudflared_update_state "false" "" "" 0 || true
+  cloudflared_update_state "false" "" "" 0
   success "  ✓ Cloudflare Tunnel disabled"
 }
 
@@ -437,15 +425,10 @@ cloudflared_status() {
 # Export functions for use by install.sh / bin/sbx-manager.sh
 #==============================================================================
 
-export -f cloudflared_detect_arch
-export -f cloudflared_resolve_version
 export -f cloudflared_install
 export -f cloudflared_uninstall
-export -f cloudflared_write_env_file
-export -f cloudflared_write_config_yml
-export -f cloudflared_write_service_file
-export -f cloudflared_update_state
-export -f cloudflared_current_hostname
 export -f cloudflared_enable_token
 export -f cloudflared_disable
 export -f cloudflared_status
+export -f cloudflared_current_hostname
+export -f cloudflared_update_state

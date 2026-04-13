@@ -5,14 +5,11 @@
 # touching the real system. Mirrors the structure used by other lib unit
 # tests (see test_service_functions.sh).
 
-set +e
-
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
 # Per-run sandbox so the test never writes to /etc/cloudflared.
 TEST_TMP_DIR=$(mktemp -d -t sbx-cf-tunnel-test-XXXXXX)
-trap 'rm -rf "${TEST_TMP_DIR}"' EXIT
 
 export CLOUDFLARED_BIN="${TEST_TMP_DIR}/cloudflared"
 export CLOUDFLARED_SVC="${TEST_TMP_DIR}/cloudflared.service"
@@ -21,19 +18,13 @@ export CLOUDFLARED_CONFIG="${CLOUDFLARED_CONF_DIR}/config.yml"
 export CLOUDFLARED_ENV_FILE="${CLOUDFLARED_CONF_DIR}/tunnel.env"
 mkdir -p "${CLOUDFLARED_CONF_DIR}"
 
-# Source common.sh first (defines readonly globals)
-if ! source "${PROJECT_ROOT}/lib/common.sh" 2>/dev/null; then
+# Source modules. Each re-enables strict mode and may install its own EXIT trap;
+# we override both after all sources complete so the test driver itself can run
+# negative-path assertions without aborting.
+source "${PROJECT_ROOT}/lib/common.sh" 2>/dev/null || {
   echo "ERROR: Failed to load lib/common.sh"
   exit 1
-fi
-trap - EXIT INT TERM
-trap 'rm -rf "${TEST_TMP_DIR}"' EXIT
-
-# Re-relax shell options that common.sh tightened
-set +e
-set -o pipefail
-
-# Source the module under test (and its deps)
+}
 source "${PROJECT_ROOT}/lib/network.sh" 2>/dev/null || true
 source "${PROJECT_ROOT}/lib/download.sh" 2>/dev/null || true
 source "${PROJECT_ROOT}/lib/checksum.sh" 2>/dev/null || true
@@ -42,9 +33,7 @@ source "${PROJECT_ROOT}/lib/cloudflare_tunnel.sh" 2>/dev/null || {
   exit 1
 }
 
-# Now relax strict mode for the test driver itself (modules above re-enabled it).
-set +e
-set +u
+set +eu
 set -o pipefail
 trap - EXIT INT TERM
 trap 'rm -rf "${TEST_TMP_DIR}"' EXIT

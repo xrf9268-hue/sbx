@@ -1349,18 +1349,11 @@ case "${1:-}" in
     ;;
 
   tunnel)
-    if ! declare -f cloudflared_install >/dev/null 2>&1; then
-      echo -e "${R}[ERR]${N} cloudflare_tunnel module not loaded. Please reinstall sbx-lite."
-      exit 1
-    fi
-
     case "${2:-status}" in
       install)
-        need_root || exit 1
         cloudflared_install "${3:-latest}"
         ;;
       enable | start)
-        need_root || exit 1
         if [[ -z "${3:-}" || -z "${4:-}" ]]; then
           echo -e "${Y}Usage:${N} sbx tunnel enable <token> <hostname> [upstream_port]"
           exit 1
@@ -1368,7 +1361,6 @@ case "${1:-}" in
         cloudflared_enable_token "${3}" "${4}" "${5:-}"
         ;;
       disable | stop)
-        need_root || exit 1
         cloudflared_disable
         ;;
       status | "")
