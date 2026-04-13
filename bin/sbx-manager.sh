@@ -32,6 +32,8 @@ if [[ -d "$LIB_DIR" ]]; then
   [[ -f "$LIB_DIR/port_hopping.sh" ]] && source "$LIB_DIR/port_hopping.sh"
   # shellcheck source=/dev/null
   [[ -f "$LIB_DIR/subscription.sh" ]] && source "$LIB_DIR/subscription.sh"
+  # shellcheck source=/dev/null
+  [[ -f "$LIB_DIR/cloudflare_tunnel.sh" ]] && source "$LIB_DIR/cloudflare_tunnel.sh"
 fi
 
 # Simple logo for management tool
@@ -94,6 +96,13 @@ ${B}Subscription Endpoint:${N}
   subscription status             Show subscription service status
   subscription url                Print the full subscription URL
   subscription rotate             Rotate the subscription token
+
+${B}Cloudflare Tunnel:${N}
+  tunnel install [version]        Download and install cloudflared
+  tunnel enable <token> <host>    Enable a named tunnel via Zero Trust token
+  tunnel disable                  Stop and disable the tunnel service
+  tunnel status                   Show tunnel binary/service/hostname
+  tunnel hostname                 Print the active tunnel hostname
 
 ${B}System:${N}
   uninstall|remove    Complete uninstall (requires root)
@@ -1336,6 +1345,39 @@ case "${1:-}" in
         echo "  sbx subscription status  Show status"
         echo "  sbx subscription url     Print subscription URL"
         echo "  sbx subscription rotate  Rotate subscription token"
+        exit 1
+        ;;
+    esac
+    ;;
+
+  tunnel)
+    case "${2:-status}" in
+      install)
+        cloudflared_install "${3:-latest}"
+        ;;
+      enable | start)
+        if [[ -z "${3:-}" || -z "${4:-}" ]]; then
+          echo -e "${Y}Usage:${N} sbx tunnel enable <token> <hostname> [upstream_port]"
+          exit 1
+        fi
+        cloudflared_enable_token "${3}" "${4}" "${5:-}"
+        ;;
+      disable | stop)
+        cloudflared_disable
+        ;;
+      status | "")
+        cloudflared_status
+        ;;
+      hostname)
+        cloudflared_current_hostname
+        ;;
+      *)
+        echo -e "${Y}Usage:${N}"
+        echo "  sbx tunnel install [version]         Install cloudflared binary"
+        echo "  sbx tunnel enable <token> <host>     Enable named tunnel via token"
+        echo "  sbx tunnel disable                   Stop tunnel service"
+        echo "  sbx tunnel status                    Show tunnel status"
+        echo "  sbx tunnel hostname                  Print active tunnel hostname"
         exit 1
         ;;
     esac

@@ -683,6 +683,15 @@ _create_all_inbounds() {
   local enable_tuic="${ENABLE_TUIC:-0}"
   local enable_trojan="${ENABLE_TROJAN:-0}"
 
+  # When Cloudflare Tunnel is active, the WebSocket VLESS inbound must bind
+  # only to localhost so cloudflared is the only path reaching it from the
+  # Internet. Reality / Hy2 / TUIC / Trojan(TCP) are NOT tunnel-compatible
+  # (cloudflared only proxies HTTP/WS) and continue to bind dual-stack.
+  local ws_listen_addr="${listen_addr}"
+  if [[ "${TUNNEL_ENABLED:-0}" == "1" ]]; then
+    ws_listen_addr="127.0.0.1"
+  fi
+
   # Resolve users JSON: prefer USERS_JSON env var (multi-user), fall back to
   # wrapping the positional uuid argument in a single-element array.
   local users_json="${USERS_JSON:-}"
@@ -729,7 +738,7 @@ _create_all_inbounds() {
           "Check certificate mode and TLS inputs."
 
       local ws_config=''
-      ws_config=$(create_ws_inbound "${users_json}" "${WS_PORT_CHOSEN}" "${listen_addr}" \
+      ws_config=$(create_ws_inbound "${users_json}" "${WS_PORT_CHOSEN}" "${ws_listen_addr}" \
         "${DOMAIN}" "${ws_tls}") ||
         _config_die "SBX-CONFIG-033" "Failed to create WS-TLS inbound" \
           "Verify WS port/domain/TLS settings."

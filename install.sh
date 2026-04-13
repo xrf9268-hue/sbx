@@ -506,7 +506,7 @@ _download_and_validate_manager_script() {
 _load_modules() {
   local github_repo="https://raw.githubusercontent.com/xrf9268-hue/sbx/main"
   # Module loading order: colors first (required by common and logging), then common loads logging and generators, tools after common
-  local modules=(colors common logging generators tools retry download network validation checksum version certificate caddy_cleanup config config_validator schema_validator service ui backup export messages users port_hopping subscription)
+  local modules=(colors common logging generators tools retry download network validation checksum version certificate caddy_cleanup config config_validator schema_validator service ui backup export messages users port_hopping subscription cloudflare_tunnel)
   local temp_lib_dir=""
 
   # Check if lib directory exists
@@ -657,6 +657,7 @@ _verify_module_apis() {
     ["users"]="user_add user_list user_remove user_reset sync_users_to_config"
     ["port_hopping"]="validate_port_range apply_port_hopping_rules remove_port_hopping_rules show_port_hopping_status"
     ["subscription"]="subscription_render subscription_enable subscription_disable subscription_status subscription_url subscription_ensure_state_block"
+    ["cloudflare_tunnel"]="cloudflared_install cloudflared_enable_token cloudflared_disable cloudflared_status cloudflared_update_state"
   )
 
   # Verify each module's API contract
@@ -1576,6 +1577,10 @@ save_state_info() {
     --argjson sub_port "${SUBSCRIPTION_PORT_DEFAULT:-8838}" \
     --arg sub_bind "${SUBSCRIPTION_BIND_DEFAULT:-127.0.0.1}" \
     --arg sub_path "${SUBSCRIPTION_PATH_DEFAULT:-/sub}" \
+    --argjson tunnel_enabled "$([[ "${TUNNEL_ENABLED:-0}" == "1" ]] && echo true || echo false)" \
+    --arg tunnel_mode "${TUNNEL_MODE:-}" \
+    --arg tunnel_hostname "${TUNNEL_HOSTNAME:-}" \
+    --argjson tunnel_upstream "${WS_PORT_CHOSEN:-0}" \
     '{
       version: $version,
       installed_at: $installed_at,
@@ -1625,6 +1630,12 @@ save_state_info() {
         token: "",
         path: $sub_path,
         created_at: null
+      },
+      tunnel: {
+        enabled: $tunnel_enabled,
+        mode: (if $tunnel_mode == "" then null else $tunnel_mode end),
+        hostname: (if $tunnel_hostname == "" then null else $tunnel_hostname end),
+        upstream_port: (if $tunnel_upstream == 0 then null else $tunnel_upstream end)
       }
     }' >"${state_file}"
 
