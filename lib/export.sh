@@ -40,7 +40,7 @@ _export_die() {
 load_client_info() {
   local client_info_file='' state_file='' resolved='' owner='' perm='' invalid_line=''
   local ws_enabled_raw='' hy2_enabled_raw='' tuic_enabled_raw='' trojan_enabled_raw=''
-  local allowed_keys_regex="^(DOMAIN|UUID|PUBLIC_KEY|SHORT_ID|SNI|REALITY_PORT|WS_PORT|HY2_PORT|HY2_PASS|TUIC_PORT|TUIC_PASS|TROJAN_PORT|TROJAN_PASS|CERT_FULLCHAIN|CERT_KEY)$"
+  local allowed_keys_regex="^(DOMAIN|UUID|PUBLIC_KEY|SHORT_ID|SNI|REALITY_PORT|WS_PORT|HY2_PORT|HY2_PASS|TUIC_PORT|TUIC_PASS|TROJAN_PORT|TROJAN_PASS|CERT_FULLCHAIN|CERT_KEY|TUNNEL_ENABLED|TUNNEL_HOSTNAME|TUNNEL_MODE)$"
 
   # Prefer structured state file when available, with compatibility fallback.
   state_file="${TEST_STATE_FILE:-${STATE_FILE:-${SB_CONF_DIR}/state.json}}"
@@ -93,6 +93,9 @@ load_client_info() {
     SUB_BIND=$(jq -r '.subscription.bind // empty' "${resolved}")
     SUB_TOKEN=$(jq -r '.subscription.token // empty' "${resolved}")
     SUB_PATH=$(jq -r '.subscription.path // empty' "${resolved}")
+    TUNNEL_ENABLED=$(jq -r '.tunnel.enabled // false' "${resolved}")
+    TUNNEL_HOSTNAME=$(jq -r '.tunnel.hostname // empty' "${resolved}")
+    TUNNEL_MODE=$(jq -r '.tunnel.mode // empty' "${resolved}")
     ws_enabled_raw=$(jq -r '.protocols.ws_tls.enabled // empty' "${resolved}")
     hy2_enabled_raw=$(jq -r '.protocols.hysteria2.enabled // empty' "${resolved}")
     tuic_enabled_raw=$(jq -r '.protocols.tuic.enabled // empty' "${resolved}")
@@ -463,10 +466,33 @@ EOF
 # URI Export
 #==============================================================================
 
+# Resolve the public host that WS/Trojan-WS clients should connect to.
+# When Cloudflare Tunnel is active, traffic must hit the tunnel hostname on
+# port 443 instead of the local WS_PORT.
+_effective_ws_host() {
+  if [[ "${TUNNEL_ENABLED:-false}" == "true" && -n "${TUNNEL_HOSTNAME:-}" ]]; then
+    echo "${TUNNEL_HOSTNAME}"
+  else
+    echo "${DOMAIN}"
+  fi
+}
+
+_effective_ws_port() {
+  if [[ "${TUNNEL_ENABLED:-false}" == "true" && -n "${TUNNEL_HOSTNAME:-}" ]]; then
+    echo "443"
+  else
+    echo "${WS_PORT}"
+  fi
+}
+
 # Export configuration as share URIs
 export_uri() {
   local protocol="${1:-all}"
   load_client_info
+
+  local ws_host="" ws_port=""
+  ws_host=$(_effective_ws_host)
+  ws_port=$(_effective_ws_port)
 
   case "${protocol}" in
     reality)
@@ -475,7 +501,7 @@ export_uri() {
     ws)
       [[ -n "${WS_PORT}" ]] || _export_die "SBX-EXPORT-040" "WS-TLS not configured" \
         "Enable WS during install or export Reality only."
-      echo "vless://${UUID}@${DOMAIN}:${WS_PORT}?encryption=none&security=tls&type=ws&host=${DOMAIN}&path=/ws&sni=${DOMAIN}&fp=${REALITY_FINGERPRINT_DEFAULT}#WS-TLS-${DOMAIN}"
+      echo "vless://${UUID}@${ws_host}:${ws_port}?encryption=none&security=tls&type=ws&host=${ws_host}&path=/ws&sni=${ws_host}&fp=${REALITY_FINGERPRINT_DEFAULT}#WS-TLS-${ws_host}"
       ;;
     hysteria2 | hy2)
       [[ -n "${HY2_PORT}" ]] || _export_die "SBX-EXPORT-042" "Hysteria2 not configured" \

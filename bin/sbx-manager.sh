@@ -95,6 +95,13 @@ ${B}Subscription Endpoint:${N}
   subscription url                Print the full subscription URL
   subscription rotate             Rotate the subscription token
 
+${B}Cloudflare Tunnel:${N}
+  tunnel install [version]        Download and install cloudflared
+  tunnel enable <token> <host>    Enable a named tunnel via Zero Trust token
+  tunnel disable                  Stop and disable the tunnel service
+  tunnel status                   Show tunnel binary/service/hostname
+  tunnel hostname                 Print the active tunnel hostname
+
 ${B}System:${N}
   uninstall|remove    Complete uninstall (requires root)
   help                Show this help message
@@ -1336,6 +1343,47 @@ case "${1:-}" in
         echo "  sbx subscription status  Show status"
         echo "  sbx subscription url     Print subscription URL"
         echo "  sbx subscription rotate  Rotate subscription token"
+        exit 1
+        ;;
+    esac
+    ;;
+
+  tunnel)
+    if ! declare -f cloudflared_install >/dev/null 2>&1; then
+      echo -e "${R}[ERR]${N} cloudflare_tunnel module not loaded. Please reinstall sbx-lite."
+      exit 1
+    fi
+
+    case "${2:-status}" in
+      install)
+        need_root || exit 1
+        cloudflared_install "${3:-latest}"
+        ;;
+      enable | start)
+        need_root || exit 1
+        if [[ -z "${3:-}" || -z "${4:-}" ]]; then
+          echo -e "${Y}Usage:${N} sbx tunnel enable <token> <hostname> [upstream_port]"
+          exit 1
+        fi
+        cloudflared_enable_token "${3}" "${4}" "${5:-}"
+        ;;
+      disable | stop)
+        need_root || exit 1
+        cloudflared_disable
+        ;;
+      status | "")
+        cloudflared_status
+        ;;
+      hostname)
+        cloudflared_current_hostname
+        ;;
+      *)
+        echo -e "${Y}Usage:${N}"
+        echo "  sbx tunnel install [version]         Install cloudflared binary"
+        echo "  sbx tunnel enable <token> <host>     Enable named tunnel via token"
+        echo "  sbx tunnel disable                   Stop tunnel service"
+        echo "  sbx tunnel status                    Show tunnel status"
+        echo "  sbx tunnel hostname                  Print active tunnel hostname"
         exit 1
         ;;
     esac
