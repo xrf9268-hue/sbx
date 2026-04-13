@@ -101,10 +101,9 @@ class Handler(BaseHTTPRequestHandler):
 
         authorized = False
         if token:
-            if path == f"{expected_path}/{token}":
-                authorized = hmac.compare_digest(
-                    path.encode(), f"{expected_path}/{token}".encode()
-                )
+            authorized = hmac.compare_digest(
+                path.encode(), f"{expected_path}/{token}".encode()
+            )
         else:
             authorized = path == expected_path
 

@@ -16,14 +16,11 @@
 # Functions defined here are also used by the CLI (`sbx subscription ...`)
 # and by render-time regeneration hooks in bin/sbx-manager.sh.
 
-# Strict mode for error handling and safety
 set -euo pipefail
 
-# Prevent multiple sourcing
 [[ -n "${_SBX_SUBSCRIPTION_LOADED:-}" ]] && return 0
 readonly _SBX_SUBSCRIPTION_LOADED=1
 
-# Source dependencies (common is idempotent, export may already be loaded)
 _LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=/dev/null
 source "${_LIB_DIR}/common.sh"
@@ -62,7 +59,6 @@ _SUBSCRIPTION_SERVER_PY="/usr/local/lib/sbx/subscription/server.py"
 _subscription_pick_format() {
   local ua="${1:-}"
   local lc=''
-  # Lowercase, handle locale-safely
   lc="$(printf '%s' "${ua}" | tr '[:upper:]' '[:lower:]')"
 
   case "${lc}" in
@@ -85,31 +81,8 @@ _subscription_pick_format() {
 # Token generation
 #==============================================================================
 
-# Generate a URL-safe hex token (32 chars / 128 bits by default).
 _subscription_generate_token() {
-  local bytes=$((SUBSCRIPTION_TOKEN_LENGTH / 2))
-  local token=''
-
-  if have openssl; then
-    token=$(openssl rand -hex "${bytes}" 2>/dev/null || true)
-  fi
-  if [[ -z "${token}" && -r /dev/urandom ]]; then
-    token=$(LC_ALL=C tr -dc 'a-f0-9' </dev/urandom | head -c "${SUBSCRIPTION_TOKEN_LENGTH}" || true)
-  fi
-  if [[ -z "${token}" ]] && have python3; then
-    token=$(python3 -c "import secrets; print(secrets.token_hex(${bytes}))")
-  fi
-
-  [[ -n "${token}" ]] || {
-    if declare -f err >/dev/null 2>&1; then
-      err "Failed to generate subscription token (no openssl/urandom/python3)"
-    else
-      echo "[ERR] Failed to generate subscription token" >&2
-    fi
-    return 1
-  }
-
-  printf '%s' "${token}"
+  generate_hex_string "$((SUBSCRIPTION_TOKEN_LENGTH / 2))"
 }
 
 _subscription_validate_token() {
@@ -134,7 +107,8 @@ subscription_render() {
   local format="${1:-base64}"
   local uris=''
 
-  load_client_info >/dev/null
+  # Skip if caller already loaded client info (e.g. subscription_refresh_cache)
+  [[ -n "${UUID:-}" ]] || load_client_info >/dev/null
 
   case "${format}" in
     clash)
@@ -202,6 +176,9 @@ subscription_refresh_cache() {
   mkdir -p "${cache_dir}"
   chmod 750 "${cache_dir}" 2>/dev/null || true
 
+  # Load client info once for all three render passes
+  load_client_info >/dev/null
+
   local formats=(base64 clash uri)
   local ext
   local fmt
@@ -250,11 +227,12 @@ _subscription_state_get() {
 }
 
 # Atomically update a single subscription field in state.json.
-# Usage: _subscription_state_set_string <field> <value>
-#        _subscription_state_set_json   <field> <json-literal>
-_subscription_state_set_string() {
+# Usage: _subscription_state_set <field> <value> [json]
+#   Pass "json" as $3 to use --argjson (for booleans/numbers), otherwise --arg.
+_subscription_state_set() {
   local field="$1"
   local value="$2"
+  local mode="${3:-string}"
   local state_file=''
   local tmp=''
   state_file=$(_subscription_state_file)
@@ -266,32 +244,10 @@ _subscription_state_set_string() {
     err "jq required to update state.json"
     return 1
   }
+  local jq_flag="--arg"
+  [[ "${mode}" == "json" ]] && jq_flag="--argjson"
   tmp=$(mktemp) || return 1
-  if ! jq --arg v "${value}" ".subscription.${field} = \$v" "${state_file}" >"${tmp}"; then
-    rm -f "${tmp}"
-    err "Failed to update state.json field subscription.${field}"
-    return 1
-  fi
-  mv -f "${tmp}" "${state_file}"
-  chmod 600 "${state_file}" 2>/dev/null || true
-}
-
-_subscription_state_set_json() {
-  local field="$1"
-  local json_literal="$2"
-  local state_file=''
-  local tmp=''
-  state_file=$(_subscription_state_file)
-  [[ -f "${state_file}" ]] || {
-    err "state.json not found: ${state_file}"
-    return 1
-  }
-  have jq || {
-    err "jq required to update state.json"
-    return 1
-  }
-  tmp=$(mktemp) || return 1
-  if ! jq --argjson v "${json_literal}" ".subscription.${field} = \$v" "${state_file}" >"${tmp}"; then
+  if ! jq ${jq_flag} v "${value}" ".subscription.${field} = \$v" "${state_file}" >"${tmp}"; then
     rm -f "${tmp}"
     err "Failed to update state.json field subscription.${field}"
     return 1
@@ -419,21 +375,21 @@ subscription_enable() {
   token=$(_subscription_state_get token)
   if [[ -z "${token}" || "${rotate}" -eq 1 ]]; then
     token=$(_subscription_generate_token) || return 1
-    _subscription_state_set_string token "${token}" || return 1
+    _subscription_state_set token "${token}" || return 1
   fi
 
   # Apply bind/port overrides from environment if provided
   if [[ -n "${SUB_BIND:-}" ]]; then
-    _subscription_state_set_string bind "${SUB_BIND}" || return 1
+    _subscription_state_set bind "${SUB_BIND}" || return 1
   fi
   if [[ -n "${SUB_PORT:-}" ]]; then
-    _subscription_state_set_json port "${SUB_PORT}" || return 1
+    _subscription_state_set port "${SUB_PORT}" json || return 1
   fi
 
   local now=''
   now=$(date -Iseconds 2>/dev/null || date)
-  _subscription_state_set_string created_at "${now}" || true
-  _subscription_state_set_json enabled true || return 1
+  _subscription_state_set created_at "${now}" || true
+  _subscription_state_set enabled true json || return 1
 
   subscription_refresh_cache || true
   subscription_install_unit || return 1
@@ -443,17 +399,13 @@ subscription_enable() {
     systemctl restart "${SUBSCRIPTION_SERVICE_NAME}" >/dev/null 2>&1 || true
   fi
 
-  if declare -f success >/dev/null 2>&1; then
-    success "Subscription endpoint enabled"
-  else
-    echo "Subscription endpoint enabled"
-  fi
+  success "Subscription endpoint enabled"
   subscription_url
 }
 
 # sbx subscription off
 subscription_disable() {
-  _subscription_state_set_json enabled false || return 1
+  _subscription_state_set enabled false json || return 1
 
   if [[ -z "${SUB_UNIT_DRY_RUN:-}" ]]; then
     systemctl stop "${SUBSCRIPTION_SERVICE_NAME}" >/dev/null 2>&1 || true
@@ -467,18 +419,14 @@ subscription_disable() {
     rm -f "${cache_dir}/base64" "${cache_dir}/clash.yaml" "${cache_dir}/uri.txt" 2>/dev/null || true
   fi
 
-  if declare -f success >/dev/null 2>&1; then
-    success "Subscription endpoint disabled"
-  else
-    echo "Subscription endpoint disabled"
-  fi
+  success "Subscription endpoint disabled"
 }
 
 # sbx subscription rotate
 subscription_rotate() {
   local token=''
   token=$(_subscription_generate_token) || return 1
-  _subscription_state_set_string token "${token}" || return 1
+  _subscription_state_set token "${token}" || return 1
   subscription_refresh_cache || true
 
   # Restart to pick up any related changes (token validation is file-backed)
@@ -488,11 +436,7 @@ subscription_rotate() {
     fi
   fi
 
-  if declare -f success >/dev/null 2>&1; then
-    success "Subscription token rotated"
-  else
-    echo "Subscription token rotated"
-  fi
+  success "Subscription token rotated"
   subscription_url
 }
 
@@ -503,10 +447,17 @@ subscription_status() {
   local port=''
   local token=''
   local active='unknown'
-  enabled=$(_subscription_state_get enabled)
-  bind=$(_subscription_state_get bind)
-  port=$(_subscription_state_get port)
-  token=$(_subscription_state_get token)
+  local state_file=''
+  state_file=$(_subscription_state_file)
+
+  # Read all fields in one jq invocation
+  if [[ -f "${state_file}" ]] && have jq; then
+    local _raw=''
+    _raw=$(jq -r '[.subscription.enabled // false, .subscription.bind // "", .subscription.port // "", .subscription.token // ""] | join("\t")' "${state_file}" 2>/dev/null || true)
+    if [[ -n "${_raw}" ]]; then
+      IFS=$'\t' read -r enabled bind port token <<<"${_raw}"
+    fi
+  fi
 
   if [[ -z "${SUB_UNIT_DRY_RUN:-}" ]] && have systemctl; then
     active=$(systemctl is-active "${SUBSCRIPTION_SERVICE_NAME}" 2>/dev/null || echo "inactive")
@@ -532,11 +483,17 @@ subscription_url() {
   local token=''
   local path=''
   local host=''
+  local state_file=''
+  state_file=$(_subscription_state_file)
 
-  bind=$(_subscription_state_get bind)
-  port=$(_subscription_state_get port)
-  token=$(_subscription_state_get token)
-  path=$(_subscription_state_get path)
+  # Read all fields in one jq invocation
+  if [[ -f "${state_file}" ]] && have jq; then
+    local _raw=''
+    _raw=$(jq -r '[.subscription.bind // "", .subscription.port // "", .subscription.token // "", .subscription.path // ""] | join("\t")' "${state_file}" 2>/dev/null || true)
+    if [[ -n "${_raw}" ]]; then
+      IFS=$'\t' read -r bind port token path <<<"${_raw}"
+    fi
+  fi
 
   [[ -n "${bind}" ]] || bind="${SUBSCRIPTION_BIND_DEFAULT}"
   [[ -n "${port}" ]] || port="${SUBSCRIPTION_PORT_DEFAULT}"
@@ -544,7 +501,7 @@ subscription_url() {
 
   if [[ "${bind}" == "0.0.0.0" || "${bind}" == "::" ]]; then
     if have jq; then
-      host=$(jq -r '.server.domain // .server.ip // empty' "$(_subscription_state_file)" 2>/dev/null || echo "")
+      host=$(jq -r '.server.domain // .server.ip // empty' "${state_file}" 2>/dev/null || echo "")
     fi
     [[ -n "${host}" ]] || host="<server-ip-or-domain>"
   else

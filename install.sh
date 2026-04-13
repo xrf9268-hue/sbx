@@ -1684,13 +1684,13 @@ install_manager_script() {
 
     # Create unprivileged system user for the subscription HTTP listener.
     # Idempotent: skipped if the user already exists.
-    if ! id -u "${SUBSCRIPTION_SYSTEM_USER:-sbx-sub}" >/dev/null 2>&1; then
+    if ! id -u "${SUBSCRIPTION_SYSTEM_USER}" >/dev/null 2>&1; then
       if have useradd; then
         useradd --system --no-create-home --shell /usr/sbin/nologin \
-          "${SUBSCRIPTION_SYSTEM_USER:-sbx-sub}" 2>/dev/null || true
+          "${SUBSCRIPTION_SYSTEM_USER}" 2>/dev/null || true
       elif have adduser; then
         adduser --system --no-create-home --group \
-          "${SUBSCRIPTION_SYSTEM_USER:-sbx-sub}" 2>/dev/null || true
+          "${SUBSCRIPTION_SYSTEM_USER}" 2>/dev/null || true
       fi
     fi
 
@@ -2119,18 +2119,18 @@ uninstall_flow() {
   if declare -f subscription_remove_unit >/dev/null 2>&1; then
     subscription_remove_unit || true
   else
-    systemctl stop "${SUBSCRIPTION_SERVICE_NAME:-sbx-subscription}" 2>/dev/null || true
-    systemctl disable "${SUBSCRIPTION_SERVICE_NAME:-sbx-subscription}" 2>/dev/null || true
-    rm -f "/etc/systemd/system/${SUBSCRIPTION_SERVICE_NAME:-sbx-subscription}.service"
+    systemctl stop "${SUBSCRIPTION_SERVICE_NAME}" 2>/dev/null || true
+    systemctl disable "${SUBSCRIPTION_SERVICE_NAME}" 2>/dev/null || true
+    rm -f "/etc/systemd/system/${SUBSCRIPTION_SERVICE_NAME}.service"
     systemctl daemon-reload 2>/dev/null || true
   fi
   rm -f /usr/local/bin/sbx-sub-server
-  rm -rf "${SUBSCRIPTION_CACHE_DIR:-/var/lib/sbx/subscription}"
-  if id -u "${SUBSCRIPTION_SYSTEM_USER:-sbx-sub}" >/dev/null 2>&1; then
+  rm -rf "${SUBSCRIPTION_CACHE_DIR}"
+  if id -u "${SUBSCRIPTION_SYSTEM_USER}" >/dev/null 2>&1; then
     if have userdel; then
-      userdel "${SUBSCRIPTION_SYSTEM_USER:-sbx-sub}" 2>/dev/null || true
+      userdel "${SUBSCRIPTION_SYSTEM_USER}" 2>/dev/null || true
     elif have deluser; then
-      deluser "${SUBSCRIPTION_SYSTEM_USER:-sbx-sub}" 2>/dev/null || true
+      deluser "${SUBSCRIPTION_SYSTEM_USER}" 2>/dev/null || true
     fi
   fi
   # Clean up the sbx state-root if empty after removing the cache subdir
