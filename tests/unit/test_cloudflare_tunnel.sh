@@ -176,6 +176,14 @@ JSON
     cloudflared_resolve_upstream_port)
   assert_eq "resolve falls back when ws_tls.port absent" \
     "${expected_fallback}" "${resolved_empty}"
+
+  # Malformed state.json must not abort under set -e; must fall back cleanly.
+  bad_state_file="${TEST_TMP_DIR}/state-bad.json"
+  echo 'not-json{' >"${bad_state_file}"
+  resolved_bad=$(TEST_STATE_FILE="${bad_state_file}" \
+    cloudflared_resolve_upstream_port)
+  assert_eq "resolve falls back on malformed state.json" \
+    "${expected_fallback}" "${resolved_bad}"
 else
   echo "  (skipping resolve tests: jq not installed)"
 fi

@@ -57,9 +57,11 @@ _LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cloudflared_resolve_upstream_port() {
   local state_file="${TEST_STATE_FILE:-${STATE_FILE:-${SB_CONF_DIR:-/etc/sing-box}/state.json}}"
   if [[ -f "${state_file}" ]] && command -v jq >/dev/null 2>&1; then
+    # Guard jq against malformed/unreadable JSON: set -e would otherwise abort
+    # this function on parse failure and skip the WS_PORT_DEFAULT fallback.
     local p=""
-    p=$(jq -r '.protocols.ws_tls.port // empty' "${state_file}" 2>/dev/null)
-    if [[ -n "${p}" ]]; then
+    if p=$(jq -r '.protocols.ws_tls.port // empty' "${state_file}" 2>/dev/null) &&
+      [[ -n "${p}" ]]; then
       echo "${p}"
       return 0
     fi
