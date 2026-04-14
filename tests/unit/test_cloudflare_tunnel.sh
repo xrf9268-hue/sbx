@@ -117,6 +117,78 @@ perm=$(stat -c '%a' "${CLOUDFLARED_CONFIG}" 2>/dev/null || stat -f '%Lp' "${CLOU
 assert_eq "config.yml is mode 600" "600" "${perm}"
 
 #==============================================================================
+# Upstream port resolution (issue #121)
+#==============================================================================
+echo ""
+echo "Testing cloudflared_resolve_upstream_port..."
+
+if command -v jq >/dev/null 2>&1; then
+  resolve_state_file="${TEST_TMP_DIR}/state-ws9443.json"
+  cat >"${resolve_state_file}" <<'JSON'
+{
+  "version": "1.0",
+  "server": {"domain": null, "ip": "203.0.113.1"},
+  "protocols": {"ws_tls": {"enabled": true, "port": 9443}}
+}
+JSON
+
+  # Helper returns the state-file port when present.
+  resolved=$(TEST_STATE_FILE="${resolve_state_file}" cloudflared_resolve_upstream_port)
+  assert_eq "resolve prefers state.json port" "9443" "${resolved}"
+
+  # config.yml default path (no explicit port) must use state.json port.
+  TEST_STATE_FILE="${resolve_state_file}" \
+    cloudflared_write_config_yml "h.example.com" >/dev/null 2>&1
+  yml_state=""
+  [[ -f "${CLOUDFLARED_CONFIG}" ]] && yml_state=$(cat "${CLOUDFLARED_CONFIG}")
+  assert_contains "config.yml default uses state.json port" \
+    "service: http://127.0.0.1:9443" "${yml_state}"
+
+  # Quick-mode unit must also honor state.json.
+  TEST_STATE_FILE="${resolve_state_file}" \
+    cloudflared_write_service_file "quick" >/dev/null 2>&1
+  unit_state=""
+  [[ -f "${CLOUDFLARED_SVC}" ]] && unit_state=$(cat "${CLOUDFLARED_SVC}")
+  assert_contains "quick-mode unit uses state.json port" \
+    "tunnel --url http://127.0.0.1:9443" "${unit_state}"
+
+  # Explicit CLI override must still win.
+  TEST_STATE_FILE="${resolve_state_file}" \
+    cloudflared_write_config_yml "h.example.com" 7777 >/dev/null 2>&1
+  yml_override=""
+  [[ -f "${CLOUDFLARED_CONFIG}" ]] && yml_override=$(cat "${CLOUDFLARED_CONFIG}")
+  assert_contains "explicit port overrides state.json" \
+    "service: http://127.0.0.1:7777" "${yml_override}"
+
+  # Missing state file falls back to WS_PORT_DEFAULT (compile-time default).
+  # WS_PORT_DEFAULT is readonly after bootstrap; read it instead of overriding.
+  expected_fallback="${WS_PORT_DEFAULT:-8444}"
+  missing_state_file="${TEST_TMP_DIR}/state-missing.json"
+  resolved_fallback=$(TEST_STATE_FILE="${missing_state_file}" \
+    cloudflared_resolve_upstream_port)
+  assert_eq "resolve falls back to WS_PORT_DEFAULT when state absent" \
+    "${expected_fallback}" "${resolved_fallback}"
+
+  # State file present but missing .protocols.ws_tls.port also falls back.
+  empty_state_file="${TEST_TMP_DIR}/state-empty.json"
+  echo '{"protocols": {}}' >"${empty_state_file}"
+  resolved_empty=$(TEST_STATE_FILE="${empty_state_file}" \
+    cloudflared_resolve_upstream_port)
+  assert_eq "resolve falls back when ws_tls.port absent" \
+    "${expected_fallback}" "${resolved_empty}"
+
+  # Malformed state.json must not abort under set -e; must fall back cleanly.
+  bad_state_file="${TEST_TMP_DIR}/state-bad.json"
+  echo 'not-json{' >"${bad_state_file}"
+  resolved_bad=$(TEST_STATE_FILE="${bad_state_file}" \
+    cloudflared_resolve_upstream_port)
+  assert_eq "resolve falls back on malformed state.json" \
+    "${expected_fallback}" "${resolved_bad}"
+else
+  echo "  (skipping resolve tests: jq not installed)"
+fi
+
+#==============================================================================
 # env file writer
 #==============================================================================
 echo ""

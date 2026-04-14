@@ -46,8 +46,28 @@ _LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 : "${CLOUDFLARED_RELEASE_BASE:=https://github.com/cloudflare/cloudflared/releases}"
 : "${CLOUDFLARED_SERVICE_NAME:=cloudflared}"
 
-# Default upstream (sing-box WS-TLS inbound) used when no explicit port given.
-: "${CLOUDFLARED_DEFAULT_UPSTREAM_PORT:=${WS_PORT_DEFAULT:-8444}}"
+#==============================================================================
+# Upstream port resolution
+#==============================================================================
+
+# cloudflared_resolve_upstream_port
+# Resolves the upstream WS-TLS port for cloudflared's local proxy.
+# Prefers the actually-chosen port from state.json (.protocols.ws_tls.port),
+# falling back to WS_PORT_DEFAULT when state is absent or unreadable.
+cloudflared_resolve_upstream_port() {
+  local state_file="${TEST_STATE_FILE:-${STATE_FILE:-${SB_CONF_DIR:-/etc/sing-box}/state.json}}"
+  if [[ -f "${state_file}" ]] && command -v jq >/dev/null 2>&1; then
+    # Guard jq against malformed/unreadable JSON: set -e would otherwise abort
+    # this function on parse failure and skip the WS_PORT_DEFAULT fallback.
+    local p=""
+    if p=$(jq -r '.protocols.ws_tls.port // empty' "${state_file}" 2>/dev/null) &&
+      [[ -n "${p}" ]]; then
+      echo "${p}"
+      return 0
+    fi
+  fi
+  echo "${WS_PORT_DEFAULT:-8444}"
+}
 
 #==============================================================================
 # Arch detection
@@ -218,7 +238,7 @@ cloudflared_write_env_file() {
 # Writes a minimal named-tunnel config.yml routing <hostname> -> local WS.
 cloudflared_write_config_yml() {
   local hostname="$1"
-  local upstream_port="${2:-${CLOUDFLARED_DEFAULT_UPSTREAM_PORT}}"
+  local upstream_port="${2:-$(cloudflared_resolve_upstream_port)}"
 
   [[ -n "${hostname}" ]] || {
     err "cloudflared_write_config_yml: hostname is required"
@@ -250,7 +270,9 @@ cloudflared_write_service_file() {
       exec_line='ExecStart=/usr/local/bin/cloudflared --no-autoupdate tunnel run --token ${TUNNEL_TOKEN}'
       ;;
     quick)
-      exec_line="ExecStart=/usr/local/bin/cloudflared --no-autoupdate tunnel --url http://127.0.0.1:${CLOUDFLARED_DEFAULT_UPSTREAM_PORT}"
+      local quick_port=""
+      quick_port=$(cloudflared_resolve_upstream_port)
+      exec_line="ExecStart=/usr/local/bin/cloudflared --no-autoupdate tunnel --url http://127.0.0.1:${quick_port}"
       ;;
     *)
       err "cloudflared_write_service_file: unknown mode '${mode}'"
@@ -296,7 +318,7 @@ cloudflared_update_state() {
   local enabled="${1:-false}"
   local mode="${2:-}"
   local hostname="${3:-}"
-  local upstream_port="${4:-${CLOUDFLARED_DEFAULT_UPSTREAM_PORT}}"
+  local upstream_port="${4:-$(cloudflared_resolve_upstream_port)}"
 
   local state_file="${TEST_STATE_FILE:-${STATE_FILE:-${SB_CONF_DIR}/state.json}}"
 
@@ -351,7 +373,7 @@ cloudflared_current_hostname() {
 cloudflared_enable_token() {
   local token="${1:-}"
   local hostname="${2:-}"
-  local upstream_port="${3:-${CLOUDFLARED_DEFAULT_UPSTREAM_PORT}}"
+  local upstream_port="${3:-$(cloudflared_resolve_upstream_port)}"
 
   if [[ -z "${token}" || -z "${hostname}" ]]; then
     err "Usage: cloudflared_enable_token <token> <hostname> [upstream_port]"
@@ -432,3 +454,4 @@ export -f cloudflared_disable
 export -f cloudflared_status
 export -f cloudflared_current_hostname
 export -f cloudflared_update_state
+export -f cloudflared_resolve_upstream_port
