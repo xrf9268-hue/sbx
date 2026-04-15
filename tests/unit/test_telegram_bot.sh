@@ -281,6 +281,231 @@ perm=$(stat -c '%a' "${SBX_TG_OFFSET_FILE}" 2>/dev/null ||
 assert_eq "offset file is mode 600" "600" "${perm}"
 
 #==============================================================================
+# _tg_get_updates: backoff loop, success path, attempt cap, missing token.
+# Curl + sleep are stubbed via SBX_TG_CURL_CMD / SBX_TG_SLEEP_CMD so the
+# test never touches the network or wall clock.
+#==============================================================================
+echo ""
+echo "Testing _tg_get_updates..."
+
+# Counters live in files so subshells don't lose them.
+GU_CALLS_FILE="${TEST_TMP_DIR}/gu_calls"
+GU_SLEEPS_FILE="${TEST_TMP_DIR}/gu_sleeps"
+
+# Stub curl: writes a fixture body and succeeds. Detects the -o argument
+# anywhere in argv (the lib uses curl -o <file>).
+mock_curl_get_success() {
+  local out_file=""
+  while [[ $# -gt 0 ]]; do
+    if [[ "$1" == "-o" ]]; then
+      out_file="$2"
+      shift 2
+      continue
+    fi
+    shift
+  done
+  echo '{"ok":true,"result":[]}' >"${out_file}"
+  echo "ok" >>"${GU_CALLS_FILE}"
+  return 0
+}
+
+# Stub curl: always fails (simulates network error / 5xx).
+mock_curl_get_fail() {
+  echo "fail" >>"${GU_CALLS_FILE}"
+  return 22
+}
+
+# Stub sleep: records arg, returns immediately.
+mock_sleep() {
+  echo "$1" >>"${GU_SLEEPS_FILE}"
+  return 0
+}
+
+export SBX_TG_SLEEP_CMD=mock_sleep
+
+# Case 1: missing BOT_TOKEN → reject without calling curl.
+unset BOT_TOKEN
+: >"${GU_CALLS_FILE}"
+SBX_TG_CURL_CMD=mock_curl_get_success _tg_get_updates 0 "${TEST_TMP_DIR}/gu.out"
+rc=$?
+calls=$(wc -l <"${GU_CALLS_FILE}" | tr -d ' ')
+if [[ ${rc} -ne 0 && "${calls}" == "0" ]]; then
+  test_result "missing BOT_TOKEN rejects without curl call" "pass"
+else
+  test_result "missing BOT_TOKEN rejects without curl call" "fail"
+  echo "      rc=${rc} calls=${calls}"
+fi
+
+# Case 2: missing output_file arg → reject.
+BOT_TOKEN="123456789:AAEhBP0av28FrI51bX4nF12345678901234"
+export BOT_TOKEN
+SBX_TG_CURL_CMD=mock_curl_get_success _tg_get_updates 0 ""
+assert_nonzero "missing output_file rejects" "$?"
+
+# Case 3: success on first try → rc=0, output file written, no sleeps.
+: >"${GU_CALLS_FILE}"
+: >"${GU_SLEEPS_FILE}"
+rm -f "${TEST_TMP_DIR}/gu.out"
+SBX_TG_CURL_CMD=mock_curl_get_success _tg_get_updates 42 "${TEST_TMP_DIR}/gu.out"
+assert_zero "first-try success returns 0" "$?"
+calls=$(wc -l <"${GU_CALLS_FILE}" | tr -d ' ')
+sleeps=$(wc -l <"${GU_SLEEPS_FILE}" | tr -d ' ')
+assert_eq "exactly one curl call on success" "1" "${calls}"
+assert_eq "no sleep on success" "0" "${sleeps}"
+[[ -s "${TEST_TMP_DIR}/gu.out" ]] && test_result "output file populated" "pass" ||
+  test_result "output file populated" "fail"
+
+# Case 4: persistent failure with attempt cap → rc=1, exact attempt count,
+# backoff sequence is 1, 2, 4 (no sleep after the final failed attempt).
+: >"${GU_CALLS_FILE}"
+: >"${GU_SLEEPS_FILE}"
+SBX_TG_BACKOFF_MAX_ATTEMPTS=4 SBX_TG_CURL_CMD=mock_curl_get_fail \
+  _tg_get_updates 0 "${TEST_TMP_DIR}/gu.out"
+rc=$?
+calls=$(wc -l <"${GU_CALLS_FILE}" | tr -d ' ')
+sleeps_seq=$(tr '\n' ',' <"${GU_SLEEPS_FILE}")
+assert_nonzero "persistent failure with cap returns nonzero" "${rc}"
+assert_eq "exactly N curl attempts" "4" "${calls}"
+assert_eq "backoff sequence 1,2,4 between attempts" "1,2,4," "${sleeps_seq}"
+
+# Case 5: backoff caps at 30s. With 7 attempts the 6th sleep would be
+# 32; the cap clamps it back to 30.
+: >"${GU_CALLS_FILE}"
+: >"${GU_SLEEPS_FILE}"
+SBX_TG_BACKOFF_MAX_ATTEMPTS=7 SBX_TG_CURL_CMD=mock_curl_get_fail \
+  _tg_get_updates 0 "${TEST_TMP_DIR}/gu.out" >/dev/null 2>&1
+sleeps_seq=$(tr '\n' ',' <"${GU_SLEEPS_FILE}")
+assert_eq "backoff caps at 30 (1,2,4,8,16,30)" "1,2,4,8,16,30," "${sleeps_seq}"
+
+#==============================================================================
+# _tg_send_message: success, 429 retry, hard failure, missing token.
+#==============================================================================
+echo ""
+echo "Testing _tg_send_message..."
+
+SM_CALLS_FILE="${TEST_TMP_DIR}/sm_calls"
+SM_SLEEPS_FILE="${TEST_TMP_DIR}/sm_sleeps"
+
+# Stub curl for send: writes body to -o file, prints HTTP code via -w.
+mock_curl_send_200() {
+  local out_file=""
+  while [[ $# -gt 0 ]]; do
+    if [[ "$1" == "-o" ]]; then
+      out_file="$2"
+      shift 2
+      continue
+    fi
+    shift
+  done
+  echo '{"ok":true,"result":{"message_id":1}}' >"${out_file}"
+  echo "200" >>"${SM_CALLS_FILE}"
+  printf '200'
+}
+
+mock_curl_send_500() {
+  local out_file=""
+  while [[ $# -gt 0 ]]; do
+    if [[ "$1" == "-o" ]]; then
+      out_file="$2"
+      shift 2
+      continue
+    fi
+    shift
+  done
+  echo '{"ok":false,"error_code":500}' >"${out_file}"
+  echo "500" >>"${SM_CALLS_FILE}"
+  printf '500'
+}
+
+# 429 once, then 200 — exercises the rate-limit retry path.
+mock_curl_send_429_then_200() {
+  local out_file=""
+  while [[ $# -gt 0 ]]; do
+    if [[ "$1" == "-o" ]]; then
+      out_file="$2"
+      shift 2
+      continue
+    fi
+    shift
+  done
+  local n
+  n=$(wc -l <"${SM_CALLS_FILE}" 2>/dev/null | tr -d ' ')
+  n=${n:-0}
+  n=$((n + 1))
+  if [[ ${n} -eq 1 ]]; then
+    echo '{"ok":false,"error_code":429,"parameters":{"retry_after":7}}' >"${out_file}"
+    echo "429" >>"${SM_CALLS_FILE}"
+    printf '429'
+  else
+    echo '{"ok":true}' >"${out_file}"
+    echo "200" >>"${SM_CALLS_FILE}"
+    printf '200'
+  fi
+}
+
+mock_sleep_send() {
+  echo "$1" >>"${SM_SLEEPS_FILE}"
+  return 0
+}
+
+export SBX_TG_SLEEP_CMD=mock_sleep_send
+
+# Case 1: missing token → reject.
+unset BOT_TOKEN
+: >"${SM_CALLS_FILE}"
+SBX_TG_CURL_CMD=mock_curl_send_200 _tg_send_message 12345 "hello"
+rc=$?
+calls=$(wc -l <"${SM_CALLS_FILE}" | tr -d ' ')
+if [[ ${rc} -ne 0 && "${calls}" == "0" ]]; then
+  test_result "send: missing BOT_TOKEN rejects without curl call" "pass"
+else
+  test_result "send: missing BOT_TOKEN rejects without curl call" "fail"
+fi
+
+# Case 2: missing chat_id or text → reject.
+BOT_TOKEN="123456789:AAEhBP0av28FrI51bX4nF12345678901234"
+export BOT_TOKEN
+SBX_TG_CURL_CMD=mock_curl_send_200 _tg_send_message "" "hello"
+assert_nonzero "send: empty chat_id rejected" "$?"
+SBX_TG_CURL_CMD=mock_curl_send_200 _tg_send_message 12345 ""
+assert_nonzero "send: empty text rejected" "$?"
+
+# Case 3: 200 first try.
+: >"${SM_CALLS_FILE}"
+: >"${SM_SLEEPS_FILE}"
+SBX_TG_CURL_CMD=mock_curl_send_200 _tg_send_message 12345 "hello world"
+assert_zero "send: 200 returns 0" "$?"
+calls=$(wc -l <"${SM_CALLS_FILE}" | tr -d ' ')
+sleeps=$(wc -l <"${SM_SLEEPS_FILE}" | tr -d ' ')
+assert_eq "send: exactly one curl call on 200" "1" "${calls}"
+assert_eq "send: no sleep on 200" "0" "${sleeps}"
+
+# Case 4: 500 → fail immediately, no retry.
+: >"${SM_CALLS_FILE}"
+: >"${SM_SLEEPS_FILE}"
+SBX_TG_CURL_CMD=mock_curl_send_500 _tg_send_message 12345 "hello"
+assert_nonzero "send: 500 returns nonzero" "$?"
+calls=$(wc -l <"${SM_CALLS_FILE}" | tr -d ' ')
+assert_eq "send: 500 does not retry" "1" "${calls}"
+
+# Case 5: 429 then 200 → success, exactly one sleep with retry_after=7.
+if command -v jq >/dev/null 2>&1; then
+  : >"${SM_CALLS_FILE}"
+  : >"${SM_SLEEPS_FILE}"
+  SBX_TG_CURL_CMD=mock_curl_send_429_then_200 _tg_send_message 12345 "hello"
+  assert_zero "send: 429-then-200 returns 0" "$?"
+  calls=$(wc -l <"${SM_CALLS_FILE}" | tr -d ' ')
+  sleeps_seq=$(tr '\n' ',' <"${SM_SLEEPS_FILE}")
+  assert_eq "send: 429-then-200 makes 2 calls" "2" "${calls}"
+  assert_eq "send: sleep honors retry_after" "7," "${sleeps_seq}"
+else
+  echo "  (skipping 429 retry test: jq not installed)"
+fi
+
+# Reset SBX_TG_SLEEP_CMD so later tests in this file aren't affected.
+unset SBX_TG_SLEEP_CMD SBX_TG_CURL_CMD SBX_TG_BACKOFF_MAX_ATTEMPTS
+
+#==============================================================================
 # Module is registered in install.sh modules array + contracts map
 # (mirrors tests/unit/test_cloudflare_tunnel.sh:298-309).
 #==============================================================================

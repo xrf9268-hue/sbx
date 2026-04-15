@@ -194,15 +194,99 @@ _tg_save_offset() {
   mv -f "${tmp}" "${SBX_TG_OFFSET_FILE}"
 }
 
-# _tg_get_updates <offset>
-# Calls getUpdates with long-poll timeout; exponential backoff on failure.
+# _tg_get_updates <offset> <output_file>
+# POSTs to Bot API getUpdates with long-poll timeout; on transient curl
+# failure (network blip, DNS hiccup, 5xx) sleeps with exponential backoff
+# (1→2→4→8→16→30s, capped at 30s) and retries indefinitely. Tests can
+# bound the loop with SBX_TG_BACKOFF_MAX_ATTEMPTS=N (0 = unlimited).
+# Curl and sleep are injectable via SBX_TG_CURL_CMD / SBX_TG_SLEEP_CMD
+# so unit tests can stub them without touching the real network or clock.
+# BOT_TOKEN MUST be set in the environment (loaded by EnvironmentFile).
 _tg_get_updates() {
-  return 1
+  local offset="${1:-0}"
+  local output_file="${2:-}"
+  [[ -n "${output_file}" ]] || return 1
+  [[ -n "${BOT_TOKEN:-}" ]] || return 1
+
+  local curl_cmd="${SBX_TG_CURL_CMD:-curl}"
+  local sleep_cmd="${SBX_TG_SLEEP_CMD:-sleep}"
+  local max_attempts="${SBX_TG_BACKOFF_MAX_ATTEMPTS:-0}"
+  local backoff=1
+  local attempts=0
+
+  while :; do
+    attempts=$((attempts + 1))
+    if "${curl_cmd}" -fsS \
+      --max-time "$((SBX_TG_POLL_TIMEOUT + 10))" \
+      --connect-timeout 10 \
+      -o "${output_file}" \
+      --data-urlencode "offset=${offset}" \
+      --data-urlencode "timeout=${SBX_TG_POLL_TIMEOUT}" \
+      "${SBX_TG_API_BASE}/bot${BOT_TOKEN}/getUpdates" \
+      2>/dev/null; then
+      return 0
+    fi
+
+    if [[ ${max_attempts} -gt 0 && ${attempts} -ge ${max_attempts} ]]; then
+      return 1
+    fi
+
+    "${sleep_cmd}" "${backoff}" || true
+    backoff=$((backoff * 2))
+    [[ ${backoff} -gt 30 ]] && backoff=30
+  done
 }
 
 # _tg_send_message <chat_id> <text>
-# Sends a message; handles 429 retry_after.
+# POSTs to Bot API sendMessage. On HTTP 429 (rate limit) parses
+# .parameters.retry_after from the response body and sleeps once before
+# retrying — at most one retry, so a sustained 429 storm doesn't loop us.
+# All other non-2xx responses are reported as failure (caller may log them
+# and continue; we don't want to spam-retry on permanent errors like 400).
+# Curl and sleep are injectable for testability (see _tg_get_updates).
 _tg_send_message() {
+  local chat_id="${1:-}"
+  local text="${2:-}"
+  [[ -n "${chat_id}" && -n "${text}" ]] || return 1
+  [[ -n "${BOT_TOKEN:-}" ]] || return 1
+
+  local curl_cmd="${SBX_TG_CURL_CMD:-curl}"
+  local sleep_cmd="${SBX_TG_SLEEP_CMD:-sleep}"
+
+  local body_file=""
+  body_file=$(mktemp -t sbx-tg-send.XXXXXX) || return 1
+  # shellcheck disable=SC2064
+  trap "rm -f '${body_file}'" RETURN
+
+  local attempts=0
+  local max_attempts=2 # initial + at most one 429 retry
+  while [[ ${attempts} -lt ${max_attempts} ]]; do
+    attempts=$((attempts + 1))
+    local http_code=""
+    http_code=$("${curl_cmd}" -sS \
+      -o "${body_file}" \
+      -w '%{http_code}' \
+      --max-time 30 \
+      --connect-timeout 10 \
+      --data-urlencode "chat_id=${chat_id}" \
+      --data-urlencode "text=${text}" \
+      "${SBX_TG_API_BASE}/bot${BOT_TOKEN}/sendMessage" \
+      2>/dev/null) || http_code="000"
+
+    if [[ "${http_code}" == "200" ]]; then
+      return 0
+    fi
+
+    if [[ "${http_code}" == "429" ]] && command -v jq >/dev/null 2>&1; then
+      local retry_after=""
+      retry_after=$(jq -r '.parameters.retry_after // 1' "${body_file}" 2>/dev/null)
+      [[ "${retry_after}" =~ ^[0-9]+$ ]] || retry_after=1
+      "${sleep_cmd}" "${retry_after}" || true
+      continue
+    fi
+
+    return 1
+  done
   return 1
 }
 
