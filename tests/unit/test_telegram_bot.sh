@@ -506,6 +506,232 @@ fi
 unset SBX_TG_SLEEP_CMD SBX_TG_CURL_CMD SBX_TG_BACKOFF_MAX_ATTEMPTS
 
 #==============================================================================
+# _tg_dispatch_command + _tg_handle_*: route commands to the right handler,
+# enforce authorization (silent reject), capture replies via _tg_send_message
+# shadow. Each external dependency (user_add, user_remove, sync, systemctl,
+# check_service_status, restart_service) is stubbed so we exercise the
+# routing logic without touching real state or services.
+#==============================================================================
+echo ""
+echo "Testing _tg_dispatch_command + handlers..."
+
+SEND_LOG="${TEST_TMP_DIR}/send.log"
+USER_ADD_LOG="${TEST_TMP_DIR}/user_add.log"
+USER_REMOVE_LOG="${TEST_TMP_DIR}/user_remove.log"
+SYSTEMCTL_LOG="${TEST_TMP_DIR}/systemctl.log"
+
+# Shadow _tg_send_message: capture every reply for assertion.
+_tg_send_message() {
+  printf '[chat=%s] %s\n' "$1" "$2" >>"${SEND_LOG}"
+  return 0
+}
+
+# Stub external dependencies. Each logs the args so we can assert downstream
+# side effects (e.g. that adduser triggered sync + restart).
+check_service_status() {
+  [[ "${STUB_SERVICE_ACTIVE:-1}" == "1" ]]
+}
+user_list() {
+  echo "alice  uuid-aaa  2025-01-01"
+  echo "bob    uuid-bbb  2025-01-02"
+}
+user_add() {
+  echo "user_add $*" >>"${USER_ADD_LOG}"
+  if [[ "${STUB_USER_ADD_FAIL:-0}" == "1" ]]; then
+    echo "User with name 'dup' already exists" >&2
+    return 1
+  fi
+  # Mimic the real user_add stdout
+  echo "Added user: ${2:-?} (uuid-stub)"
+  return 0
+}
+user_remove() {
+  echo "user_remove $*" >>"${USER_REMOVE_LOG}"
+  if [[ "${STUB_USER_REMOVE_FAIL:-0}" == "1" ]]; then
+    echo "User not found: $1" >&2
+    return 1
+  fi
+  echo "Removed user: $1 (uuid-stub)"
+  return 0
+}
+sync_users_to_config() { return 0; }
+restart_service() {
+  echo "restart_service called" >>"${SYSTEMCTL_LOG}"
+  if [[ "${STUB_RESTART_FAIL:-0}" == "1" ]]; then
+    echo "systemctl restart failed" >&2
+    return 1
+  fi
+  return 0
+}
+# Shadow systemctl so adduser/removeuser don't actually touch services.
+systemctl() {
+  echo "systemctl $*" >>"${SYSTEMCTL_LOG}"
+  return 0
+}
+
+# Whitelist chat_id 99999 in state.json.
+cat >"${TEST_STATE_FILE}" <<'JSON'
+{"version":"1.0","telegram":{"enabled":true,"admin_chat_ids":[99999]}}
+JSON
+
+reset_logs() {
+  : >"${SEND_LOG}"
+  : >"${USER_ADD_LOG}"
+  : >"${USER_REMOVE_LOG}"
+  : >"${SYSTEMCTL_LOG}"
+}
+
+# --- Authorization boundary --------------------------------------------------
+
+# Non-whitelisted chat → silent: NO sendMessage call at all.
+reset_logs
+_tg_dispatch_command 11111 status
+sends=$(wc -l <"${SEND_LOG}" | tr -d ' ')
+assert_eq "non-whitelisted chat → silent (0 replies)" "0" "${sends}"
+
+# Whitelisted chat → at least one reply.
+reset_logs
+_tg_dispatch_command 99999 status
+sends=$(wc -l <"${SEND_LOG}" | tr -d ' ')
+if [[ "${sends}" -ge 1 ]]; then
+  test_result "whitelisted chat → handler invoked" "pass"
+else
+  test_result "whitelisted chat → handler invoked" "fail"
+fi
+
+# Empty chat_id or empty cmd → reject.
+_tg_dispatch_command "" status
+assert_nonzero "dispatch empty chat_id rejected" "$?"
+_tg_dispatch_command 99999 ""
+assert_nonzero "dispatch empty cmd rejected" "$?"
+
+# --- /status routing ---------------------------------------------------------
+
+reset_logs
+STUB_SERVICE_ACTIVE=1 _tg_dispatch_command 99999 status
+reply=$(cat "${SEND_LOG}")
+assert_contains_str() {
+  local name="$1" needle="$2" haystack="$3"
+  if [[ "${haystack}" == *"${needle}"* ]]; then
+    test_result "${name}" "pass"
+  else
+    test_result "${name}" "fail"
+    echo "      missing: ${needle}"
+    echo "      in:      ${haystack}"
+  fi
+}
+assert_contains_str "/status active reply" "active" "${reply}"
+
+reset_logs
+STUB_SERVICE_ACTIVE=0 _tg_dispatch_command 99999 status
+reply=$(cat "${SEND_LOG}")
+assert_contains_str "/status inactive reply" "inactive" "${reply}"
+
+# --- /users routing ----------------------------------------------------------
+
+reset_logs
+_tg_dispatch_command 99999 users
+reply=$(cat "${SEND_LOG}")
+assert_contains_str "/users includes alice" "alice" "${reply}"
+assert_contains_str "/users includes bob" "bob" "${reply}"
+
+# --- /adduser routing -------------------------------------------------------
+
+# Happy path: triggers user_add + sync + restart.
+reset_logs
+_tg_dispatch_command 99999 adduser charlie
+reply=$(cat "${SEND_LOG}")
+ua=$(cat "${USER_ADD_LOG}")
+sysctl=$(cat "${SYSTEMCTL_LOG}")
+assert_contains_str "/adduser invokes user_add with --name <arg>" \
+  "user_add --name charlie" "${ua}"
+assert_contains_str "/adduser triggers systemctl restart" \
+  "systemctl restart sing-box" "${sysctl}"
+assert_contains_str "/adduser success reply contains ✅" "✅" "${reply}"
+
+# Missing arg.
+reset_logs
+_tg_dispatch_command 99999 adduser
+reply=$(cat "${SEND_LOG}")
+assert_contains_str "/adduser without arg shows usage" "Usage" "${reply}"
+ua=$(wc -l <"${USER_ADD_LOG}" | tr -d ' ')
+assert_eq "/adduser without arg does not call user_add" "0" "${ua}"
+
+# Invalid name (contains semicolon — shell metachar).
+reset_logs
+_tg_dispatch_command 99999 adduser "bad;name"
+reply=$(cat "${SEND_LOG}")
+assert_contains_str "/adduser invalid name rejected" "Invalid" "${reply}"
+ua=$(wc -l <"${USER_ADD_LOG}" | tr -d ' ')
+assert_eq "/adduser invalid name skips user_add" "0" "${ua}"
+
+# user_add fails → error reply, no restart.
+reset_logs
+STUB_USER_ADD_FAIL=1 _tg_dispatch_command 99999 adduser dup
+reply=$(cat "${SEND_LOG}")
+sysctl=$(cat "${SYSTEMCTL_LOG}")
+assert_contains_str "/adduser failure reply contains ❌" "❌" "${reply}"
+assert_eq "/adduser failure skips restart" "" "${sysctl}"
+unset STUB_USER_ADD_FAIL
+
+# --- /removeuser routing -----------------------------------------------------
+
+reset_logs
+_tg_dispatch_command 99999 removeuser alice
+reply=$(cat "${SEND_LOG}")
+ur=$(cat "${USER_REMOVE_LOG}")
+sysctl=$(cat "${SYSTEMCTL_LOG}")
+assert_contains_str "/removeuser invokes user_remove" \
+  "user_remove alice" "${ur}"
+assert_contains_str "/removeuser triggers systemctl restart" \
+  "systemctl restart sing-box" "${sysctl}"
+assert_contains_str "/removeuser success reply contains ✅" "✅" "${reply}"
+
+reset_logs
+_tg_dispatch_command 99999 removeuser
+reply=$(cat "${SEND_LOG}")
+assert_contains_str "/removeuser without arg shows usage" "Usage" "${reply}"
+
+reset_logs
+STUB_USER_REMOVE_FAIL=1 _tg_dispatch_command 99999 removeuser ghost
+reply=$(cat "${SEND_LOG}")
+assert_contains_str "/removeuser failure reply contains ❌" "❌" "${reply}"
+unset STUB_USER_REMOVE_FAIL
+
+# --- /restart routing --------------------------------------------------------
+
+reset_logs
+_tg_dispatch_command 99999 restart
+reply=$(cat "${SEND_LOG}")
+assert_contains_str "/restart success reply" "restarted" "${reply}"
+
+reset_logs
+STUB_RESTART_FAIL=1 _tg_dispatch_command 99999 restart
+reply=$(cat "${SEND_LOG}")
+assert_contains_str "/restart failure reply" "Restart failed" "${reply}"
+unset STUB_RESTART_FAIL
+
+# --- /help and unknown command ----------------------------------------------
+
+reset_logs
+_tg_dispatch_command 99999 help
+reply=$(cat "${SEND_LOG}")
+assert_contains_str "/help lists /status" "/status" "${reply}"
+assert_contains_str "/help lists /adduser" "/adduser" "${reply}"
+
+# Unknown command falls back to help (per plan).
+reset_logs
+_tg_dispatch_command 99999 wat
+reply=$(cat "${SEND_LOG}")
+assert_contains_str "unknown command falls back to help" "/help" "${reply}"
+
+# /start (Telegram convention) also shows help.
+reset_logs
+_tg_dispatch_command 99999 start
+reply=$(cat "${SEND_LOG}")
+assert_contains_str "/start aliases to help" "/status" "${reply}"
+
+#==============================================================================
 # Module is registered in install.sh modules array + contracts map
 # (mirrors tests/unit/test_cloudflare_tunnel.sh:298-309).
 #==============================================================================

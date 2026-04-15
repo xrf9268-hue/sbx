@@ -315,39 +315,140 @@ _tg_parse_command() {
 }
 
 # _tg_dispatch_command <chat_id> <cmd> [args...]
-# Pure case-based dispatch to _tg_handle_* functions.
+# Pure case-based dispatch to _tg_handle_* functions. NEVER `eval` chat input.
+# Authorization is enforced HERE, not per-handler: non-whitelisted senders
+# get silent drop (no reply at all) so the bot can't be used to fingerprint
+# the admin list. Unknown commands fall through to /help.
 _tg_dispatch_command() {
-  return 1
+  local chat_id="${1:-}"
+  local cmd="${2:-}"
+  shift 2 2>/dev/null || true
+
+  [[ -n "${chat_id}" && -n "${cmd}" ]] || return 1
+
+  # Security boundary — fail closed and silent.
+  _tg_is_authorized "${chat_id}" || return 0
+
+  case "${cmd}" in
+    status) _tg_handle_status "${chat_id}" ;;
+    users) _tg_handle_users "${chat_id}" ;;
+    adduser) _tg_handle_adduser "${chat_id}" "${1:-}" ;;
+    removeuser) _tg_handle_removeuser "${chat_id}" "${1:-}" ;;
+    restart) _tg_handle_restart "${chat_id}" ;;
+    help | start) _tg_handle_help "${chat_id}" ;;
+    *) _tg_handle_help "${chat_id}" ;;
+  esac
 }
 
 # _tg_handle_status <chat_id>
+# Reports sing-box service activity using the existing service.sh helper.
 _tg_handle_status() {
-  return 1
+  local chat_id="${1:-}"
+  local reply=""
+  if check_service_status; then
+    reply="✅ sing-box: active"
+  else
+    reply="❌ sing-box: inactive"
+  fi
+  _tg_send_message "${chat_id}" "${reply}"
 }
 
 # _tg_handle_users <chat_id>
+# Forwards the user_list table verbatim. Output is small enough to fit in
+# Telegram's 4096-char message limit for any realistic deployment.
 _tg_handle_users() {
-  return 1
+  local chat_id="${1:-}"
+  local out=""
+  if out=$(user_list 2>&1); then
+    _tg_send_message "${chat_id}" "${out}"
+  else
+    _tg_send_message "${chat_id}" "❌ Failed to list users:
+${out}"
+  fi
 }
 
 # _tg_handle_adduser <chat_id> <name>
+# Defense-in-depth: trim whitespace and re-validate the name before delegating
+# to user_add (which already enforces ^[a-zA-Z0-9_-]+$). On success, mirror
+# the sbx-manager.sh `user add` flow: sync_users_to_config + restart sing-box.
 _tg_handle_adduser() {
-  return 1
+  local chat_id="${1:-}"
+  local name="${2:-}"
+
+  # Trim leading/trailing whitespace.
+  name="${name#"${name%%[![:space:]]*}"}"
+  name="${name%"${name##*[![:space:]]}"}"
+
+  if [[ -z "${name}" ]]; then
+    _tg_send_message "${chat_id}" "Usage: /adduser <name>"
+    return 0
+  fi
+
+  if ! [[ "${name}" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+    _tg_send_message "${chat_id}" \
+      "❌ Invalid name '${name}': use alphanumerics, _, - only"
+    return 0
+  fi
+
+  local out=""
+  if out=$(user_add --name "${name}" 2>&1); then
+    sync_users_to_config 2>/dev/null || true
+    systemctl restart sing-box 2>/dev/null || true
+    _tg_send_message "${chat_id}" "✅ ${out}"
+  else
+    _tg_send_message "${chat_id}" "❌ ${out}"
+  fi
 }
 
 # _tg_handle_removeuser <chat_id> <name_or_uuid>
 _tg_handle_removeuser() {
-  return 1
+  local chat_id="${1:-}"
+  local id="${2:-}"
+
+  id="${id#"${id%%[![:space:]]*}"}"
+  id="${id%"${id##*[![:space:]]}"}"
+
+  if [[ -z "${id}" ]]; then
+    _tg_send_message "${chat_id}" "Usage: /removeuser <name|uuid>"
+    return 0
+  fi
+
+  local out=""
+  if out=$(user_remove "${id}" 2>&1); then
+    sync_users_to_config 2>/dev/null || true
+    systemctl restart sing-box 2>/dev/null || true
+    _tg_send_message "${chat_id}" "✅ ${out}"
+  else
+    _tg_send_message "${chat_id}" "❌ ${out}"
+  fi
 }
 
 # _tg_handle_restart <chat_id>
+# Delegates to restart_service (already flock-protected by service.sh).
 _tg_handle_restart() {
-  return 1
+  local chat_id="${1:-}"
+  local out=""
+  if out=$(restart_service 2>&1); then
+    _tg_send_message "${chat_id}" "✅ sing-box restarted"
+  else
+    _tg_send_message "${chat_id}" "❌ Restart failed:
+${out}"
+  fi
 }
 
 # _tg_handle_help <chat_id>
 _tg_handle_help() {
-  return 1
+  local chat_id="${1:-}"
+  local reply
+  reply="sbx-lite Telegram Bot — available commands:
+
+/status — show sing-box service status
+/users — list configured users
+/adduser <name> — add a new user
+/removeuser <name|uuid> — remove a user
+/restart — restart sing-box service
+/help — show this help"
+  _tg_send_message "${chat_id}" "${reply}"
 }
 
 # _tg_update_state <key>=<value>...
