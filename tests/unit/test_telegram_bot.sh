@@ -732,6 +732,120 @@ reply=$(cat "${SEND_LOG}")
 assert_contains_str "/start aliases to help" "/status" "${reply}"
 
 #==============================================================================
+# _tg_update_state: atomic merge into .telegram block. Verifies value
+# typing (bool/int/string/array), allowlist enforcement, format validation,
+# preservation of unrelated state, and chmod 600 after rename.
+#==============================================================================
+echo ""
+echo "Testing _tg_update_state..."
+
+if command -v jq >/dev/null 2>&1; then
+  # Seed a state file with unrelated fields we expect to survive.
+  cat >"${TEST_STATE_FILE}" <<'JSON'
+{
+  "version": "1.0",
+  "server": {"ip": "203.0.113.1"},
+  "protocols": {"reality": {"enabled": true}}
+}
+JSON
+  chmod 600 "${TEST_STATE_FILE}"
+
+  # Case 1: enabled=true (boolean literal).
+  _tg_update_state enabled=true >/dev/null 2>&1
+  assert_zero "set enabled=true returns 0" "$?"
+  assert_eq ".telegram.enabled is JSON true" \
+    "true" "$(jq -r '.telegram.enabled' "${TEST_STATE_FILE}")"
+
+  # Case 2: unrelated state survives.
+  assert_eq "unrelated .protocols.reality.enabled preserved" \
+    "true" "$(jq -r '.protocols.reality.enabled' "${TEST_STATE_FILE}")"
+  assert_eq "unrelated .server.ip preserved" \
+    "203.0.113.1" "$(jq -r '.server.ip' "${TEST_STATE_FILE}")"
+
+  # Case 3: username=mybot (string).
+  _tg_update_state username=mybot >/dev/null 2>&1
+  assert_eq ".telegram.username is JSON string" \
+    "mybot" "$(jq -r '.telegram.username' "${TEST_STATE_FILE}")"
+  # And the previous .telegram.enabled is still there (merge, not replace).
+  assert_eq "previous .telegram.enabled retained after username update" \
+    "true" "$(jq -r '.telegram.enabled' "${TEST_STATE_FILE}")"
+
+  # Case 4: multi-pair single call (atomic).
+  _tg_update_state enabled=false username=otherbot >/dev/null 2>&1
+  assert_eq "multi-pair: enabled=false applied" \
+    "false" "$(jq -r '.telegram.enabled' "${TEST_STATE_FILE}")"
+  assert_eq "multi-pair: username=otherbot applied" \
+    "otherbot" "$(jq -r '.telegram.username' "${TEST_STATE_FILE}")"
+
+  # Case 5: admin_chat_ids as JSON array (--argjson path).
+  _tg_update_state admin_chat_ids='[12345,67890,-100123]' >/dev/null 2>&1
+  assert_eq "admin_chat_ids written as JSON array" \
+    "3" "$(jq -r '.telegram.admin_chat_ids | length' "${TEST_STATE_FILE}")"
+  assert_eq "admin_chat_ids[0] is integer 12345" \
+    "12345" "$(jq -r '.telegram.admin_chat_ids[0]' "${TEST_STATE_FILE}")"
+  assert_eq "admin_chat_ids[2] is negative group id" \
+    "-100123" "$(jq -r '.telegram.admin_chat_ids[2]' "${TEST_STATE_FILE}")"
+
+  # Case 6: file mode is 600 after update.
+  perm=$(stat -c '%a' "${TEST_STATE_FILE}" 2>/dev/null ||
+    stat -f '%Lp' "${TEST_STATE_FILE}" 2>/dev/null)
+  assert_eq "state.json mode preserved at 600" "600" "${perm}"
+
+  # Case 7: state.json remains valid JSON.
+  jq empty "${TEST_STATE_FILE}" >/dev/null 2>&1
+  assert_zero "state.json remains parseable JSON" "$?"
+
+  # Case 8: missing state file → return 0 (warn-and-skip, matches cloudflared).
+  rm -f "${TEST_STATE_FILE}"
+  _tg_update_state enabled=true 2>/dev/null
+  assert_zero "missing state file → return 0 (skip)" "$?"
+
+  # Restore for negative-path tests below.
+  echo '{"version":"1.0"}' >"${TEST_STATE_FILE}"
+
+  # Case 9: no args rejected.
+  _tg_update_state 2>/dev/null
+  assert_nonzero "no args rejected" "$?"
+
+  # Case 10: malformed kv (no '=') rejected.
+  _tg_update_state "notakv" 2>/dev/null
+  assert_nonzero "kv without '=' rejected" "$?"
+
+  # Case 11: invalid key (digits-only / shell metas) rejected.
+  _tg_update_state "123=foo" 2>/dev/null
+  assert_nonzero "key starting with digit rejected" "$?"
+  _tg_update_state "evil;rm=foo" 2>/dev/null
+  assert_nonzero "key with shell meta rejected" "$?"
+
+  # Case 12: key not in allowlist rejected (defense-in-depth).
+  _tg_update_state "bot_token=secret123" 2>/dev/null
+  assert_nonzero "key outside allowlist rejected" "$?"
+  # And the rejected write must NOT have leaked into state.
+  bot_field=$(jq -r '.telegram.bot_token // "MISSING"' "${TEST_STATE_FILE}")
+  assert_eq "rejected key never written" "MISSING" "${bot_field}"
+
+  # Case 13: weird-but-valid string value (spaces) round-trips.
+  _tg_update_state "username=My Bot Name" >/dev/null 2>&1
+  assert_eq "string value with spaces round-trips" \
+    "My Bot Name" "$(jq -r '.telegram.username' "${TEST_STATE_FILE}")"
+
+  # Case 14: integer value typed as JSON int (not string).
+  _tg_update_state "admin_chat_ids=[42]" >/dev/null 2>&1
+  type_check=$(jq -r '.telegram.admin_chat_ids[0] | type' "${TEST_STATE_FILE}")
+  assert_eq "integer in array stays JSON number" "number" "${type_check}"
+
+  # Case 15: trip enable→disable cycle round-trip integrity.
+  _tg_update_state enabled=true username=cycle1 >/dev/null 2>&1
+  _tg_update_state enabled=false >/dev/null 2>&1
+  enabled=$(jq -r '.telegram.enabled' "${TEST_STATE_FILE}")
+  username=$(jq -r '.telegram.username' "${TEST_STATE_FILE}")
+  assert_eq "cycle: enabled is false" "false" "${enabled}"
+  assert_eq "cycle: username preserved across toggle" "cycle1" "${username}"
+else
+  echo "  (skipping _tg_update_state tests: jq not installed)"
+fi
+
+#==============================================================================
 # Module is registered in install.sh modules array + contracts map
 # (mirrors tests/unit/test_cloudflare_tunnel.sh:298-309).
 #==============================================================================

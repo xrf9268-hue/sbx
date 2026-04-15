@@ -451,10 +451,95 @@ _tg_handle_help() {
   _tg_send_message "${chat_id}" "${reply}"
 }
 
-# _tg_update_state <key>=<value>...
-# Atomically merges bot state into state.json (mktemp→jq→chmod→mv).
+# _tg_update_state <key>=<value> [<key>=<value> ...]
+# Atomically merges each pair into state.json's .telegram object using a
+# single jq invocation (mktemp → jq → chmod → mv), mirroring the
+# cloudflared_update_state pattern at lib/cloudflare_tunnel.sh:317-359.
+#
+# Allowed keys (allowlist — keeps state shape predictable, prevents typos
+# from polluting the file): enabled, username, admin_chat_ids.
+#
+# Value typing is auto-detected:
+#   true / false / null / <integer>    → JSON literal (--argjson)
+#   leading [ or {                     → JSON literal (--argjson)
+#   anything else                      → JSON string  (--arg)
+#
+# Missing state file is a warn-and-skip (return 0) so the bot doesn't
+# explode on a fresh install where state.json was wiped — matches
+# cloudflared_update_state semantics.
 _tg_update_state() {
-  return 1
+  local state_file=""
+  state_file=$(_tg_state_file)
+
+  if [[ ! -f "${state_file}" ]]; then
+    warn "State file not found (${state_file}); skipping telegram state update"
+    return 0
+  fi
+
+  command -v jq >/dev/null 2>&1 || {
+    err "jq is required to update telegram state"
+    return 1
+  }
+
+  [[ $# -ge 1 ]] || {
+    err "_tg_update_state: no key=value pairs given"
+    return 1
+  }
+
+  local jq_args=()
+  local merge="(.telegram // {})"
+  local n=0
+  local kv key val arg
+  for kv in "$@"; do
+    [[ "${kv}" == *"="* ]] || {
+      err "_tg_update_state: '${kv}' is not key=value"
+      return 1
+    }
+    key="${kv%%=*}"
+    val="${kv#*=}"
+
+    [[ "${key}" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]] || {
+      err "_tg_update_state: invalid key '${key}'"
+      return 1
+    }
+
+    case "${key}" in
+      enabled | username | admin_chat_ids) ;;
+      *)
+        err "_tg_update_state: key '${key}' not in allowlist"
+        return 1
+        ;;
+    esac
+
+    n=$((n + 1))
+    arg="a${n}"
+
+    if [[ "${val}" == "true" || "${val}" == "false" || "${val}" == "null" ||
+      "${val}" =~ ^-?[0-9]+$ ||
+      "${val}" =~ ^\[ ||
+      "${val}" =~ ^\{ ]]; then
+      jq_args+=(--argjson "${arg}" "${val}")
+    else
+      jq_args+=(--arg "${arg}" "${val}")
+    fi
+
+    merge="${merge} + {${key}: \$${arg}}"
+  done
+
+  local filter=". + {telegram: (${merge})}"
+
+  local tmp=""
+  tmp=$(mktemp "${state_file}.XXXXXX") || return 1
+  # shellcheck disable=SC2064
+  trap "rm -f '${tmp}'" RETURN
+
+  if ! jq "${jq_args[@]}" "${filter}" "${state_file}" >"${tmp}" 2>/dev/null; then
+    err "_tg_update_state: jq filter failed"
+    return 1
+  fi
+
+  mv -f "${tmp}" "${state_file}"
+  chmod "${SECURE_FILE_PERMISSIONS:-600}" "${state_file}" 2>/dev/null || true
 }
 
 #==============================================================================
