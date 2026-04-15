@@ -506,7 +506,7 @@ _download_and_validate_manager_script() {
 _load_modules() {
   local github_repo="https://raw.githubusercontent.com/xrf9268-hue/sbx/main"
   # Module loading order: colors first (required by common and logging), then common loads logging and generators, tools after common
-  local modules=(colors common logging generators tools retry download network validation checksum version certificate caddy_cleanup config config_validator schema_validator service ui backup export messages users port_hopping subscription cloudflare_tunnel)
+  local modules=(colors common logging generators tools retry download network validation checksum version certificate caddy_cleanup config config_validator schema_validator service ui backup export messages users port_hopping subscription cloudflare_tunnel telegram_bot)
   local temp_lib_dir=""
 
   # Check if lib directory exists
@@ -658,6 +658,7 @@ _verify_module_apis() {
     ["port_hopping"]="validate_port_range apply_port_hopping_rules remove_port_hopping_rules show_port_hopping_status"
     ["subscription"]="subscription_render subscription_enable subscription_disable subscription_status subscription_url subscription_ensure_state_block"
     ["cloudflare_tunnel"]="cloudflared_install cloudflared_enable_token cloudflared_disable cloudflared_status cloudflared_update_state"
+    ["telegram_bot"]="telegram_bot_setup telegram_bot_enable telegram_bot_disable telegram_bot_status telegram_bot_run"
   )
 
   # Verify each module's API contract
