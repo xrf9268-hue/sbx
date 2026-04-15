@@ -118,8 +118,12 @@ telegram_bot_run() {
 
 # _tg_validate_token <token>
 # Returns 0 iff token matches ^[0-9]{8,10}:[A-Za-z0-9_-]{35}$
+# Telegram bot tokens have shape: <bot_id>:<35-char_secret>
+# where bot_id is 8-10 digits and the secret half is base64url-ish
+# (alphanumeric + '-' + '_'), exactly 35 characters long.
 _tg_validate_token() {
-  return 1
+  local token="${1:-}"
+  [[ "${token}" =~ ^[0-9]{8,10}:[A-Za-z0-9_-]{35}$ ]]
 }
 
 # _tg_verify_token_live <token>
@@ -128,22 +132,66 @@ _tg_verify_token_live() {
   return 1
 }
 
+# _tg_state_file
+# Resolves the active state.json path, honoring TEST_STATE_FILE for tests.
+_tg_state_file() {
+  echo "${TEST_STATE_FILE:-${STATE_FILE:-${SB_CONF_DIR:-/etc/sing-box}/state.json}}"
+}
+
 # _tg_is_authorized <chat_id>
-# Checks admin_chat_ids whitelist in state.json.
+# Returns 0 iff <chat_id> appears in .telegram.admin_chat_ids[] of state.json.
+# Empty whitelist, missing block, missing file or missing jq all reject.
+# This is the security boundary for every Telegram-driven action — be strict.
 _tg_is_authorized() {
-  return 1
+  local chat_id="${1:-}"
+  [[ -n "${chat_id}" ]] || return 1
+  command -v jq >/dev/null 2>&1 || return 1
+
+  local state_file=""
+  state_file=$(_tg_state_file)
+  [[ -f "${state_file}" ]] || return 1
+
+  local match=""
+  match=$(jq -r --arg id "${chat_id}" \
+    '(.telegram.admin_chat_ids // []) | map(tostring) | index($id) // empty' \
+    "${state_file}" 2>/dev/null) || return 1
+  [[ -n "${match}" ]]
 }
 
 # _tg_load_offset
-# Echoes last-seen update_id (0 if missing).
+# Echoes the last-seen update_id from SBX_TG_OFFSET_FILE.
+# Defaults to "0" if the file is missing or contains non-integer garbage,
+# which causes the next getUpdates call to fetch from the beginning.
 _tg_load_offset() {
+  if [[ -f "${SBX_TG_OFFSET_FILE}" ]]; then
+    local v=""
+    v=$(tr -d '[:space:]' <"${SBX_TG_OFFSET_FILE}" 2>/dev/null) || true
+    if [[ "${v}" =~ ^-?[0-9]+$ ]]; then
+      echo "${v}"
+      return 0
+    fi
+  fi
   echo "0"
 }
 
 # _tg_save_offset <n>
-# Atomically persists offset.
+# Atomically persists <n> to SBX_TG_OFFSET_FILE (mktemp + rename).
+# Rejects non-integer input. Creates SBX_TG_OFFSET_DIR on first call.
+# File is chmod'd to 0600 — offsets aren't sensitive, but the bot is root-only.
 _tg_save_offset() {
-  return 0
+  local n="${1:-}"
+  [[ "${n}" =~ ^-?[0-9]+$ ]] || return 1
+
+  mkdir -p "${SBX_TG_OFFSET_DIR}" 2>/dev/null || return 1
+
+  local tmp=""
+  tmp=$(mktemp "${SBX_TG_OFFSET_DIR}/.offset.XXXXXX") || return 1
+  printf '%s\n' "${n}" >"${tmp}" || {
+    rm -f "${tmp}"
+    return 1
+  }
+  chmod 600 "${tmp}" 2>/dev/null || true
+  mv -f "${tmp}" "${SBX_TG_OFFSET_FILE}"
 }
 
 # _tg_get_updates <offset>
@@ -159,9 +207,27 @@ _tg_send_message() {
 }
 
 # _tg_parse_command <text>
-# Splits leading /cmd from args; emits on stdout.
+# Splits a Telegram message body into "<cmd> [args...]" tokens.
+# Strips the "/" prefix and an optional "@botname" suffix
+# (Telegram appends @botname when commands are sent in groups).
+# Returns nonzero (no stdout) for empty input, lone "/", or any text
+# that doesn't begin with /<letter|underscore><identifier>.
+# stdout format: a single space-separated line; the dispatcher word-splits.
 _tg_parse_command() {
-  return 1
+  local text="${1:-}"
+  [[ -n "${text}" ]] || return 1
+  # Anchored regex: leading "/", required identifier, optional @botname,
+  # optional whitespace + arg tail.
+  [[ "${text}" =~ ^/([a-zA-Z_][a-zA-Z0-9_]*)(@[A-Za-z0-9_]+)?([[:space:]]+(.*))?$ ]] || return 1
+  local cmd="${BASH_REMATCH[1]}"
+  local rest="${BASH_REMATCH[4]:-}"
+  # Trim trailing whitespace from rest so "/cmd   " doesn't leak spaces.
+  rest="${rest%"${rest##*[![:space:]]}"}"
+  if [[ -n "${rest}" ]]; then
+    printf '%s %s\n' "${cmd}" "${rest}"
+  else
+    printf '%s\n' "${cmd}"
+  fi
 }
 
 # _tg_dispatch_command <chat_id> <cmd> [args...]
