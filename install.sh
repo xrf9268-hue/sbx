@@ -2189,6 +2189,8 @@ uninstall_flow() {
   # Remove subscription endpoint (unit, cache, launcher, system user)
   if declare -f subscription_remove_unit >/dev/null 2>&1; then
     subscription_remove_unit || true
+  elif declare -f remove_systemd_unit >/dev/null 2>&1; then
+    remove_systemd_unit "${SUBSCRIPTION_SERVICE_NAME}" "/etc/systemd/system/${SUBSCRIPTION_SERVICE_NAME}.service" "best_effort" || true
   else
     systemctl stop "${SUBSCRIPTION_SERVICE_NAME}" 2>/dev/null || true
     systemctl disable "${SUBSCRIPTION_SERVICE_NAME}" 2>/dev/null || true
