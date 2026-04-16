@@ -326,7 +326,8 @@ subscription_install_unit() {
     return 0
   fi
 
-  unit_content=$(cat <<EOF
+  unit_content=$(
+    cat <<EOF
 [Unit]
 Description=sbx adaptive subscription endpoint
 After=network.target
@@ -350,7 +351,7 @@ ReadOnlyPaths=$(_subscription_cache_dir)
 [Install]
 WantedBy=multi-user.target
 EOF
-)
+  )
 
   install_systemd_unit "${unit_path}" "${unit_content}"
 }

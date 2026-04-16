@@ -42,7 +42,8 @@ create_service_file() {
 
   msg "Creating systemd service ..."
 
-  unit_content=$(cat <<'EOF'
+  unit_content=$(
+    cat <<'EOF'
 [Unit]
 Description=sing-box
 After=network.target nss-lookup.target
@@ -56,7 +57,7 @@ LimitNOFILE=1048576
 [Install]
 WantedBy=multi-user.target
 EOF
-)
+  )
 
   install_systemd_unit "${SB_SVC}" "${unit_content}"
 
