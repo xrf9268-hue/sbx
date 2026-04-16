@@ -251,7 +251,6 @@ _subscription_state_set() {
   local value="$2"
   local mode="${3:-string}"
   local state_file=''
-  local tmp=''
   state_file=$(_subscription_state_file)
   [[ -f "${state_file}" ]] || {
     err "state.json not found: ${state_file}"
@@ -261,19 +260,16 @@ _subscription_state_set() {
     err "jq required to update state.json"
     return 1
   }
-  local jq_flag="--arg"
-  [[ "${mode}" == "json" ]] && jq_flag="--argjson"
-  tmp=$(mktemp) || return 1
-  if ! jq ${jq_flag} v "${value}" ".subscription.${field} = \$v" "${state_file}" >"${tmp}"; then
-    rm -f "${tmp}"
+  local -a jq_args=()
+  if [[ "${mode}" == "json" ]]; then
+    jq_args=(--argjson v "${value}")
+  else
+    jq_args=(--arg v "${value}")
+  fi
+  if ! state_json_apply "${state_file}" ".subscription.${field} = \$v" "${jq_args[@]}"; then
     err "Failed to update state.json field subscription.${field}"
     return 1
   fi
-  # Preserve existing ownership/permissions (may include group-read for sbx-sub)
-  chmod --reference="${state_file}" "${tmp}" 2>/dev/null ||
-    chmod 600 "${tmp}" 2>/dev/null || true
-  chown --reference="${state_file}" "${tmp}" 2>/dev/null || true
-  mv -f "${tmp}" "${state_file}"
 }
 
 # Merge a default subscription block into state.json if it's missing.
@@ -281,7 +277,6 @@ _subscription_state_set() {
 # enabled=false. Re-invocable and idempotent.
 subscription_ensure_state_block() {
   local state_file=''
-  local tmp=''
   state_file=$(_subscription_state_file)
   [[ -f "${state_file}" ]] || return 0
   have jq || return 0
@@ -290,11 +285,7 @@ subscription_ensure_state_block() {
     return 0
   fi
 
-  tmp=$(mktemp) || return 1
-  if ! jq \
-    --argjson port "${SUBSCRIPTION_PORT_DEFAULT}" \
-    --arg bind "${SUBSCRIPTION_BIND_DEFAULT}" \
-    --arg path "${SUBSCRIPTION_PATH_DEFAULT}" \
+  if ! state_json_apply "${state_file}" \
     '.subscription = {
         enabled: false,
         port: $port,
@@ -302,14 +293,12 @@ subscription_ensure_state_block() {
         token: "",
         path: $path,
         created_at: null
-      }' "${state_file}" >"${tmp}"; then
-    rm -f "${tmp}"
+      }' \
+    --argjson port "${SUBSCRIPTION_PORT_DEFAULT}" \
+    --arg bind "${SUBSCRIPTION_BIND_DEFAULT}" \
+    --arg path "${SUBSCRIPTION_PATH_DEFAULT}"; then
     return 1
   fi
-  chmod --reference="${state_file}" "${tmp}" 2>/dev/null ||
-    chmod 600 "${tmp}" 2>/dev/null || true
-  chown --reference="${state_file}" "${tmp}" 2>/dev/null || true
-  mv -f "${tmp}" "${state_file}"
 }
 
 #==============================================================================
@@ -393,25 +382,47 @@ subscription_enable() {
 
   subscription_ensure_state_block || return 1
 
-  local token=''
-  token=$(_subscription_state_get token)
-  if [[ -z "${token}" || "${rotate}" -eq 1 ]]; then
-    token=$(_subscription_generate_token) || return 1
-    _subscription_state_set token "${token}" || return 1
-  fi
-
-  # Apply bind/port overrides from environment if provided
-  if [[ -n "${SUB_BIND:-}" ]]; then
-    _subscription_state_set bind "${SUB_BIND}" || return 1
-  fi
-  if [[ -n "${SUB_PORT:-}" ]]; then
-    _subscription_state_set port "${SUB_PORT}" json || return 1
-  fi
-
+  local state_file=''
+  state_file=$(_subscription_state_file)
+  local generated_token=''
+  generated_token=$(_subscription_generate_token) || return 1
+  local bind=''
+  bind="${SUB_BIND:-${SUBSCRIPTION_BIND_DEFAULT}}"
+  local port=''
+  port="${SUB_PORT:-${SUBSCRIPTION_PORT_DEFAULT}}"
   local now=''
   now=$(date -Iseconds 2>/dev/null || date)
-  _subscription_state_set created_at "${now}" || true
-  _subscription_state_set enabled true json || return 1
+  if ! state_json_apply "${state_file}" \
+    '.subscription as $sub
+     | .subscription = (
+         ($sub // {
+           enabled: false,
+           port: $default_port,
+           bind: $default_bind,
+           token: "",
+           path: $default_path,
+           created_at: null
+         }) as $current
+         | $current + {
+             enabled: true,
+             port: $port,
+             bind: $bind,
+             path: ($current.path // $default_path),
+             created_at: $now,
+             token: (if $rotate or (($current.token // "") == "") then $generated_token else $current.token end)
+           }
+       )' \
+    --argjson rotate "$([[ "${rotate}" -eq 1 ]] && echo true || echo false)" \
+    --arg generated_token "${generated_token}" \
+    --arg bind "${bind}" \
+    --argjson port "${port}" \
+    --arg now "${now}" \
+    --argjson default_port "${SUBSCRIPTION_PORT_DEFAULT}" \
+    --arg default_bind "${SUBSCRIPTION_BIND_DEFAULT}" \
+    --arg default_path "${SUBSCRIPTION_PATH_DEFAULT}"; then
+    err "Failed to enable subscription state"
+    return 1
+  fi
 
   _subscription_grant_state_read
   subscription_refresh_cache || true

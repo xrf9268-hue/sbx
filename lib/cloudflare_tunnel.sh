@@ -333,29 +333,20 @@ cloudflared_update_state() {
   }
 
   [[ "${enabled}" == "true" ]] || enabled="false"
-
-  local tmp=""
-  tmp=$(create_temp_file "tunnel-state") || return 1
-  # shellcheck disable=SC2064
-  trap "rm -f '${tmp}'" RETURN
-
-  if ! jq \
-    --argjson enabled "${enabled}" \
-    --arg mode "${mode}" \
-    --arg hostname "${hostname}" \
-    --argjson upstream "${upstream_port:-0}" \
+  if ! state_json_apply "${state_file}" \
     '.tunnel = {
        enabled: $enabled,
        mode: (if $mode == "" then null else $mode end),
        hostname: (if $hostname == "" then null else $hostname end),
        upstream_port: (if $upstream == 0 then null else $upstream end)
-     }' "${state_file}" >"${tmp}"; then
+     }' \
+    --argjson enabled "${enabled}" \
+    --arg mode "${mode}" \
+    --arg hostname "${hostname}" \
+    --argjson upstream "${upstream_port:-0}"; then
     err "Failed to update tunnel state in ${state_file}"
     return 1
   fi
-
-  mv "${tmp}" "${state_file}"
-  chmod "${SECURE_FILE_PERMISSIONS:-600}" "${state_file}"
 }
 
 cloudflared_current_hostname() {

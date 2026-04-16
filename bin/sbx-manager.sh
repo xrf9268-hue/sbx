@@ -1292,14 +1292,12 @@ case "${1:-}" in
         }
         apply_port_hopping_rules "${_ph_hy2_port}" "${3%%-*}" "${3##*-}"
         persist_port_hopping_rules "${_ph_hy2_port}" "${3%%-*}" "${3##*-}"
-        # Update state.json atomically
-        _ph_tmp=$(mktemp)
-        if ! jq --arg range "${3}" '.protocols.hysteria2.port_range = $range' "${STATE_INFO_PATH}" >"${_ph_tmp}" || ! mv "${_ph_tmp}" "${STATE_INFO_PATH}"; then
-          rm -f "${_ph_tmp}"
+        if ! state_json_apply "${STATE_INFO_PATH}" \
+          '.protocols.hysteria2.port_range = $range' \
+          --arg range "${3}"; then
           echo -e "${R}[ERR]${N} Failed to update state.json. DNAT rules were applied but state is stale."
           exit 1
         fi
-        chmod 600 "${STATE_INFO_PATH}"
         declare -f subscription_refresh_cache >/dev/null 2>&1 && subscription_refresh_cache || true
         echo -e "${G}✓${N} Port hopping enabled: UDP ${3} → ${_ph_hy2_port}"
         ;;
@@ -1314,13 +1312,11 @@ case "${1:-}" in
           exit 0
         fi
         remove_port_hopping_rules "${_ph_port}" "${_ph_range%%-*}" "${_ph_range##*-}"
-        _ph_tmp=$(mktemp)
-        if ! jq '.protocols.hysteria2.port_range = null' "${STATE_INFO_PATH}" >"${_ph_tmp}" || ! mv "${_ph_tmp}" "${STATE_INFO_PATH}"; then
-          rm -f "${_ph_tmp}"
+        if ! state_json_apply "${STATE_INFO_PATH}" \
+          '.protocols.hysteria2.port_range = null'; then
           echo -e "${R}[ERR]${N} Failed to update state.json. DNAT rules were removed but state is stale."
           exit 1
         fi
-        chmod 600 "${STATE_INFO_PATH}"
         declare -f subscription_refresh_cache >/dev/null 2>&1 && subscription_refresh_cache || true
         echo -e "${G}✓${N} Port hopping disabled"
         ;;

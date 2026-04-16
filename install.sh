@@ -1489,6 +1489,30 @@ EOF
 }
 
 # Save structured state for future compatibility and typed access.
+_save_state_info_locked() {
+  local state_file="$1"
+  local state_json="$2"
+  local state_dir=''
+  state_dir="$(dirname "${state_file}")"
+  mkdir -p "${state_dir}" || return 1
+
+  if [[ ! -f "${state_file}" ]]; then
+    install -m "${SECURE_FILE_PERMISSIONS}" /dev/null "${state_file}" || return 1
+    printf '{}\n' >"${state_file}" || return 1
+  fi
+
+  local tmp_file=''
+  tmp_file=$(create_temp_file_in_dir "${state_dir}" "state-json") || return 1
+  printf '%s\n' "${state_json}" >"${tmp_file}" || {
+    rm -f "${tmp_file}" 2>/dev/null || true
+    return 1
+  }
+  chmod --reference="${state_file}" "${tmp_file}" 2>/dev/null ||
+    chmod "${SECURE_FILE_PERMISSIONS}" "${tmp_file}" 2>/dev/null || true
+  chown --reference="${state_file}" "${tmp_file}" 2>/dev/null || true
+  mv -f "${tmp_file}" "${state_file}"
+}
+
 save_state_info() {
   msg "Saving structured state..."
 
@@ -1522,6 +1546,7 @@ save_state_info() {
   local tuic_pass=''
   local trojan_port=''
   local trojan_pass=''
+  local state_json=''
 
   if [[ "${REALITY_ONLY_MODE:-0}" != "1" ]]; then
     local enable_ws="${ENABLE_WS:-}"
@@ -1559,7 +1584,7 @@ save_state_info() {
     cert_key="${CERT_KEY:-}"
   fi
 
-  jq -n \
+  state_json=$(jq -n \
     --arg version "1.0" \
     --arg installed_at "${installed_at}" \
     --arg singbox_version "${resolved_version}" \
@@ -1649,8 +1674,10 @@ save_state_info() {
         hostname: (if $tunnel_hostname == "" then null else $tunnel_hostname end),
         upstream_port: (if $tunnel_upstream == 0 then null else $tunnel_upstream end)
       }
-    }' >"${state_file}"
+    }') || return 1
 
+  with_state_lock "${SBX_LOCK_TIMEOUT_SEC:-30}" \
+    _save_state_info_locked "${state_file}" "${state_json}" || return 1
   chmod "${SECURE_FILE_PERMISSIONS}" "${state_file}"
   success "  ✓ State saved to: ${state_file}"
 }
