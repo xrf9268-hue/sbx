@@ -97,6 +97,7 @@ See [REALITY_TROUBLESHOOTING.md](docs/REALITY_TROUBLESHOOTING.md) for more solut
 | [Troubleshooting](docs/REALITY_TROUBLESHOOTING.md) | Connection & installation issues |
 | [Best Practices](docs/REALITY_BEST_PRACTICES.md) | Security & performance tips |
 | [Advanced Options](docs/ADVANCED.md) | Environment variables & customization |
+| [Telegram Bot](docs/TELEGRAM_BOT.md) | Remote management via Telegram commands |
 | [Architecture Diagrams](docs/ARCHITECTURE_DIAGRAMS.md) | Module structure & installation flowcharts |
 | [Contributing](CONTRIBUTING.md) | Developer setup & guidelines |
 

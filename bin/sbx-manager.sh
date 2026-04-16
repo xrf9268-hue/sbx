@@ -34,6 +34,8 @@ if [[ -d "$LIB_DIR" ]]; then
   [[ -f "$LIB_DIR/subscription.sh" ]] && source "$LIB_DIR/subscription.sh"
   # shellcheck source=/dev/null
   [[ -f "$LIB_DIR/cloudflare_tunnel.sh" ]] && source "$LIB_DIR/cloudflare_tunnel.sh"
+  # shellcheck source=/dev/null
+  [[ -f "$LIB_DIR/telegram_bot.sh" ]] && source "$LIB_DIR/telegram_bot.sh"
 fi
 
 # Simple logo for management tool
@@ -103,6 +105,17 @@ ${B}Cloudflare Tunnel:${N}
   tunnel disable                  Stop and disable the tunnel service
   tunnel status                   Show tunnel binary/service/hostname
   tunnel hostname                 Print the active tunnel hostname
+
+${B}Telegram Bot:${N}
+  sbx telegram {setup|enable|disable|status|logs|admin ...}
+  telegram setup                  Configure bot token + initial admin chat ID
+  telegram enable                 Install and start the bot service
+  telegram disable                Stop and disable the bot service
+  telegram status                 Show bot binary/service/admin status
+  telegram logs                   Show live Telegram bot logs
+  telegram admin add <chat_id>    Add an allowed Telegram chat ID
+  telegram admin remove <chat_id> Remove an allowed Telegram chat ID
+  telegram admin list             List allowed Telegram chat IDs
 
 ${B}System:${N}
   uninstall|remove    Complete uninstall (requires root)
@@ -1173,6 +1186,13 @@ case "${1:-}" in
     echo
     echo -e "${G}[*]${N} Stopping and disabling sing-box service..."
     systemctl disable --now sing-box 2>/dev/null || true
+    if declare -f telegram_bot_disable >/dev/null 2>&1; then
+      telegram_bot_disable 2>/dev/null || true
+    else
+      systemctl disable --now sbx-telegram-bot 2>/dev/null || true
+      rm -f /etc/systemd/system/sbx-telegram-bot.service
+      systemctl daemon-reload 2>/dev/null || true
+    fi
 
     # Wait for service to stop
     retry=0
@@ -1182,7 +1202,9 @@ case "${1:-}" in
     done
 
     echo -e "${G}[*]${N} Removing files..."
-    rm -f "$SB_BIN" "$SB_SVC" "/usr/local/bin/sbx-manager" "/usr/local/bin/sbx"
+    rm -f "$SB_BIN" "$SB_SVC" "/usr/local/bin/sbx-manager" "/usr/local/bin/sbx" \
+      "/usr/local/bin/sbx-telegram-bot" "/etc/sing-box/telegram.env"
+    rm -rf "/var/lib/sbx-telegram-bot"
     rm -rf "$SB_CONF_DIR" "$CERT_DIR_BASE" "$LIB_DIR"
 
     systemctl daemon-reload
@@ -1378,6 +1400,65 @@ case "${1:-}" in
         echo "  sbx tunnel disable                   Stop tunnel service"
         echo "  sbx tunnel status                    Show tunnel status"
         echo "  sbx tunnel hostname                  Print active tunnel hostname"
+        exit 1
+        ;;
+    esac
+    ;;
+
+  telegram)
+    if ! declare -f telegram_bot_status >/dev/null 2>&1; then
+      echo -e "${R}[ERR]${N} Telegram bot module not loaded. Please reinstall sbx-lite."
+      exit 1
+    fi
+
+    case "${2:-status}" in
+      setup)
+        need_root || exit 1
+        telegram_bot_setup
+        ;;
+      enable)
+        need_root || exit 1
+        telegram_bot_enable
+        ;;
+      disable)
+        need_root || exit 1
+        telegram_bot_disable
+        ;;
+      status | "")
+        telegram_bot_status
+        ;;
+      logs)
+        telegram_bot_logs
+        ;;
+      admin)
+        case "${3:-list}" in
+          add)
+            need_root || exit 1
+            [[ -n "${4:-}" ]] || {
+              echo -e "${R}[ERR]${N} Usage: sbx telegram admin add <chat_id>"
+              exit 1
+            }
+            telegram_bot_admin_add "${4}"
+            ;;
+          remove)
+            need_root || exit 1
+            [[ -n "${4:-}" ]] || {
+              echo -e "${R}[ERR]${N} Usage: sbx telegram admin remove <chat_id>"
+              exit 1
+            }
+            telegram_bot_admin_remove "${4}"
+            ;;
+          list | "")
+            telegram_bot_admin_list
+            ;;
+          *)
+            echo -e "${Y}Usage:${N} sbx telegram admin {add|remove|list} [chat_id]"
+            exit 1
+            ;;
+        esac
+        ;;
+      *)
+        echo -e "${Y}Usage:${N} sbx telegram {setup|enable|disable|status|logs|admin ...}"
         exit 1
         ;;
     esac

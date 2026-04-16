@@ -48,72 +48,7 @@ _LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 : "${SBX_TG_SERVICE_NAME:=sbx-telegram-bot}"
 
 #==============================================================================
-# Public API (stubs — to be implemented in subsequent steps)
-#==============================================================================
-
-# telegram_bot_setup
-# Interactive bootstrap: prompts for bot token, verifies via getMe,
-# persists to state.json + EnvironmentFile.
-telegram_bot_setup() {
-  err "telegram_bot_setup: not implemented yet"
-  return 1
-}
-
-# telegram_bot_enable
-# Writes systemd unit, daemon-reload, enable --now.
-telegram_bot_enable() {
-  err "telegram_bot_enable: not implemented yet"
-  return 1
-}
-
-# telegram_bot_disable
-# Stop + disable + remove systemd unit; update state.json.
-telegram_bot_disable() {
-  err "telegram_bot_disable: not implemented yet"
-  return 1
-}
-
-# telegram_bot_status
-# Show systemd status, whitelist size, bot username.
-telegram_bot_status() {
-  err "telegram_bot_status: not implemented yet"
-  return 1
-}
-
-# telegram_bot_logs
-# Tail journalctl for the service unit.
-telegram_bot_logs() {
-  err "telegram_bot_logs: not implemented yet"
-  return 1
-}
-
-# telegram_bot_admin_add <chat_id>
-telegram_bot_admin_add() {
-  err "telegram_bot_admin_add: not implemented yet"
-  return 1
-}
-
-# telegram_bot_admin_remove <chat_id>
-telegram_bot_admin_remove() {
-  err "telegram_bot_admin_remove: not implemented yet"
-  return 1
-}
-
-# telegram_bot_admin_list
-telegram_bot_admin_list() {
-  err "telegram_bot_admin_list: not implemented yet"
-  return 1
-}
-
-# telegram_bot_run
-# Main loop invoked by the systemd unit (ExecStart target).
-telegram_bot_run() {
-  err "telegram_bot_run: not implemented yet"
-  return 1
-}
-
-#==============================================================================
-# Internal helpers (stubs — to be implemented in subsequent steps)
+# Public API
 #==============================================================================
 
 # _tg_validate_token <token>
@@ -129,13 +64,132 @@ _tg_validate_token() {
 # _tg_verify_token_live <token>
 # Calls Bot API getMe; returns 0 iff response .ok == true.
 _tg_verify_token_live() {
-  return 1
+  local token="${1:-}"
+  _tg_validate_token "${token}" || return 1
+  command -v jq >/dev/null 2>&1 || return 1
+
+  local curl_cmd="${SBX_TG_CURL_CMD:-curl}"
+  local response_file=""
+  response_file=$(create_temp_file "tg-getme") || return 1
+  # shellcheck disable=SC2064
+  trap "rm -f '${response_file}'" RETURN
+
+  if ! "${curl_cmd}" -fsS \
+    --max-time 20 \
+    --connect-timeout 10 \
+    -o "${response_file}" \
+    "${SBX_TG_API_BASE}/bot${token}/getMe" \
+    2>/dev/null; then
+    return 1
+  fi
+
+  local ok="false"
+  ok=$(jq -r '.ok // false' "${response_file}" 2>/dev/null) || return 1
+  [[ "${ok}" == "true" ]] || return 1
+
+  jq -r '.result.username // empty' "${response_file}" 2>/dev/null || true
 }
 
 # _tg_state_file
 # Resolves the active state.json path, honoring TEST_STATE_FILE for tests.
 _tg_state_file() {
   echo "${TEST_STATE_FILE:-${STATE_FILE:-${SB_CONF_DIR:-/etc/sing-box}/state.json}}"
+}
+
+# _tg_write_env_file <token>
+# Persists BOT_TOKEN for systemd EnvironmentFile consumption.
+_tg_write_env_file() {
+  local token="${1:-}"
+  [[ -n "${token}" ]] || {
+    err "_tg_write_env_file: token is required"
+    return 1
+  }
+
+  local env_dir=""
+  env_dir="$(dirname "${SBX_TG_ENV_FILE}")"
+  mkdir -p "${env_dir}" || return 1
+
+  local tmp=""
+  tmp=$(create_temp_file_in_dir "${env_dir}" "telegram.env") || return 1
+  {
+    echo "# Managed by sbx — do not edit by hand."
+    echo "BOT_TOKEN=${token}"
+  } >"${tmp}"
+  chmod 600 "${tmp}" 2>/dev/null || true
+  mv -f "${tmp}" "${SBX_TG_ENV_FILE}"
+  chmod 600 "${SBX_TG_ENV_FILE}" 2>/dev/null || true
+}
+
+# _tg_write_service_file
+# Writes the systemd unit consumed by telegram_bot_enable.
+_tg_write_service_file() {
+  local svc_dir=""
+  svc_dir="$(dirname "${SBX_TG_SVC}")"
+  mkdir -p "${svc_dir}" || return 1
+
+  cat >"${SBX_TG_SVC}" <<EOF
+[Unit]
+Description=sbx-lite Telegram Bot
+After=network-online.target sing-box.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=${SBX_TG_BIN}
+EnvironmentFile=-${SBX_TG_ENV_FILE}
+Restart=on-failure
+RestartSec=5s
+User=root
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ReadWritePaths=/etc/sing-box ${SBX_TG_OFFSET_DIR}
+
+[Install]
+WantedBy=multi-user.target
+EOF
+  chmod 644 "${SBX_TG_SVC}" 2>/dev/null || true
+}
+
+# _tg_state_admin_ids_json
+# Emits the current admin_chat_ids array as compact JSON.
+_tg_state_admin_ids_json() {
+  local state_file=""
+  state_file="$(_tg_state_file)"
+  if [[ -f "${state_file}" ]] && command -v jq >/dev/null 2>&1; then
+    jq -c '(.telegram.admin_chat_ids // []) | map(tonumber? // .)' \
+      "${state_file}" 2>/dev/null || echo "[]"
+  else
+    echo "[]"
+  fi
+}
+
+# _tg_state_get <field> [default]
+# Reads a Telegram field from state.json, returning default on absence.
+_tg_state_get() {
+  local field="${1:-}"
+  local default_value="${2:-}"
+  local state_file=""
+  state_file="$(_tg_state_file)"
+
+  if [[ -z "${field}" ]] || [[ ! -f "${state_file}" ]] ||
+    ! command -v jq >/dev/null 2>&1; then
+    echo "${default_value}"
+    return 0
+  fi
+
+  local value=""
+  value=$(jq -r ".telegram.${field} // empty" "${state_file}" 2>/dev/null) || {
+    echo "${default_value}"
+    return 0
+  }
+
+  if [[ -n "${value}" ]]; then
+    echo "${value}"
+  else
+    echo "${default_value}"
+  fi
 }
 
 # _tg_is_authorized <chat_id>
@@ -540,6 +594,310 @@ _tg_update_state() {
 
   mv -f "${tmp}" "${state_file}"
   chmod "${SECURE_FILE_PERMISSIONS:-600}" "${state_file}" 2>/dev/null || true
+}
+
+# _tg_process_updates_file <file> <offset_var_name>
+# Parses getUpdates JSON, dispatches commands, and advances the offset.
+_tg_process_updates_file() {
+  local updates_file="${1:-}"
+  local offset_var_name="${2:-}"
+  [[ -n "${updates_file}" && -n "${offset_var_name}" ]] || return 1
+  command -v jq >/dev/null 2>&1 || return 1
+
+  local current_offset="0"
+  current_offset="${!offset_var_name}"
+
+  local update_json=""
+  while IFS= read -r update_json; do
+    [[ -n "${update_json}" ]] || continue
+
+    local update_id=""
+    local chat_id=""
+    local text=""
+    update_id=$(jq -r '.update_id // empty' <<<"${update_json}" 2>/dev/null) || continue
+    [[ "${update_id}" =~ ^[0-9]+$ ]] || continue
+
+    current_offset="$((update_id + 1))"
+    printf -v "${offset_var_name}" '%s' "${current_offset}"
+    TG_LAST_OFFSET="${current_offset}"
+    _tg_save_offset "${current_offset}" || true
+
+    chat_id=$(jq -r '.message.chat.id // empty' <<<"${update_json}" 2>/dev/null) || true
+    text=$(jq -r '.message.text // empty' <<<"${update_json}" 2>/dev/null) || true
+    [[ -n "${chat_id}" && -n "${text}" ]] || continue
+
+    local parsed=""
+    parsed=$(_tg_parse_command "${text}" 2>/dev/null || true)
+    [[ -n "${parsed}" ]] || continue
+
+    local parts=()
+    read -r -a parts <<<"${parsed}"
+    _tg_dispatch_command "${chat_id}" "${parts[@]}" || true
+  done < <(jq -c '.result[]?' "${updates_file}" 2>/dev/null)
+}
+
+# _tg_discard_bootstrap_updates <file> <offset_var_name>
+# First startup uses offset=-1 to discard backlog. We still need to advance
+# the saved offset to the newest observed update_id, but MUST NOT dispatch any
+# historical commands from that bootstrap response.
+_tg_discard_bootstrap_updates() {
+  local updates_file="${1:-}"
+  local offset_var_name="${2:-}"
+  [[ -n "${updates_file}" && -n "${offset_var_name}" ]] || return 1
+  command -v jq >/dev/null 2>&1 || return 1
+
+  local next_offset="0"
+  next_offset=$(jq -r '
+    (.result // []) |
+    if length == 0 then 0 else ((.[-1].update_id // -1) + 1) end
+  ' "${updates_file}" 2>/dev/null) || return 1
+  [[ "${next_offset}" =~ ^[0-9]+$ ]] || next_offset=0
+
+  printf -v "${offset_var_name}" '%s' "${next_offset}"
+  TG_LAST_OFFSET="${next_offset}"
+  _tg_save_offset "${next_offset}" || return 1
+}
+
+#==============================================================================
+# Public API
+#==============================================================================
+
+# telegram_bot_setup
+# Interactive bootstrap: prompts for bot token, verifies via getMe,
+# persists to state.json + EnvironmentFile.
+telegram_bot_setup() {
+  need_root || return 1
+
+  local token=""
+  local admin_chat_id=""
+  local username=""
+
+  read -r -p "Telegram bot token: " token || return 1
+  if ! _tg_validate_token "${token}"; then
+    err "Invalid Telegram bot token format"
+    return 1
+  fi
+
+  username="$(_tg_verify_token_live "${token}")" || {
+    err "Telegram getMe verification failed for the provided token"
+    return 1
+  }
+
+  read -r -p "Initial admin chat ID: " admin_chat_id || return 1
+  if ! [[ "${admin_chat_id}" =~ ^-?[0-9]+$ ]]; then
+    err "Admin chat ID must be an integer"
+    return 1
+  fi
+
+  _tg_write_env_file "${token}" || return 1
+  _tg_update_state \
+    "enabled=false" \
+    "username=${username}" \
+    "admin_chat_ids=[${admin_chat_id}]" || return 1
+
+  success "  ✓ Telegram bot configured for @${username}"
+}
+
+# telegram_bot_enable
+# Writes systemd unit, daemon-reload, enable --now.
+telegram_bot_enable() {
+  need_root || return 1
+
+  [[ -x "${SBX_TG_BIN}" ]] || {
+    err "Telegram bot launcher not installed: ${SBX_TG_BIN}"
+    return 1
+  }
+  [[ -f "${SBX_TG_ENV_FILE}" ]] || {
+    err "Telegram env file not found: ${SBX_TG_ENV_FILE}"
+    return 1
+  }
+
+  mkdir -p "${SBX_TG_OFFSET_DIR}" || return 1
+  chmod 700 "${SBX_TG_OFFSET_DIR}" 2>/dev/null || true
+
+  _tg_write_service_file || return 1
+  systemctl daemon-reload || {
+    err "systemctl daemon-reload failed"
+    return 1
+  }
+  systemctl enable --now "${SBX_TG_SERVICE_NAME}" || {
+    err "Failed to start ${SBX_TG_SERVICE_NAME} service"
+    err "Inspect: journalctl -u ${SBX_TG_SERVICE_NAME} -n 80 --no-pager"
+    return 1
+  }
+
+  _tg_update_state "enabled=true" || return 1
+  success "  ✓ Telegram bot enabled"
+}
+
+# telegram_bot_disable
+# Stop + disable + remove systemd unit; update state.json.
+telegram_bot_disable() {
+  need_root || return 1
+
+  systemctl disable --now "${SBX_TG_SERVICE_NAME}" 2>/dev/null || true
+  rm -f "${SBX_TG_SVC}"
+  systemctl daemon-reload 2>/dev/null || true
+
+  _tg_update_state "enabled=false" || return 1
+  success "  ✓ Telegram bot disabled"
+}
+
+# telegram_bot_status
+# Show systemd status, whitelist size, bot username.
+telegram_bot_status() {
+  local username=""
+  local enabled="false"
+  local admin_count="0"
+
+  username="$(_tg_state_get username "(unknown)")"
+  enabled="$(_tg_state_get enabled "false")"
+  if command -v jq >/dev/null 2>&1 && [[ -f "$(_tg_state_file)" ]]; then
+    admin_count=$(jq -r '(.telegram.admin_chat_ids // []) | length' \
+      "$(_tg_state_file)" 2>/dev/null || echo "0")
+  fi
+
+  echo "=== Telegram Bot Status ==="
+  if [[ -x "${SBX_TG_BIN}" ]]; then
+    echo "Binary   : ${SBX_TG_BIN}"
+  else
+    echo "Binary   : (not installed)"
+  fi
+  echo "Enabled  : ${enabled}"
+  echo "Username : ${username}"
+  echo "Admins   : ${admin_count}"
+  echo "Env file : ${SBX_TG_ENV_FILE}"
+  systemctl status "${SBX_TG_SERVICE_NAME}" --no-pager || true
+}
+
+# telegram_bot_logs
+# Tail journalctl for the service unit.
+telegram_bot_logs() {
+  journalctl -u "${SBX_TG_SERVICE_NAME}" -f
+}
+
+# telegram_bot_admin_add <chat_id>
+telegram_bot_admin_add() {
+  need_root || return 1
+
+  local chat_id="${1:-}"
+  [[ "${chat_id}" =~ ^-?[0-9]+$ ]] || {
+    err "Usage: telegram_bot_admin_add <chat_id>"
+    return 1
+  }
+
+  local state_file=""
+  state_file="$(_tg_state_file)"
+  [[ -f "${state_file}" ]] || {
+    err "state.json not found: ${state_file}"
+    return 1
+  }
+  command -v jq >/dev/null 2>&1 || {
+    err "jq is required to modify Telegram admin_chat_ids"
+    return 1
+  }
+
+  local admins_json=""
+  admins_json=$(jq -c --argjson id "${chat_id}" \
+    '(.telegram.admin_chat_ids // []) | map(tonumber? // .) |
+     if index($id) == null then . + [$id] else . end' \
+    "${state_file}" 2>/dev/null) || return 1
+
+  _tg_update_state "admin_chat_ids=${admins_json}" || return 1
+  success "  ✓ Added Telegram admin chat ID: ${chat_id}"
+}
+
+# telegram_bot_admin_remove <chat_id>
+telegram_bot_admin_remove() {
+  need_root || return 1
+
+  local chat_id="${1:-}"
+  [[ "${chat_id}" =~ ^-?[0-9]+$ ]] || {
+    err "Usage: telegram_bot_admin_remove <chat_id>"
+    return 1
+  }
+
+  local state_file=""
+  state_file="$(_tg_state_file)"
+  [[ -f "${state_file}" ]] || {
+    err "state.json not found: ${state_file}"
+    return 1
+  }
+  command -v jq >/dev/null 2>&1 || {
+    err "jq is required to modify Telegram admin_chat_ids"
+    return 1
+  }
+
+  local admins_json=""
+  admins_json=$(jq -c --argjson id "${chat_id}" \
+    '(.telegram.admin_chat_ids // []) | map(tonumber? // .) |
+     map(select(. != $id))' \
+    "${state_file}" 2>/dev/null) || return 1
+
+  _tg_update_state "admin_chat_ids=${admins_json}" || return 1
+  success "  ✓ Removed Telegram admin chat ID: ${chat_id}"
+}
+
+# telegram_bot_admin_list
+telegram_bot_admin_list() {
+  local admins_json=""
+  admins_json="$(_tg_state_admin_ids_json)"
+
+  echo "Configured Telegram admin chat IDs:"
+  if [[ "${admins_json}" == "[]" ]]; then
+    echo "(none)"
+    return 0
+  fi
+
+  jq -r '.[]' <<<"${admins_json}" 2>/dev/null || true
+}
+
+# telegram_bot_run
+# Main loop invoked by the systemd unit (ExecStart target).
+telegram_bot_run() {
+  [[ -n "${BOT_TOKEN:-}" ]] || {
+    err "BOT_TOKEN is required in the environment"
+    return 1
+  }
+  command -v jq >/dev/null 2>&1 || {
+    err "jq is required for telegram_bot_run"
+    return 1
+  }
+
+  local offset="0"
+  if [[ -f "${SBX_TG_OFFSET_FILE}" ]]; then
+    offset="$(_tg_load_offset)"
+  else
+    offset="-1"
+  fi
+
+  while :; do
+    local updates_file=""
+    updates_file=$(create_temp_file "tg-updates") || return 1
+
+    if ! _tg_get_updates "${offset}" "${updates_file}"; then
+      rm -f "${updates_file}"
+      return 1
+    fi
+
+    if [[ "${offset}" == "-1" ]]; then
+      _tg_discard_bootstrap_updates "${updates_file}" offset || {
+        rm -f "${updates_file}"
+        return 1
+      }
+    else
+      _tg_process_updates_file "${updates_file}" offset || {
+        rm -f "${updates_file}"
+        return 1
+      }
+    fi
+
+    rm -f "${updates_file}"
+
+    if [[ "${SBX_TG_RUN_ONCE:-0}" == "1" ]]; then
+      break
+    fi
+  done
 }
 
 #==============================================================================

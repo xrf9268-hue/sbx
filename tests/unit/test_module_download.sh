@@ -240,7 +240,17 @@ else
 fi
 
 #==============================================================================
-# Test 8: Regex parsing of download results
+# Test 8: Telegram launcher download is mandatory
+#==============================================================================
+test_start "Telegram launcher download failures are not ignored"
+if rg -n 'sbx-telegram-bot.*\|\| true' "$SCRIPT_DIR/install.sh" >/dev/null 2>&1; then
+    test_fail "sbx-telegram-bot download still uses || true"
+else
+    test_pass
+fi
+
+#==============================================================================
+# Test 9: Regex parsing of download results
 #==============================================================================
 test_start "Download result regex parsing works correctly"
 result=$(bash -c '

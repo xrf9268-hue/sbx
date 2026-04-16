@@ -846,6 +846,201 @@ else
 fi
 
 #==============================================================================
+# telegram_bot_* lifecycle helpers: setup / enable / disable / status / logs /
+# admin list mutation.
+#==============================================================================
+echo ""
+echo "Testing telegram_bot lifecycle..."
+
+TG_VERIFY_LOG="${TEST_TMP_DIR}/verify.log"
+JOURNALCTL_LOG="${TEST_TMP_DIR}/journalctl.log"
+
+reset_lifecycle_logs() {
+  : >"${SYSTEMCTL_LOG}"
+  : >"${JOURNALCTL_LOG}"
+  : >"${TG_VERIFY_LOG}"
+}
+
+_tg_verify_token_live() {
+  local token="${1:-}"
+  printf '%s\n' "${token}" >>"${TG_VERIFY_LOG}"
+  if [[ "${token}" == "123456789:AAEhBP0av28FrI51bX4nF12345678901234" ]]; then
+    printf 'my_sbx_bot\n'
+    return 0
+  fi
+  return 1
+}
+
+systemctl() {
+  echo "systemctl $*" >>"${SYSTEMCTL_LOG}"
+  case "${1:-}" in
+    is-active)
+      [[ "${STUB_TG_SYSTEMD_ACTIVE:-0}" == "1" ]]
+      ;;
+    status)
+      echo "sbx-telegram-bot.service - sbx Telegram Bot"
+      if [[ "${STUB_TG_SYSTEMD_ACTIVE:-0}" == "1" ]]; then
+        echo "Active: active (running)"
+        return 0
+      fi
+      echo "Active: inactive (dead)"
+      return 3
+      ;;
+    daemon-reload | enable | disable | start | stop | restart)
+      return 0
+      ;;
+    *)
+      return 0
+      ;;
+  esac
+}
+
+journalctl() {
+  echo "journalctl $*" >>"${JOURNALCTL_LOG}"
+  echo "telegram bot journal output"
+}
+
+need_root() {
+  return 0
+}
+
+if command -v jq >/dev/null 2>&1; then
+  reset_lifecycle_logs
+  cat >"${TEST_STATE_FILE}" <<'JSON'
+{"version":"1.0","protocols":{"reality":{"enabled":true}}}
+JSON
+  rm -f "${SBX_TG_ENV_FILE}" "${SBX_TG_SVC}" "${SBX_TG_BIN}"
+  mkdir -p "$(dirname "${SBX_TG_BIN}")"
+  : >"${SBX_TG_BIN}"
+  chmod 755 "${SBX_TG_BIN}"
+
+  printf '%s\n%s\n' \
+    "123456789:AAEhBP0av28FrI51bX4nF12345678901234" \
+    "99999" | telegram_bot_setup >/dev/null 2>&1
+  assert_zero "telegram_bot_setup succeeds with valid token + admin" "$?"
+  assert_eq "setup writes BOT_TOKEN env file" \
+    "BOT_TOKEN=123456789:AAEhBP0av28FrI51bX4nF12345678901234" \
+    "$(grep '^BOT_TOKEN=' "${SBX_TG_ENV_FILE}")"
+  assert_eq "setup stores username" \
+    "my_sbx_bot" "$(jq -r '.telegram.username' "${TEST_STATE_FILE}")"
+  assert_eq "setup stores enabled=false before service enable" \
+    "false" "$(jq -r '.telegram.enabled' "${TEST_STATE_FILE}")"
+  assert_eq "setup seeds first admin_chat_id" \
+    "99999" "$(jq -r '.telegram.admin_chat_ids[0]' "${TEST_STATE_FILE}")"
+  assert_eq "setup verifies the provided token" \
+    "123456789:AAEhBP0av28FrI51bX4nF12345678901234" "$(tail -n 1 "${TG_VERIFY_LOG}")"
+  perm=$(stat -c '%a' "${SBX_TG_ENV_FILE}" 2>/dev/null ||
+    stat -f '%Lp' "${SBX_TG_ENV_FILE}" 2>/dev/null)
+  assert_eq "telegram.env is mode 600 after setup" "600" "${perm}"
+
+  reset_lifecycle_logs
+  telegram_bot_admin_add 12345 >/dev/null 2>&1
+  assert_zero "admin_add accepts new numeric chat id" "$?"
+  assert_eq "admin_add appends second admin id" \
+    "2" "$(jq -r '.telegram.admin_chat_ids | length' "${TEST_STATE_FILE}")"
+
+  telegram_bot_admin_add 12345 >/dev/null 2>&1
+  assert_eq "admin_add de-duplicates existing chat id" \
+    "2" "$(jq -r '.telegram.admin_chat_ids | length' "${TEST_STATE_FILE}")"
+
+  telegram_bot_admin_remove 99999 >/dev/null 2>&1
+  assert_zero "admin_remove succeeds for existing id" "$?"
+  assert_eq "admin_remove drops the target id" \
+    "12345" "$(jq -r '.telegram.admin_chat_ids[0]' "${TEST_STATE_FILE}")"
+
+  admin_list_output="$(telegram_bot_admin_list 2>/dev/null)"
+  assert_contains_str "admin_list prints the remaining id" "12345" "${admin_list_output}"
+
+  reset_lifecycle_logs
+  telegram_bot_enable >/dev/null 2>&1
+  assert_zero "telegram_bot_enable succeeds once setup is complete" "$?"
+  assert_eq "enable marks telegram.enabled=true" \
+    "true" "$(jq -r '.telegram.enabled' "${TEST_STATE_FILE}")"
+  assert_contains_str "enable writes service file" "[Service]" "$(cat "${SBX_TG_SVC}")"
+  assert_contains_str "enable unit references launcher" \
+    "ExecStart=${SBX_TG_BIN}" "$(cat "${SBX_TG_SVC}")"
+  assert_contains_str "enable unit references env file" \
+    "EnvironmentFile=-${SBX_TG_ENV_FILE}" "$(cat "${SBX_TG_SVC}")"
+  assert_contains_str "enable reloads systemd" \
+    "systemctl daemon-reload" "$(cat "${SYSTEMCTL_LOG}")"
+  assert_contains_str "enable starts service immediately" \
+    "systemctl enable --now ${SBX_TG_SERVICE_NAME}" "$(cat "${SYSTEMCTL_LOG}")"
+
+  reset_lifecycle_logs
+  STUB_TG_SYSTEMD_ACTIVE=1
+  status_output="$(telegram_bot_status 2>&1)"
+  assert_contains_str "status includes username" "my_sbx_bot" "${status_output}"
+  assert_contains_str "status includes admin count" "Admins" "${status_output}"
+  assert_contains_str "status includes active systemd text" "active (running)" "${status_output}"
+  unset STUB_TG_SYSTEMD_ACTIVE
+
+  reset_lifecycle_logs
+  logs_output="$(telegram_bot_logs 2>&1)"
+  assert_contains_str "logs delegates to journalctl output" \
+    "telegram bot journal output" "${logs_output}"
+  assert_contains_str "logs targets the telegram bot unit" \
+    "journalctl -u ${SBX_TG_SERVICE_NAME}" "$(cat "${JOURNALCTL_LOG}")"
+
+  reset_lifecycle_logs
+  telegram_bot_disable >/dev/null 2>&1
+  assert_zero "telegram_bot_disable succeeds" "$?"
+  assert_eq "disable marks telegram.enabled=false" \
+    "false" "$(jq -r '.telegram.enabled' "${TEST_STATE_FILE}")"
+  if [[ ! -f "${SBX_TG_SVC}" ]]; then
+    test_result "disable removes the service unit file" "pass"
+  else
+    test_result "disable removes the service unit file" "fail"
+  fi
+  assert_contains_str "disable stops+disables service" \
+    "systemctl disable --now ${SBX_TG_SERVICE_NAME}" "$(cat "${SYSTEMCTL_LOG}")"
+else
+  echo "  (skipping lifecycle tests: jq not installed)"
+fi
+
+#==============================================================================
+# telegram_bot_run bootstrap offset handling.
+# First startup must discard backlog, persist the new offset, and avoid
+# executing the latest historical command.
+#==============================================================================
+echo ""
+echo "Testing telegram_bot_run bootstrap offset..."
+
+RUN_DISPATCH_LOG="${TEST_TMP_DIR}/run-dispatch.log"
+RUN_GET_UPDATES_LOG="${TEST_TMP_DIR}/run-get-updates.log"
+
+_tg_get_updates() {
+  local offset="${1:-}"
+  local output_file="${2:-}"
+  printf '%s\n' "${offset}" >>"${RUN_GET_UPDATES_LOG}"
+  cat >"${output_file}" <<'JSON'
+{"ok":true,"result":[{"update_id":41,"message":{"chat":{"id":99999},"text":"/restart"}}]}
+JSON
+  return 0
+}
+
+_tg_dispatch_command() {
+  printf '%s\n' "$*" >>"${RUN_DISPATCH_LOG}"
+  return 0
+}
+
+if command -v jq >/dev/null 2>&1; then
+  : >"${RUN_DISPATCH_LOG}"
+  : >"${RUN_GET_UPDATES_LOG}"
+  rm -f "${SBX_TG_OFFSET_FILE}"
+  BOT_TOKEN="123456789:AAEhBP0av28FrI51bX4nF12345678901234" \
+    SBX_TG_RUN_ONCE=1 telegram_bot_run >/dev/null 2>&1
+  assert_zero "telegram_bot_run succeeds in bootstrap discard mode" "$?"
+  assert_eq "first poll uses offset=-1 when offset file is absent" \
+    "-1" "$(head -n 1 "${RUN_GET_UPDATES_LOG}")"
+  sends=$(wc -l <"${RUN_DISPATCH_LOG}" | tr -d ' ')
+  assert_eq "bootstrap discard does not dispatch historical commands" "0" "${sends}"
+  assert_eq "bootstrap discard persists update_id+1 to offset file" \
+    "42" "$(_tg_load_offset)"
+else
+  echo "  (skipping run bootstrap tests: jq not installed)"
+fi
+
+#==============================================================================
 # Module is registered in install.sh modules array + contracts map
 # (mirrors tests/unit/test_cloudflare_tunnel.sh:298-309).
 #==============================================================================
