@@ -637,7 +637,7 @@ assert_contains_str "/users includes bob" "bob" "${reply}"
 
 # --- /adduser routing -------------------------------------------------------
 
-# Happy path: triggers user_add + sync + restart.
+# Happy path: triggers user_add + sync + restart_service.
 reset_logs
 _tg_dispatch_command 99999 adduser charlie
 reply=$(cat "${SEND_LOG}")
@@ -645,8 +645,8 @@ ua=$(cat "${USER_ADD_LOG}")
 sysctl=$(cat "${SYSTEMCTL_LOG}")
 assert_contains_str "/adduser invokes user_add with --name <arg>" \
   "user_add --name charlie" "${ua}"
-assert_contains_str "/adduser triggers systemctl restart" \
-  "systemctl restart sing-box" "${sysctl}"
+assert_contains_str "/adduser triggers restart_service" \
+  "restart_service called" "${sysctl}"
 assert_contains_str "/adduser success reply contains ✅" "✅" "${reply}"
 
 # Missing arg.
@@ -683,8 +683,8 @@ ur=$(cat "${USER_REMOVE_LOG}")
 sysctl=$(cat "${SYSTEMCTL_LOG}")
 assert_contains_str "/removeuser invokes user_remove" \
   "user_remove alice" "${ur}"
-assert_contains_str "/removeuser triggers systemctl restart" \
-  "systemctl restart sing-box" "${sysctl}"
+assert_contains_str "/removeuser triggers restart_service" \
+  "restart_service called" "${sysctl}"
 assert_contains_str "/removeuser success reply contains ✅" "✅" "${reply}"
 
 reset_logs

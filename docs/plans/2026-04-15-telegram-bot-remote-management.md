@@ -22,7 +22,7 @@
 |------|------|------|
 | 传输方式 | **长轮询**（`getUpdates?timeout=30`） | 无需公网 TLS 端点，不占用 443/8444，单 curl 连接，近零 CPU |
 | 运行用户 | **root**（与 `sing-box.service` 一致） | 需要调用 `user_add` / 重启服务；改用非 root 需要 sudoers 策略，徒增复杂度 |
-| Token 存储 | **state.json 明文 + `/etc/sing-box/telegram.env`（EnvironmentFile）** | state.json 已 chmod 600/root，与 Reality 私钥、Hy2 密码一致；EnvironmentFile 防止 token 出现在 `ps` 或 `journalctl` |
+| Token 存储 | **仅 `/etc/sing-box/telegram.env`（EnvironmentFile）** | 避免把 bot token 再落入 `state.json`；EnvironmentFile 同时防止 token 出现在 `ps` 或 `journalctl` |
 | 偏移量持久化 | `/var/lib/sbx-telegram-bot/offset`（独立文件） | 热路径写入，不污染 state.json；SIGTERM trap 最终写入一次 |
 | 命令分发 | 纯 `case` 匹配固定 token，参数通过位置参数传递 | 绝不 `eval` 聊天输入 |
 | 鉴权 | `admin_chat_ids` 白名单（存 state.json，空列表=拒绝所有） | 聊天 ID 比用户名稳定（用户名可改） |
@@ -46,7 +46,7 @@
      : "${SBX_TG_POLL_TIMEOUT:=30}"
      ```
    - 公共函数（API 契约）：
-     - `telegram_bot_setup` — 交互式引导；调用 `getMe` 校验 token，写 state.json 和 env 文件
+     - `telegram_bot_setup` — 交互式引导；调用 `getMe` 校验 token，写 env 文件并更新 state.json 中的 Telegram 元数据
      - `telegram_bot_enable` — 生成 systemd unit、daemon-reload、enable+start
      - `telegram_bot_disable` — stop、disable、删除 unit、更新 state
      - `telegram_bot_status` — 显示 systemd 状态 + 白名单数量

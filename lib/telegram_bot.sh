@@ -424,10 +424,12 @@ ${out}"
 # _tg_handle_adduser <chat_id> <name>
 # Defense-in-depth: trim whitespace and re-validate the name before delegating
 # to user_add (which already enforces ^[a-zA-Z0-9_-]+$). On success, mirror
-# the sbx-manager.sh `user add` flow: sync_users_to_config + restart sing-box.
+# the sbx-manager.sh `user add` flow: sync_users_to_config + restart_service.
 _tg_handle_adduser() {
   local chat_id="${1:-}"
   local name="${2:-}"
+  local out=""
+  local restart_out=""
 
   # Trim leading/trailing whitespace.
   name="${name#"${name%%[![:space:]]*}"}"
@@ -444,10 +446,15 @@ _tg_handle_adduser() {
     return 0
   fi
 
-  local out=""
   if out=$(user_add --name "${name}" 2>&1); then
     sync_users_to_config 2>/dev/null || true
-    systemctl restart sing-box 2>/dev/null || true
+    if ! restart_out=$(restart_service 2>&1); then
+      _tg_send_message "${chat_id}" "❌ ${out}
+
+Restart failed:
+${restart_out}"
+      return 0
+    fi
     _tg_send_message "${chat_id}" "✅ ${out}"
   else
     _tg_send_message "${chat_id}" "❌ ${out}"
@@ -458,6 +465,8 @@ _tg_handle_adduser() {
 _tg_handle_removeuser() {
   local chat_id="${1:-}"
   local id="${2:-}"
+  local out=""
+  local restart_out=""
 
   id="${id#"${id%%[![:space:]]*}"}"
   id="${id%"${id##*[![:space:]]}"}"
@@ -467,10 +476,15 @@ _tg_handle_removeuser() {
     return 0
   fi
 
-  local out=""
   if out=$(user_remove "${id}" 2>&1); then
     sync_users_to_config 2>/dev/null || true
-    systemctl restart sing-box 2>/dev/null || true
+    if ! restart_out=$(restart_service 2>&1); then
+      _tg_send_message "${chat_id}" "❌ ${out}
+
+Restart failed:
+${restart_out}"
+      return 0
+    fi
     _tg_send_message "${chat_id}" "✅ ${out}"
   else
     _tg_send_message "${chat_id}" "❌ ${out}"

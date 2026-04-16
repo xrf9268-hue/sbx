@@ -91,8 +91,8 @@ State tracked in `state.json`:
 - `.telegram.username`
 - `.telegram.admin_chat_ids`
 
-The bot token is kept in `/etc/sing-box/telegram.env` instead of being placed
-on the systemd command line.
+The bot token is kept only in `/etc/sing-box/telegram.env`. It is not stored in
+`state.json` and is not placed on the systemd command line.
 
 ## Troubleshooting
 
