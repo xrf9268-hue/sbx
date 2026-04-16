@@ -506,7 +506,7 @@ _download_and_validate_manager_script() {
 _load_modules() {
   local github_repo="https://raw.githubusercontent.com/xrf9268-hue/sbx/main"
   # Module loading order: colors first (required by common and logging), then common loads logging and generators, tools after common
-  local modules=(colors common logging generators tools retry download network validation checksum version certificate caddy_cleanup config config_validator schema_validator service ui backup export messages users port_hopping subscription cloudflare_tunnel)
+  local modules=(colors common logging generators tools retry download network validation checksum version certificate caddy_cleanup config config_validator schema_validator service ui backup export messages users port_hopping subscription cloudflare_tunnel telegram_bot)
   local temp_lib_dir=""
 
   # Check if lib directory exists
@@ -559,7 +559,7 @@ _load_modules() {
 
     _download_and_validate_manager_script "${github_repo}" "${SCRIPT_DIR}" || exit 1
 
-    # Download subscription runtime assets (server.py + launcher)
+    # Download subscription / telegram runtime assets
     mkdir -p "${SCRIPT_DIR}/lib/subscription"
     local _sub_base="${github_repo}/lib/subscription"
     local _bin_base="${github_repo}/bin"
@@ -570,11 +570,22 @@ _load_modules() {
       curl -fsSL --connect-timeout "${DOWNLOAD_CONNECT_TIMEOUT_SEC}" \
         --max-time "${DOWNLOAD_MAX_TIMEOUT_SEC}" \
         "${_bin_base}/sbx-sub-server" -o "${SCRIPT_DIR}/bin/sbx-sub-server" 2>/dev/null || true
+      if ! curl -fsSL --connect-timeout "${DOWNLOAD_CONNECT_TIMEOUT_SEC}" \
+        --max-time "${DOWNLOAD_MAX_TIMEOUT_SEC}" \
+        "${_bin_base}/sbx-telegram-bot" -o "${SCRIPT_DIR}/bin/sbx-telegram-bot" 2>/dev/null; then
+        echo "ERROR: Failed to download sbx-telegram-bot from ${_bin_base}/sbx-telegram-bot"
+        exit 1
+      fi
     elif command -v wget >/dev/null 2>&1; then
       wget -q --timeout="${DOWNLOAD_MAX_TIMEOUT_SEC}" \
         "${_sub_base}/server.py" -O "${SCRIPT_DIR}/lib/subscription/server.py" 2>/dev/null || true
       wget -q --timeout="${DOWNLOAD_MAX_TIMEOUT_SEC}" \
         "${_bin_base}/sbx-sub-server" -O "${SCRIPT_DIR}/bin/sbx-sub-server" 2>/dev/null || true
+      if ! wget -q --timeout="${DOWNLOAD_MAX_TIMEOUT_SEC}" \
+        "${_bin_base}/sbx-telegram-bot" -O "${SCRIPT_DIR}/bin/sbx-telegram-bot" 2>/dev/null; then
+        echo "ERROR: Failed to download sbx-telegram-bot from ${_bin_base}/sbx-telegram-bot"
+        exit 1
+      fi
     fi
 
     # Remember the generated directory so shared cleanup can purge it later
@@ -658,6 +669,7 @@ _verify_module_apis() {
     ["port_hopping"]="validate_port_range apply_port_hopping_rules remove_port_hopping_rules show_port_hopping_status"
     ["subscription"]="subscription_render subscription_enable subscription_disable subscription_status subscription_url subscription_ensure_state_block"
     ["cloudflare_tunnel"]="cloudflared_install cloudflared_enable_token cloudflared_disable cloudflared_status cloudflared_update_state"
+    ["telegram_bot"]="telegram_bot_setup telegram_bot_enable telegram_bot_disable telegram_bot_status telegram_bot_run"
   )
 
   # Verify each module's API contract
@@ -1710,6 +1722,9 @@ install_manager_script() {
     if [[ -f "${SCRIPT_DIR}/bin/sbx-sub-server" ]]; then
       install -m 755 "${SCRIPT_DIR}/bin/sbx-sub-server" /usr/local/bin/sbx-sub-server
     fi
+    if [[ -f "${SCRIPT_DIR}/bin/sbx-telegram-bot" ]]; then
+      install -m 755 "${SCRIPT_DIR}/bin/sbx-telegram-bot" /usr/local/bin/sbx-telegram-bot
+    fi
 
     # Create unprivileged system user for the subscription HTTP listener.
     # Idempotent: skipped if the user already exists.
@@ -2154,6 +2169,9 @@ uninstall_flow() {
     systemctl daemon-reload 2>/dev/null || true
   fi
   rm -f /usr/local/bin/sbx-sub-server
+  rm -f /usr/local/bin/sbx-telegram-bot
+  rm -f /etc/sing-box/telegram.env
+  rm -rf /var/lib/sbx-telegram-bot
   rm -rf "${SUBSCRIPTION_CACHE_DIR}"
   if id -u "${SUBSCRIPTION_SYSTEM_USER}" >/dev/null 2>&1; then
     if have userdel; then
