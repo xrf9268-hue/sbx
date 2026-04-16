@@ -595,19 +595,44 @@ _tg_update_state() {
   done
 
   local filter=". + {telegram: (${merge})}"
-
-  local tmp=""
-  tmp=$(mktemp "${state_file}.XXXXXX") || return 1
-  # shellcheck disable=SC2064
-  trap "rm -f '${tmp}'" RETURN
-
-  if ! jq "${jq_args[@]}" "${filter}" "${state_file}" >"${tmp}" 2>/dev/null; then
+  if ! state_json_apply "${state_file}" "${filter}" "${jq_args[@]}"; then
     err "_tg_update_state: jq filter failed"
     return 1
   fi
+}
 
-  mv -f "${tmp}" "${state_file}"
-  chmod "${SECURE_FILE_PERMISSIONS:-600}" "${state_file}" 2>/dev/null || true
+_tg_update_admin_chat_ids_locked() {
+  local state_file="${1:-}"
+  local action="${2:-}"
+  local chat_id="${3:-}"
+  local filter=''
+
+  case "${action}" in
+    add)
+      filter='.telegram = ((.telegram // {}) + {
+        admin_chat_ids: (
+          ((.telegram.admin_chat_ids // []) | map(tonumber? // .)) as $ids
+          | if ($ids | index($chat_id)) == null then $ids + [$chat_id] else $ids end
+        )
+      })'
+      ;;
+    remove)
+      filter='.telegram = ((.telegram // {}) + {
+        admin_chat_ids: (
+          ((.telegram.admin_chat_ids // []) | map(tonumber? // .) | map(select(. != $chat_id)))
+        )
+      })'
+      ;;
+    *)
+      err "_tg_update_admin_chat_ids_locked: unsupported action '${action}'"
+      return 1
+      ;;
+  esac
+
+  state_json_apply_locked "${state_file}" "${filter}" --argjson chat_id "${chat_id}" || {
+    err "Failed to update Telegram admin_chat_ids"
+    return 1
+  }
 }
 
 # _tg_process_updates_file <file> <offset_var_name>
@@ -811,13 +836,8 @@ telegram_bot_admin_add() {
     return 1
   }
 
-  local admins_json=""
-  admins_json=$(jq -c --argjson id "${chat_id}" \
-    '(.telegram.admin_chat_ids // []) | map(tonumber? // .) |
-     if index($id) == null then . + [$id] else . end' \
-    "${state_file}" 2>/dev/null) || return 1
-
-  _tg_update_state "admin_chat_ids=${admins_json}" || return 1
+  with_state_lock "${SBX_LOCK_TIMEOUT_SEC:-30}" \
+    _tg_update_admin_chat_ids_locked "${state_file}" add "${chat_id}" || return 1
   success "  ✓ Added Telegram admin chat ID: ${chat_id}"
 }
 
@@ -842,13 +862,8 @@ telegram_bot_admin_remove() {
     return 1
   }
 
-  local admins_json=""
-  admins_json=$(jq -c --argjson id "${chat_id}" \
-    '(.telegram.admin_chat_ids // []) | map(tonumber? // .) |
-     map(select(. != $id))' \
-    "${state_file}" 2>/dev/null) || return 1
-
-  _tg_update_state "admin_chat_ids=${admins_json}" || return 1
+  with_state_lock "${SBX_LOCK_TIMEOUT_SEC:-30}" \
+    _tg_update_admin_chat_ids_locked "${state_file}" remove "${chat_id}" || return 1
   success "  ✓ Removed Telegram admin chat ID: ${chat_id}"
 }
 

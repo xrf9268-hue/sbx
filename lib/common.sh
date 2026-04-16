@@ -637,6 +637,94 @@ with_flock() {
   ) 200>"${lock_file}"
 }
 
+# Run a command under the dedicated state.json process lock.
+# Usage:
+#   with_state_lock 30 my_command arg1 arg2
+#   with_state_lock my_command arg1 arg2
+with_state_lock() {
+  local timeout=30
+  local previous_lock_file="${SBX_LOCK_FILE-__SBX_LOCK_UNSET__}"
+
+  if [[ "${1:-}" =~ ^[0-9]+$ ]]; then
+    timeout="$1"
+    shift
+  fi
+
+  SBX_LOCK_FILE="${SBX_STATE_LOCK_FILE:-/var/lock/sbx-state.lock}"
+  with_flock "${timeout}" "$@"
+  local status=$?
+
+  if [[ "${previous_lock_file}" == "__SBX_LOCK_UNSET__" ]]; then
+    unset SBX_LOCK_FILE
+  else
+    SBX_LOCK_FILE="${previous_lock_file}"
+  fi
+
+  return "${status}"
+}
+
+_state_json_apply_impl() {
+  local state_file="$1"
+  local filter="$2"
+  shift 2
+
+  [[ -n "${state_file}" ]] || {
+    err "state_json_apply requires a state file path"
+    return 1
+  }
+  [[ -n "${filter}" ]] || {
+    err "state_json_apply requires a jq filter"
+    return 1
+  }
+  [[ -f "${state_file}" ]] || {
+    err "State file not found: ${state_file}"
+    return 1
+  }
+  have jq || {
+    err "jq is required to update state"
+    return 1
+  }
+
+  local state_dir=''
+  state_dir="$(dirname "${state_file}")"
+  local tmp_file=''
+  tmp_file=$(create_temp_file_in_dir "${state_dir}" "state-json") || return 1
+
+  if ! jq "$@" "${filter}" "${state_file}" >"${tmp_file}" 2>/dev/null; then
+    rm -f "${tmp_file}" 2>/dev/null || true
+    err "Failed to update state file: ${state_file}"
+    return 1
+  fi
+
+  chmod --reference="${state_file}" "${tmp_file}" 2>/dev/null ||
+    chmod "${SECURE_FILE_PERMISSIONS:-600}" "${tmp_file}" 2>/dev/null || true
+  chown --reference="${state_file}" "${tmp_file}" 2>/dev/null || true
+  mv -f "${tmp_file}" "${state_file}"
+}
+
+# Apply a jq filter to state.json while the caller already holds the state lock.
+# Usage:
+#   with_state_lock 30 state_json_apply_locked /path/to/state.json '.foo = "bar"'
+state_json_apply_locked() {
+  local state_file="${1:-}"
+  local filter="${2:-}"
+  shift 2 || true
+
+  _state_json_apply_impl "${state_file}" "${filter}" "$@"
+}
+
+# Apply a jq filter to state.json under the dedicated process lock.
+# Usage:
+#   state_json_apply /path/to/state.json '.subscription.enabled = true'
+#   state_json_apply /path/to/state.json '.foo = $bar' --arg bar baz
+state_json_apply() {
+  local state_file="${1:-}"
+  local filter="${2:-}"
+  shift 2 || true
+
+  with_state_lock "${SBX_LOCK_TIMEOUT_SEC:-30}" _state_json_apply_impl "${state_file}" "${filter}" "$@"
+}
+
 #==============================================================================
 # Module Initialization
 #==============================================================================
@@ -656,6 +744,6 @@ trap cleanup EXIT INT TERM
 # Export core utility functions
 export -f need_root have safe_rm_temp get_file_size cleanup \
   create_temp_dir create_temp_dir_in_dir create_temp_file create_temp_file_in_dir \
-  with_flock
+  with_flock with_state_lock state_json_apply_locked state_json_apply
 
 # Note: Logging and generator functions are exported by their respective modules

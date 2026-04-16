@@ -77,7 +77,7 @@ _load_users() {
 # compatibility with load_client_info() in lib/export.sh.
 #
 # Args: users_json (JSON array string)
-_save_users() {
+_save_users_locked() {
   local users_json="$1"
   local state_file=''
   state_file=$(_resolve_state_file)
@@ -90,26 +90,114 @@ _save_users() {
   local first_uuid=''
   first_uuid=$(echo "${users_json}" | jq -r '.[0].uuid // empty' 2>/dev/null || true)
 
-  local tmp_file=''
-  tmp_file=$(mktemp "${state_file}.XXXXXX")
-
-  if jq \
-    --argjson users "${users_json}" \
-    --arg first_uuid "${first_uuid}" \
+  if ! state_json_apply_locked "${state_file}" \
     '.protocols.reality.users = $users |
      if $first_uuid != "" then .protocols.reality.uuid = $first_uuid else . end' \
-    "${state_file}" >"${tmp_file}" 2>/dev/null; then
-    chmod 600 "${tmp_file}"
-    # Skip ownership enforcement in test mode (TEST_STATE_FILE set)
-    if [[ -z "${TEST_STATE_FILE:-}" ]]; then
-      chown root:root "${tmp_file}" 2>/dev/null || true
-    fi
-    mv "${tmp_file}" "${state_file}"
-  else
-    rm -f "${tmp_file}"
+    --argjson users "${users_json}" \
+    --arg first_uuid "${first_uuid}"; then
     err "Failed to update state file"
     return 1
   fi
+}
+
+_save_users() {
+  with_state_lock "${SBX_LOCK_TIMEOUT_SEC:-30}" _save_users_locked "$@"
+}
+
+_user_add_locked() {
+  local requested_name="${1:-}"
+  local uuid="${2:-}"
+  local created_at="${3:-}"
+  local users=''
+  users=$(_load_users)
+
+  local name="${requested_name}"
+  if [[ -z "${name}" ]]; then
+    local count=0
+    count=$(echo "${users}" | jq 'length')
+    name="user$((count + 1))"
+  fi
+
+  local existing=''
+  existing=$(echo "${users}" | jq -r --arg name "${name}" '.[] | select(.name == $name) | .name' 2>/dev/null || true)
+  if [[ -n "${existing}" ]]; then
+    err "User with name '${name}' already exists"
+    return 1
+  fi
+
+  local new_user=''
+  new_user=$(jq -n \
+    --arg name "${name}" \
+    --arg uuid "${uuid}" \
+    --arg created_at "${created_at}" \
+    '{name: $name, uuid: $uuid, created_at: $created_at}')
+
+  local updated_users=''
+  updated_users=$(echo "${users}" | jq --argjson user "${new_user}" '. + [$user]')
+
+  _save_users_locked "${updated_users}" || return 1
+  echo "Added user: ${name} (${uuid})"
+}
+
+_user_remove_locked() {
+  local id="${1:-}"
+  local users=''
+  users=$(_load_users)
+
+  local count=0
+  count=$(echo "${users}" | jq 'length')
+
+  if [[ "${count}" -le 1 ]]; then
+    err "Cannot remove the last user"
+    return 1
+  fi
+
+  local found_info=''
+  found_info=$(echo "${users}" | jq -r --arg id "${id}" \
+    '(.[] | select(.uuid == $id or .name == $id) | [(.name // "?"), .uuid]) | @tsv' 2>/dev/null | head -1 || true)
+
+  if [[ -z "${found_info}" ]]; then
+    err "User not found: ${id}"
+    return 1
+  fi
+
+  local found_name='' found_uuid=''
+  IFS=$'\t' read -r found_name found_uuid <<<"${found_info}"
+
+  local updated_users=''
+  updated_users=$(echo "${users}" | jq --arg id "${id}" \
+    '[.[] | select(.uuid != $id and .name != $id)]')
+
+  _save_users_locked "${updated_users}" || return 1
+  echo "Removed user: ${found_name} (${found_uuid})"
+}
+
+_user_reset_locked() {
+  local id="${1:-}"
+  local new_uuid="${2:-}"
+  local users=''
+  users=$(_load_users)
+
+  local found_info=''
+  found_info=$(echo "${users}" | jq -r --arg id "${id}" \
+    '(.[] | select(.uuid == $id or .name == $id) | [(.name // "?"), .uuid]) | @tsv' 2>/dev/null | head -1 || true)
+
+  if [[ -z "${found_info}" ]]; then
+    err "User not found: ${id}"
+    return 1
+  fi
+
+  local found_name='' old_uuid=''
+  IFS=$'\t' read -r found_name old_uuid <<<"${found_info}"
+
+  local updated_users=''
+  updated_users=$(echo "${users}" | jq \
+    --arg id "${id}" \
+    --arg new_uuid "${new_uuid}" \
+    '[.[] | if (.uuid == $id or .name == $id) then .uuid = $new_uuid else . end]')
+
+  _save_users_locked "${updated_users}" || return 1
+  echo "Reset user ${found_name}: new UUID = ${new_uuid}"
 }
 
 #==============================================================================
@@ -140,27 +228,9 @@ user_add() {
     esac
   done
 
-  local users=''
-  users=$(_load_users)
-
-  # Auto-generate name if not provided
-  if [[ -z "${name}" ]]; then
-    local count=0
-    count=$(echo "${users}" | jq 'length')
-    name="user$((count + 1))"
-  fi
-
   # Validate name characters
-  if ! [[ "${name}" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+  if [[ -n "${name}" ]] && ! [[ "${name}" =~ ^[a-zA-Z0-9_-]+$ ]]; then
     err "Invalid user name '${name}': use alphanumeric characters, underscores, or dashes only"
-    return 1
-  fi
-
-  # Check name uniqueness
-  local existing=''
-  existing=$(echo "${users}" | jq -r --arg name "${name}" '.[] | select(.name == $name) | .name' 2>/dev/null || true)
-  if [[ -n "${existing}" ]]; then
-    err "User with name '${name}' already exists"
     return 1
   fi
 
@@ -172,20 +242,8 @@ user_add() {
 
   local created_at=''
   created_at=$(date -Iseconds 2>/dev/null || date)
-
-  local new_user=''
-  new_user=$(jq -n \
-    --arg name "${name}" \
-    --arg uuid "${uuid}" \
-    --arg created_at "${created_at}" \
-    '{name: $name, uuid: $uuid, created_at: $created_at}')
-
-  local updated_users=''
-  updated_users=$(echo "${users}" | jq --argjson user "${new_user}" '. + [$user]')
-
-  _save_users "${updated_users}" || return 1
-
-  echo "Added user: ${name} (${uuid})"
+  with_state_lock "${SBX_LOCK_TIMEOUT_SEC:-30}" \
+    _user_add_locked "${name}" "${uuid}" "${created_at}"
 }
 
 # List all users in a formatted table.
@@ -222,37 +280,7 @@ user_remove() {
     return 1
   }
 
-  local users=''
-  users=$(_load_users)
-
-  local count=0
-  count=$(echo "${users}" | jq 'length')
-
-  if [[ "${count}" -le 1 ]]; then
-    err "Cannot remove the last user"
-    return 1
-  fi
-
-  # Find user and remove in one pass
-  local found_info=''
-  found_info=$(echo "${users}" | jq -r --arg id "${id}" \
-    '(.[] | select(.uuid == $id or .name == $id) | [(.name // "?"), .uuid]) | @tsv' 2>/dev/null | head -1 || true)
-
-  if [[ -z "${found_info}" ]]; then
-    err "User not found: ${id}"
-    return 1
-  fi
-
-  local found_name='' found_uuid=''
-  IFS=$'\t' read -r found_name found_uuid <<<"${found_info}"
-
-  local updated_users=''
-  updated_users=$(echo "${users}" | jq --arg id "${id}" \
-    '[.[] | select(.uuid != $id and .name != $id)]')
-
-  _save_users "${updated_users}" || return 1
-
-  echo "Removed user: ${found_name} (${found_uuid})"
+  with_state_lock "${SBX_LOCK_TIMEOUT_SEC:-30}" _user_remove_locked "${id}"
 }
 
 # Regenerate the UUID for an existing user.
@@ -266,37 +294,13 @@ user_reset() {
     return 1
   }
 
-  local users=''
-  users=$(_load_users)
-
-  # Find user by UUID or name
-  local found_info=''
-  found_info=$(echo "${users}" | jq -r --arg id "${id}" \
-    '(.[] | select(.uuid == $id or .name == $id) | [(.name // "?"), .uuid]) | @tsv' 2>/dev/null | head -1 || true)
-
-  if [[ -z "${found_info}" ]]; then
-    err "User not found: ${id}"
-    return 1
-  fi
-
-  local found_name='' old_uuid=''
-  IFS=$'\t' read -r found_name old_uuid <<<"${found_info}"
-
   local new_uuid=''
   new_uuid=$(generate_uuid) || {
     err "Failed to generate UUID"
     return 1
   }
-
-  local updated_users=''
-  updated_users=$(echo "${users}" | jq \
-    --arg id "${id}" \
-    --arg new_uuid "${new_uuid}" \
-    '[.[] | if (.uuid == $id or .name == $id) then .uuid = $new_uuid else . end]')
-
-  _save_users "${updated_users}" || return 1
-
-  echo "Reset user ${found_name}: new UUID = ${new_uuid}"
+  with_state_lock "${SBX_LOCK_TIMEOUT_SEC:-30}" \
+    _user_reset_locked "${id}" "${new_uuid}"
 }
 
 #==============================================================================
