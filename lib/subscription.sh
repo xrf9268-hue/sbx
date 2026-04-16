@@ -24,6 +24,10 @@ readonly _SBX_SUBSCRIPTION_LOADED=1
 _LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=/dev/null
 source "${_LIB_DIR}/common.sh"
+if [[ -z "${_SBX_SERVICE_LOADED:-}" ]]; then
+  # shellcheck source=/dev/null
+  source "${_LIB_DIR}/service.sh"
+fi
 if [[ -z "${_SBX_EXPORT_LOADED:-}" ]]; then
   # shellcheck source=/dev/null
   source "${_LIB_DIR}/export.sh"
@@ -309,6 +313,7 @@ subscription_install_unit() {
   local unit_path=''
   local bind=''
   local port=''
+  local unit_content=''
   local user="${SUB_SYSTEM_USER_OVERRIDE:-${SUBSCRIPTION_SYSTEM_USER}}"
   unit_path=$(_subscription_unit_path)
 
@@ -321,7 +326,7 @@ subscription_install_unit() {
     return 0
   fi
 
-  cat >"${unit_path}" <<EOF
+  unit_content=$(cat <<EOF
 [Unit]
 Description=sbx adaptive subscription endpoint
 After=network.target
@@ -345,8 +350,9 @@ ReadOnlyPaths=$(_subscription_cache_dir)
 [Install]
 WantedBy=multi-user.target
 EOF
-  chmod 644 "${unit_path}"
-  systemctl daemon-reload >/dev/null 2>&1 || true
+)
+
+  install_systemd_unit "${unit_path}" "${unit_content}"
 }
 
 subscription_remove_unit() {
@@ -357,10 +363,7 @@ subscription_remove_unit() {
     return 0
   fi
 
-  systemctl stop "${SUBSCRIPTION_SERVICE_NAME}" 2>/dev/null || true
-  systemctl disable "${SUBSCRIPTION_SERVICE_NAME}" 2>/dev/null || true
-  rm -f "${unit_path}"
-  systemctl daemon-reload >/dev/null 2>&1 || true
+  remove_systemd_unit "${SUBSCRIPTION_SERVICE_NAME}" "${unit_path}" "best_effort"
 }
 
 #==============================================================================

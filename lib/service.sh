@@ -24,11 +24,25 @@ source "${_LIB_DIR}/network.sh"
 # Service File Creation
 #==============================================================================
 
+# Install a systemd unit from a rendered content string.
+install_systemd_unit() {
+  local unit_path="$1"
+  local unit_content="${2:-}"
+
+  printf '%s\n' "${unit_content}" >"${unit_path}"
+  chmod 644 "${unit_path}"
+  systemctl daemon-reload >/dev/null 2>&1 || true
+
+  return 0
+}
+
 # Create systemd service unit file
 create_service_file() {
+  local unit_content=""
+
   msg "Creating systemd service ..."
 
-  cat >"${SB_SVC}" <<'EOF'
+  unit_content=$(cat <<'EOF'
 [Unit]
 Description=sing-box
 After=network.target nss-lookup.target
@@ -42,6 +56,9 @@ LimitNOFILE=1048576
 [Install]
 WantedBy=multi-user.target
 EOF
+)
+
+  install_systemd_unit "${SB_SVC}" "${unit_content}"
 
   success "  ✓ Service file created"
   return 0
@@ -295,28 +312,40 @@ reload_service() {
 # Service Uninstallation
 #==============================================================================
 
+# Remove a systemd unit by name.
+remove_systemd_unit() {
+  local unit_name="$1"
+  local unit_path="${2:-/etc/systemd/system/${unit_name}.service}"
+  local reload_mode="${3:-best_effort}"
+
+  if systemctl is-active "${unit_name}" >/dev/null 2>&1; then
+    systemctl stop "${unit_name}" || warn "Failed to stop service"
+  fi
+
+  if systemctl is-enabled "${unit_name}" >/dev/null 2>&1; then
+    systemctl disable "${unit_name}" || warn "Failed to disable service"
+  fi
+
+  rm -f "${unit_path}"
+  if [[ "${reload_mode}" == "strict" ]]; then
+    systemctl daemon-reload || return 1
+  else
+    systemctl daemon-reload >/dev/null 2>&1 || true
+  fi
+
+  return 0
+}
+
 # Remove sing-box service
 remove_service() {
   msg "Removing sing-box service..."
 
-  # Stop service if running
-  if systemctl is-active sing-box >/dev/null 2>&1; then
-    systemctl stop sing-box || warn "Failed to stop service"
-  fi
-
-  # Disable service
-  if systemctl is-enabled sing-box >/dev/null 2>&1; then
-    systemctl disable sing-box || warn "Failed to disable service"
-  fi
-
-  # Remove service file
   if [[ -f "${SB_SVC}" ]]; then
-    rm -f "${SB_SVC}"
+    remove_systemd_unit "sing-box" "${SB_SVC}" "strict" || return 1
     success "  ✓ Service file removed"
+  else
+    remove_systemd_unit "sing-box" "${SB_SVC}" "strict" || return 1
   fi
-
-  # Reload systemd daemon
-  systemctl daemon-reload
 
   success "Service removed successfully"
   return 0
@@ -354,3 +383,4 @@ show_service_logs() {
 export -f create_service_file start_service_with_retry setup_service validate_port_listening
 export -f check_service_status stop_service restart_service reload_service
 export -f remove_service show_service_logs
+export -f install_systemd_unit remove_systemd_unit
