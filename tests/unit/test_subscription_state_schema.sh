@@ -88,6 +88,51 @@ teardown_fixture() {
   [[ -n "${TEST_TMP:-}" && -d "${TEST_TMP}" ]] && rm -rf "${TEST_TMP}"
 }
 
+test_load_client_info_batches_state_reads() {
+  _write_state_with_subscription
+
+  local jq_bin_dir="${TEST_TMP}/bin"
+  local jq_count_file="${TEST_TMP}/jq-count.log"
+  local real_jq=''
+  real_jq=$(command -v jq)
+
+  mkdir -p "${jq_bin_dir}"
+  cat >"${jq_bin_dir}/jq" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+printf '1\n' >> '${jq_count_file}'
+exec '${real_jq}' "\$@"
+EOF
+  chmod +x "${jq_bin_dir}/jq"
+
+  local out=''
+  out=$(
+    PATH="${jq_bin_dir}:${PATH}" \
+      TEST_STATE_FILE="${STATE_FILE_PATH}" \
+      TEST_CLIENT_INFO="${TEST_TMP}/nope" \
+      bash -c "
+        source '${PROJECT_ROOT}/lib/export.sh'
+        load_client_info >/dev/null
+        printf 'DOMAIN=%s\nSUB_ENABLED=%s\nWS_ENABLED=%s\nHY2_ENABLED=%s\nTUIC_ENABLED=%s\nTROJAN_ENABLED=%s\n' \
+          \"\${DOMAIN:-}\" \"\${SUB_ENABLED:-}\" \"\${WS_ENABLED:-}\" \"\${HY2_ENABLED:-}\" \"\${TUIC_ENABLED:-}\" \"\${TROJAN_ENABLED:-}\"
+      "
+  )
+
+  local jq_count='0'
+  if [[ -f "${jq_count_file}" ]]; then
+    jq_count=$(wc -l <"${jq_count_file}")
+    jq_count="${jq_count//[[:space:]]/}"
+  fi
+
+  assert_equals "2" "${jq_count}" "load_client_info batches state.json reads into one jq extraction"
+  assert_contains "${out}" "DOMAIN=example.com" "batched load preserves DOMAIN"
+  assert_contains "${out}" "SUB_ENABLED=true" "batched load preserves SUB_ENABLED"
+  assert_contains "${out}" "WS_ENABLED=false" "batched load preserves WS_ENABLED"
+  assert_contains "${out}" "HY2_ENABLED=false" "batched load preserves HY2_ENABLED"
+  assert_contains "${out}" "TUIC_ENABLED=false" "batched load preserves TUIC_ENABLED"
+  assert_contains "${out}" "TROJAN_ENABLED=false" "batched load preserves TROJAN_ENABLED"
+}
+
 test_ensure_block_adds_defaults_when_missing() {
   _write_legacy_state
 
@@ -157,6 +202,7 @@ main() {
   test_ensure_block_adds_defaults_when_missing
   test_ensure_block_is_idempotent
   test_load_client_info_exposes_sub_vars
+  test_load_client_info_batches_state_reads
   teardown_fixture
   print_test_summary
 }

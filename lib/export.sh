@@ -40,6 +40,7 @@ _export_die() {
 load_client_info() {
   local client_info_file='' state_file='' resolved='' owner='' perm='' invalid_line=''
   local ws_enabled_raw='' hy2_enabled_raw='' tuic_enabled_raw='' trojan_enabled_raw=''
+  local -a state_fields=()
   local allowed_keys_regex="^(DOMAIN|UUID|PUBLIC_KEY|SHORT_ID|SNI|REALITY_PORT|WS_PORT|HY2_PORT|HY2_PASS|TUIC_PORT|TUIC_PASS|TROJAN_PORT|TROJAN_PASS|CERT_FULLCHAIN|CERT_KEY|TUNNEL_ENABLED|TUNNEL_HOSTNAME|TUNNEL_MODE)$"
 
   # Prefer structured state file when available, with compatibility fallback.
@@ -72,34 +73,74 @@ load_client_info() {
     jq empty <"${resolved}" 2>/dev/null || _export_die "SBX-EXPORT-009" "State file is not valid JSON: ${resolved}" \
       "Repair or regenerate state.json."
 
-    DOMAIN=$(jq -r '.server.domain // .server.ip // empty' "${resolved}")
-    UUID=$(jq -r '.protocols.reality.uuid // empty' "${resolved}")
-    PUBLIC_KEY=$(jq -r '.protocols.reality.public_key // empty' "${resolved}")
-    SHORT_ID=$(jq -r '.protocols.reality.short_id // empty' "${resolved}")
-    SNI=$(jq -r '.protocols.reality.sni // empty' "${resolved}")
-    REALITY_PORT=$(jq -r '.protocols.reality.port // empty' "${resolved}")
-    WS_PORT=$(jq -r '.protocols.ws_tls.port // empty' "${resolved}")
-    HY2_PORT=$(jq -r '.protocols.hysteria2.port // empty' "${resolved}")
-    HY2_PASS=$(jq -r '.protocols.hysteria2.password // empty' "${resolved}")
-    HY2_PORT_RANGE=$(jq -r '.protocols.hysteria2.port_range // empty' "${resolved}")
-    TUIC_PORT=$(jq -r '.protocols.tuic.port // empty' "${resolved}")
-    TUIC_PASS=$(jq -r '.protocols.tuic.password // empty' "${resolved}")
-    TROJAN_PORT=$(jq -r '.protocols.trojan.port // empty' "${resolved}")
-    TROJAN_PASS=$(jq -r '.protocols.trojan.password // empty' "${resolved}")
-    CERT_FULLCHAIN=$(jq -r '.protocols.ws_tls.certificate // empty' "${resolved}")
-    CERT_KEY=$(jq -r '.protocols.ws_tls.key // empty' "${resolved}")
-    SUB_ENABLED=$(jq -r '.subscription.enabled // false' "${resolved}")
-    SUB_PORT=$(jq -r '.subscription.port // empty' "${resolved}")
-    SUB_BIND=$(jq -r '.subscription.bind // empty' "${resolved}")
-    SUB_TOKEN=$(jq -r '.subscription.token // empty' "${resolved}")
-    SUB_PATH=$(jq -r '.subscription.path // empty' "${resolved}")
-    TUNNEL_ENABLED=$(jq -r '.tunnel.enabled // false' "${resolved}")
-    TUNNEL_HOSTNAME=$(jq -r '.tunnel.hostname // empty' "${resolved}")
-    TUNNEL_MODE=$(jq -r '.tunnel.mode // empty' "${resolved}")
-    ws_enabled_raw=$(jq -r '.protocols.ws_tls.enabled // empty' "${resolved}")
-    hy2_enabled_raw=$(jq -r '.protocols.hysteria2.enabled // empty' "${resolved}")
-    tuic_enabled_raw=$(jq -r '.protocols.tuic.enabled // empty' "${resolved}")
-    trojan_enabled_raw=$(jq -r '.protocols.trojan.enabled // empty' "${resolved}")
+    mapfile -d '' -t state_fields < <(
+      jq -j '
+        [
+          (.server.domain // .server.ip // ""),
+          (.protocols.reality.uuid // ""),
+          (.protocols.reality.public_key // ""),
+          (.protocols.reality.short_id // ""),
+          (.protocols.reality.sni // ""),
+          (.protocols.reality.port // "" | tostring),
+          (.protocols.ws_tls.port // "" | tostring),
+          (.protocols.hysteria2.port // "" | tostring),
+          (.protocols.hysteria2.password // ""),
+          (.protocols.hysteria2.port_range // ""),
+          (.protocols.tuic.port // "" | tostring),
+          (.protocols.tuic.password // ""),
+          (.protocols.trojan.port // "" | tostring),
+          (.protocols.trojan.password // ""),
+          (.protocols.ws_tls.certificate // ""),
+          (.protocols.ws_tls.key // ""),
+          (.subscription.enabled // false | tostring),
+          (.subscription.port // "" | tostring),
+          (.subscription.bind // ""),
+          (.subscription.token // ""),
+          (.subscription.path // ""),
+          (.tunnel.enabled // false | tostring),
+          (.tunnel.hostname // ""),
+          (.tunnel.mode // ""),
+          (.protocols.ws_tls.enabled | if . == null then "" else tostring end),
+          (.protocols.hysteria2.enabled | if . == null then "" else tostring end),
+          (.protocols.tuic.enabled | if . == null then "" else tostring end),
+          (.protocols.trojan.enabled | if . == null then "" else tostring end)
+        ][]
+        | tostring, "\u0000"
+      ' "${resolved}"
+    ) || _export_die "SBX-EXPORT-010" "Failed to extract client info from state file" \
+      "Repair or regenerate state.json."
+
+    [[ "${#state_fields[@]}" -eq 28 ]] || _export_die "SBX-EXPORT-011" "Unexpected state data shape while loading client info" \
+      "Repair or regenerate state.json."
+
+    DOMAIN="${state_fields[0]}"
+    UUID="${state_fields[1]}"
+    PUBLIC_KEY="${state_fields[2]}"
+    SHORT_ID="${state_fields[3]}"
+    SNI="${state_fields[4]}"
+    REALITY_PORT="${state_fields[5]}"
+    WS_PORT="${state_fields[6]}"
+    HY2_PORT="${state_fields[7]}"
+    HY2_PASS="${state_fields[8]}"
+    HY2_PORT_RANGE="${state_fields[9]}"
+    TUIC_PORT="${state_fields[10]}"
+    TUIC_PASS="${state_fields[11]}"
+    TROJAN_PORT="${state_fields[12]}"
+    TROJAN_PASS="${state_fields[13]}"
+    CERT_FULLCHAIN="${state_fields[14]}"
+    CERT_KEY="${state_fields[15]}"
+    SUB_ENABLED="${state_fields[16]}"
+    SUB_PORT="${state_fields[17]}"
+    SUB_BIND="${state_fields[18]}"
+    SUB_TOKEN="${state_fields[19]}"
+    SUB_PATH="${state_fields[20]}"
+    TUNNEL_ENABLED="${state_fields[21]}"
+    TUNNEL_HOSTNAME="${state_fields[22]}"
+    TUNNEL_MODE="${state_fields[23]}"
+    ws_enabled_raw="${state_fields[24]}"
+    hy2_enabled_raw="${state_fields[25]}"
+    tuic_enabled_raw="${state_fields[26]}"
+    trojan_enabled_raw="${state_fields[27]}"
 
     case "${ws_enabled_raw}" in
       true | 1 | yes | on) WS_ENABLED="true" ;;
