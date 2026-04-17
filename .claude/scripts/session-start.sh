@@ -17,6 +17,7 @@ CACHE_DIR="${TMPDIR:-/tmp}"
 PROJECT_HASH=$(echo "$PROJECT_DIR" | md5sum | cut -c1-8)
 SETUP_MARKER="$CACHE_DIR/sbx-setup-done-$PROJECT_HASH"
 BOOTSTRAP_CACHE="$CACHE_DIR/sbx-bootstrap-$PROJECT_HASH"
+GH_INSTALL_LOG="$CACHE_DIR/sbx-gh-install-$PROJECT_HASH.log"
 
 #==============================================================================
 # Environment Detection
@@ -41,12 +42,12 @@ setup_claude_env() {
 
   # Create env file if it doesn't exist
   if [[ ! -f "$env_file" ]]; then
-    touch "$env_file" 2> /dev/null || return 0
+    touch "$env_file" 2>/dev/null || return 0
   fi
 
   # Add /usr/local/bin to PATH if not already present in env file
-  if ! grep -q 'PATH=.*\/usr\/local\/bin' "$env_file" 2> /dev/null; then
-    cat >> "$env_file" << 'EOF'
+  if ! grep -q 'PATH=.*\/usr\/local\/bin' "$env_file" 2>/dev/null; then
+    cat >>"$env_file" <<'EOF'
 # sbx-lite: Ensure installed tools are in PATH
 export PATH="/usr/local/bin:$PATH"
 EOF
@@ -62,31 +63,31 @@ first_run_setup() {
 
   # Install git hooks
   if [[ -x "hooks/install-hooks.sh" ]]; then
-    bash hooks/install-hooks.sh > /dev/null 2>&1 && echo "  [OK] Git hooks" || echo "  [WARN] Git hooks"
+    bash hooks/install-hooks.sh >/dev/null 2>&1 && echo "  [OK] Git hooks" || echo "  [WARN] Git hooks"
   fi
 
   # Check and install essential deps
   local missing=()
   for dep in jq openssl; do
-    command -v "$dep" > /dev/null 2>&1 || missing+=("$dep")
+    command -v "$dep" >/dev/null 2>&1 || missing+=("$dep")
   done
 
   if [[ ${#missing[@]} -gt 0 ]]; then
     echo "  Installing: ${missing[*]}..."
-    if command -v apt-get > /dev/null 2>&1; then
-      sudo apt-get update -qq && sudo apt-get install -y -qq "${missing[@]}" > /dev/null 2>&1 || true
+    if command -v apt-get >/dev/null 2>&1; then
+      sudo apt-get update -qq && sudo apt-get install -y -qq "${missing[@]}" >/dev/null 2>&1 || true
     fi
   fi
 
   # Install shellcheck/shfmt (optional, best-effort)
   for tool in shellcheck shfmt; do
-    if ! command -v "$tool" > /dev/null 2>&1; then
+    if ! command -v "$tool" >/dev/null 2>&1; then
       install_tool "$tool"
     fi
   done
 
   # Install gh (GitHub CLI, optional, best-effort)
-  if ! command -v gh > /dev/null 2>&1; then
+  if ! command -v gh >/dev/null 2>&1; then
     install_gh
   fi
 
@@ -95,17 +96,17 @@ first_run_setup() {
 
   # Run bootstrap validation once
   if [[ -x "tests/unit/test_bootstrap_constants.sh" ]]; then
-    if bash tests/unit/test_bootstrap_constants.sh > "$BOOTSTRAP_CACHE.log" 2>&1; then
-      echo "OK" > "$BOOTSTRAP_CACHE"
+    if bash tests/unit/test_bootstrap_constants.sh >"$BOOTSTRAP_CACHE.log" 2>&1; then
+      echo "OK" >"$BOOTSTRAP_CACHE"
       echo "  [OK] Bootstrap validation"
     else
-      echo "FAIL" > "$BOOTSTRAP_CACHE"
+      echo "FAIL" >"$BOOTSTRAP_CACHE"
       echo "  [FAIL] Bootstrap - see $BOOTSTRAP_CACHE.log"
     fi
   fi
 
   # Mark setup complete
-  date +%s > "$SETUP_MARKER"
+  date +%s >"$SETUP_MARKER"
   echo "Setup complete."
 }
 
@@ -113,33 +114,35 @@ install_tool() {
   local tool="$1"
   case "$tool" in
     shellcheck)
-      if command -v apt-get > /dev/null 2>&1; then
-        sudo apt-get install -y -qq shellcheck > /dev/null 2>&1 || true
+      if command -v apt-get >/dev/null 2>&1; then
+        sudo apt-get install -y -qq shellcheck >/dev/null 2>&1 || true
       fi
-      if ! command -v shellcheck > /dev/null 2>&1; then
+      if ! command -v shellcheck >/dev/null 2>&1; then
         local ver="v0.10.0"
-        wget -qO- "https://github.com/koalaman/shellcheck/releases/download/$ver/shellcheck-$ver.linux.x86_64.tar.xz" 2> /dev/null \
-          | tar -xJf - -C /tmp/ 2> /dev/null \
-          && sudo mv "/tmp/shellcheck-$ver/shellcheck" /usr/local/bin/ 2> /dev/null || true
+        wget -qO- "https://github.com/koalaman/shellcheck/releases/download/$ver/shellcheck-$ver.linux.x86_64.tar.xz" 2>/dev/null |
+          tar -xJf - -C /tmp/ 2>/dev/null &&
+          sudo mv "/tmp/shellcheck-$ver/shellcheck" /usr/local/bin/ 2>/dev/null || true
       fi
       ;;
     shfmt)
       local ver="v3.10.0"
-      wget -qO /tmp/shfmt "https://github.com/mvdan/sh/releases/download/$ver/shfmt_${ver}_linux_amd64" 2> /dev/null \
-        && sudo mv /tmp/shfmt /usr/local/bin/shfmt && sudo chmod +x /usr/local/bin/shfmt 2> /dev/null || true
+      wget -qO /tmp/shfmt "https://github.com/mvdan/sh/releases/download/$ver/shfmt_${ver}_linux_amd64" 2>/dev/null &&
+        sudo mv /tmp/shfmt /usr/local/bin/shfmt && sudo chmod +x /usr/local/bin/shfmt 2>/dev/null || true
       ;;
   esac
 }
 
 install_gh() {
-  local gh_version arch ver tmp_dir
+  local gh_version='' arch='' ver='' tmp_dir=''
+
+  echo "=== gh install $(date -u +%Y-%m-%dT%H:%M:%SZ) ===" >>"$GH_INSTALL_LOG" 2>/dev/null || true
 
   # Detect latest version from GitHub API
-  gh_version="$(curl -fsSL https://api.github.com/repos/cli/cli/releases/latest \
-    | grep -o '"tag_name":\s*"v[^"]*"' | head -1 | grep -o 'v[^"]*')" || true
+  gh_version="$(curl -fsSL https://api.github.com/repos/cli/cli/releases/latest 2>>"$GH_INSTALL_LOG" |
+    grep -o '"tag_name":\s*"v[^"]*"' | head -1 | grep -o 'v[^"]*')" || true
 
   if [[ -z "${gh_version:-}" ]]; then
-    echo "  [WARN] gh: could not determine latest version, skipping" >&2
+    echo "  [WARN] gh: could not determine latest version, see $GH_INSTALL_LOG" >&2
     return 0
   fi
 
@@ -156,16 +159,16 @@ install_gh() {
 
   tmp_dir="$(mktemp -d /tmp/gh-install-XXXXXX)"
   if curl -fsSL -o "${tmp_dir}/gh.tar.gz" \
-    "https://github.com/cli/cli/releases/download/${gh_version}/gh_${ver}_linux_${arch}.tar.gz" 2> /dev/null; then
-    if tar -xzf "${tmp_dir}/gh.tar.gz" -C "${tmp_dir}" 2> /dev/null \
-      && sudo mv "${tmp_dir}/gh_${ver}_linux_${arch}/bin/gh" /usr/local/bin/gh 2> /dev/null \
-      && sudo chmod +x /usr/local/bin/gh 2> /dev/null; then
+    "https://github.com/cli/cli/releases/download/${gh_version}/gh_${ver}_linux_${arch}.tar.gz" 2>>"$GH_INSTALL_LOG"; then
+    if tar -xzf "${tmp_dir}/gh.tar.gz" -C "${tmp_dir}" 2>>"$GH_INSTALL_LOG" &&
+      sudo mv "${tmp_dir}/gh_${ver}_linux_${arch}/bin/gh" /usr/local/bin/gh 2>>"$GH_INSTALL_LOG" &&
+      sudo chmod +x /usr/local/bin/gh 2>>"$GH_INSTALL_LOG"; then
       echo "  [OK] gh ${gh_version}"
     else
-      echo "  [WARN] gh: extract/install failed (no sudo?), skipping" >&2
+      echo "  [WARN] gh: extract/install failed, see $GH_INSTALL_LOG" >&2
     fi
   else
-    echo "  [WARN] gh: download failed, skipping" >&2
+    echo "  [WARN] gh: download failed, see $GH_INSTALL_LOG" >&2
   fi
   rm -rf "${tmp_dir}"
 }
@@ -183,7 +186,7 @@ quick_status() {
   # Essential deps
   local deps_ok=true
   for dep in jq openssl bash git; do
-    command -v "$dep" > /dev/null 2>&1 || deps_ok=false
+    command -v "$dep" >/dev/null 2>&1 || deps_ok=false
   done
   $deps_ok && status+=("deps:OK") || status+=("deps:MISS")
 
@@ -192,10 +195,13 @@ quick_status() {
     [[ "$(cat "$BOOTSTRAP_CACHE")" == "OK" ]] && status+=("boot:OK") || status+=("boot:FAIL")
   fi
 
+  # gh CLI (optional, best-effort; retried on demand from main)
+  command -v gh >/dev/null 2>&1 && status+=("gh:OK") || status+=("gh:MISS")
+
   # Branch info
   local branch commit
-  branch=$(git branch --show-current 2> /dev/null || echo "?")
-  commit=$(git log --oneline -1 2> /dev/null | cut -c1-7 || echo "?")
+  branch=$(git branch --show-current 2>/dev/null || echo "?")
+  commit=$(git log --oneline -1 2>/dev/null | cut -c1-7 || echo "?")
 
   echo "sbx: ${status[*]} | $branch ($commit)"
 
@@ -213,6 +219,11 @@ quick_status() {
 if [[ -f "$SETUP_MARKER" ]]; then
   setup_age=$(($(date +%s) - $(cat "$SETUP_MARKER")))
   if [[ $setup_age -lt 604800 ]]; then # 7 days in seconds
+    # Best-effort retry: gh is optional so first_run_setup doesn't block on it,
+    # but if it failed we want subsequent sessions to retry until it succeeds.
+    if ! command -v gh >/dev/null 2>&1; then
+      install_gh
+    fi
     quick_status
     exit 0
   fi
