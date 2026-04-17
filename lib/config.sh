@@ -567,6 +567,60 @@ add_outbound_config() {
   echo "${updated_config}"
 }
 
+# Inject the experimental.clash_api block into the generated config based on
+# the top-level .stats object in state.json. No-op when stats are disabled,
+# state.json is unavailable, or no secret has been provisioned. The Clash API
+# exposes traffic/connection metrics consumed by `sbx stats` and third-party
+# Web UIs; the listener is bound to loopback with a Bearer token.
+add_experimental_config() {
+  local config="$1"
+  local state_file="${TEST_STATE_FILE:-${STATE_FILE:-${SB_CONF_DIR:-/etc/sing-box}/state.json}}"
+
+  # Stats require jq; silently skip when unavailable.
+  if ! command -v jq >/dev/null 2>&1; then
+    echo "${config}"
+    return 0
+  fi
+
+  # state.json might not exist yet on very first config write — leave it alone.
+  if [[ ! -f "${state_file}" ]]; then
+    echo "${config}"
+    return 0
+  fi
+
+  local enabled='false' bind='127.0.0.1' port='9090' secret=''
+  enabled=$(jq -r '.stats.enabled // false' "${state_file}" 2>/dev/null || echo false)
+  bind=$(jq -r '.stats.bind   // "127.0.0.1"' "${state_file}" 2>/dev/null || echo 127.0.0.1)
+  port=$(jq -r '.stats.port   // 9090' "${state_file}" 2>/dev/null || echo 9090)
+  secret=$(jq -r '.stats.secret // ""' "${state_file}" 2>/dev/null || echo '')
+
+  if [[ "${enabled}" != "true" || -z "${secret}" ]]; then
+    echo "${config}"
+    return 0
+  fi
+
+  msg "  - Enabling Clash API for traffic statistics"
+
+  local updated_config=''
+  if ! updated_config=$(echo "${config}" | jq \
+    --arg ec "${bind}:${port}" \
+    --arg secret "${secret}" \
+    '.experimental = ((.experimental // {}) + {
+        clash_api: {
+          external_controller: $ec,
+          secret: $secret,
+          default_mode: "rule"
+        }
+      })' 2>/dev/null); then
+    warn "Failed to inject experimental.clash_api; continuing without stats API"
+    echo "${config}"
+    return 0
+  fi
+
+  success "  ✓ Clash API bound to ${bind}:${port} (loopback only)"
+  echo "${updated_config}"
+}
+
 #==============================================================================
 # Configuration Generation Helpers
 #==============================================================================
@@ -901,6 +955,9 @@ _write_config_impl() {
       "Verify route generation inputs and JSON integrity."
   base_config=$(add_outbound_config "${base_config}")
 
+  # Inject experimental.clash_api (for `sbx stats`) if enabled in state.json
+  base_config=$(add_experimental_config "${base_config}")
+
   # Write configuration to temporary file
   echo "${base_config}" >"${temp_conf}" ||
     _config_die "SBX-CONFIG-042" "Failed to write configuration to temporary file" \
@@ -937,5 +994,5 @@ _write_config_impl() {
 export -f validate_config_vars create_base_config create_reality_inbound
 export -f create_ws_inbound create_hysteria2_inbound add_route_config
 export -f create_tuic_inbound create_trojan_inbound
-export -f add_outbound_config write_config
+export -f add_outbound_config add_experimental_config write_config
 # Note: _validate_certificate_config and _create_all_inbounds are private helpers (not exported)

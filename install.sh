@@ -506,7 +506,7 @@ _download_and_validate_manager_script() {
 _load_modules() {
   local github_repo="https://raw.githubusercontent.com/xrf9268-hue/sbx/main"
   # Module loading order: colors first (required by common and logging), then common loads logging and generators, tools after common
-  local modules=(colors common logging generators tools retry download network validation checksum version certificate caddy_cleanup config config_validator schema_validator service ui backup export messages users port_hopping subscription cloudflare_tunnel telegram_bot)
+  local modules=(colors common logging generators tools retry download network validation checksum version certificate caddy_cleanup config config_validator schema_validator service ui backup export messages users port_hopping subscription stats cloudflare_tunnel telegram_bot)
   local temp_lib_dir=""
 
   # Check if lib directory exists
@@ -668,6 +668,7 @@ _verify_module_apis() {
     ["users"]="user_add user_list user_remove user_reset sync_users_to_config"
     ["port_hopping"]="validate_port_range apply_port_hopping_rules remove_port_hopping_rules show_port_hopping_status"
     ["subscription"]="subscription_render subscription_enable subscription_disable subscription_status subscription_url subscription_ensure_state_block"
+    ["stats"]="stats_ensure_state_block stats_overview_pretty stats_overview_json stats_enable stats_disable"
     ["cloudflare_tunnel"]="cloudflared_install cloudflared_enable_token cloudflared_disable cloudflared_status cloudflared_update_state"
     ["telegram_bot"]="telegram_bot_setup telegram_bot_enable telegram_bot_disable telegram_bot_status telegram_bot_run"
   )
@@ -1548,6 +1549,19 @@ save_state_info() {
   local trojan_pass=''
   local state_json=''
 
+  # Traffic statistics (Clash API): generate or reuse a random Bearer secret.
+  # SBX_STATS_ENABLE=0 disables the API; the secret is still persisted so
+  # re-enabling does not invalidate previously-bookmarked Web UI sessions.
+  local stats_enabled=true
+  local stats_secret=''
+  [[ "${SBX_STATS_ENABLE:-1}" == "0" ]] && stats_enabled=false
+  if [[ -f "${state_file}" ]]; then
+    stats_secret=$(jq -r '.stats.secret // empty' "${state_file}" 2>/dev/null || true)
+  fi
+  if [[ -z "${stats_secret}" || "${#stats_secret}" -ne 64 ]]; then
+    stats_secret=$(generate_hex_string 32 2>/dev/null || openssl rand -hex 32)
+  fi
+
   if [[ "${REALITY_ONLY_MODE:-0}" != "1" ]]; then
     local enable_ws="${ENABLE_WS:-}"
     local enable_hy2="${ENABLE_HY2:-}"
@@ -1618,6 +1632,10 @@ save_state_info() {
     --arg tunnel_mode "${TUNNEL_MODE:-}" \
     --arg tunnel_hostname "${TUNNEL_HOSTNAME:-}" \
     --argjson tunnel_upstream "${WS_PORT_CHOSEN:-0}" \
+    --argjson stats_enabled "${stats_enabled}" \
+    --arg stats_bind "127.0.0.1" \
+    --argjson stats_port 9090 \
+    --arg stats_secret "${stats_secret}" \
     '{
       version: $version,
       installed_at: $installed_at,
@@ -1673,6 +1691,12 @@ save_state_info() {
         mode: (if $tunnel_mode == "" then null else $tunnel_mode end),
         hostname: (if $tunnel_hostname == "" then null else $tunnel_hostname end),
         upstream_port: (if $tunnel_upstream == 0 then null else $tunnel_upstream end)
+      },
+      stats: {
+        enabled: $stats_enabled,
+        bind: $stats_bind,
+        port: $stats_port,
+        secret: $stats_secret
       }
     }') || return 1
 
@@ -2103,15 +2127,16 @@ install_flow() {
       chmod "${SECURE_DIR_PERMISSIONS}" "${ACME_DATA_DIRECTORY}"
     fi
 
+    # Persist structured state first so write_config can read feature toggles
+    # (currently: .stats for experimental.clash_api) from state.json.
+    save_client_info
+    save_state_info
+
     # Write configuration
     write_config
 
     # Setup and start service
     setup_service
-
-    # Save client info
-    save_client_info
-    save_state_info
 
     # Install manager script
     install_manager_script

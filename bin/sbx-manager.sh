@@ -33,6 +33,8 @@ if [[ -d "$LIB_DIR" ]]; then
   # shellcheck source=/dev/null
   [[ -f "$LIB_DIR/subscription.sh" ]] && source "$LIB_DIR/subscription.sh"
   # shellcheck source=/dev/null
+  [[ -f "$LIB_DIR/stats.sh" ]] && source "$LIB_DIR/stats.sh"
+  # shellcheck source=/dev/null
   [[ -f "$LIB_DIR/cloudflare_tunnel.sh" ]] && source "$LIB_DIR/cloudflare_tunnel.sh"
   # shellcheck source=/dev/null
   [[ -f "$LIB_DIR/telegram_bot.sh" ]] && source "$LIB_DIR/telegram_bot.sh"
@@ -105,6 +107,14 @@ ${B}Cloudflare Tunnel:${N}
   tunnel disable                  Stop and disable the tunnel service
   tunnel status                   Show tunnel binary/service/hostname
   tunnel hostname                 Print the active tunnel hostname
+
+${B}Traffic Statistics:${N}
+  stats [overview]                Show live traffic, connections, memory, uptime
+  stats connections               List active connections (destination, user, up/down)
+  stats users                     Per-user live traffic breakdown
+  stats enable                    Enable Clash API and restart sing-box
+  stats disable                   Disable Clash API and restart sing-box
+  (add --json to overview/connections/users for machine-readable output)
 
 ${B}Telegram Bot:${N}
   sbx telegram {setup|enable|disable|status|logs|admin ...}
@@ -1363,6 +1373,54 @@ case "${1:-}" in
         echo "  sbx subscription status  Show status"
         echo "  sbx subscription url     Print subscription URL"
         echo "  sbx subscription rotate  Rotate subscription token"
+        exit 1
+        ;;
+    esac
+    ;;
+
+  stats)
+    if ! declare -f stats_overview_pretty >/dev/null 2>&1; then
+      echo -e "${R}[ERR]${N} Stats module not loaded. Please reinstall sbx-lite."
+      exit 1
+    fi
+
+    case "${2:-overview}" in
+      overview | "")
+        if [[ "${JSON_OUTPUT}" == "1" ]]; then
+          stats_overview_json
+        else
+          stats_overview_pretty
+        fi
+        ;;
+      connections | conn)
+        if [[ "${JSON_OUTPUT}" == "1" ]]; then
+          stats_connections_json
+        else
+          stats_connections_pretty
+        fi
+        ;;
+      users)
+        if [[ "${JSON_OUTPUT}" == "1" ]]; then
+          stats_users_json
+        else
+          stats_users_pretty
+        fi
+        ;;
+      enable | on)
+        need_root || exit 1
+        stats_enable
+        ;;
+      disable | off)
+        need_root || exit 1
+        stats_disable
+        ;;
+      *)
+        echo -e "${Y}Usage:${N}"
+        echo "  sbx stats [overview] [--json]      Show traffic/connection overview"
+        echo "  sbx stats connections [--json]     List active connections"
+        echo "  sbx stats users [--json]           Per-user traffic breakdown"
+        echo "  sbx stats enable                   Enable Clash API"
+        echo "  sbx stats disable                  Disable Clash API"
         exit 1
         ;;
     esac
