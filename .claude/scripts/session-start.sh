@@ -221,7 +221,10 @@ if [[ -f "$SETUP_MARKER" ]]; then
   if [[ $setup_age -lt 604800 ]]; then # 7 days in seconds
     # Best-effort retry: gh is optional so first_run_setup doesn't block on it,
     # but if it failed we want subsequent sessions to retry until it succeeds.
-    if ! command -v gh >/dev/null 2>&1; then
+    # Check the install target directly — command -v depends on PATH, which
+    # can legitimately omit /usr/local/bin even though gh is already installed,
+    # and would otherwise trigger a pointless redownload each session.
+    if ! command -v gh >/dev/null 2>&1 && [[ ! -x /usr/local/bin/gh ]]; then
       install_gh
     fi
     quick_status
