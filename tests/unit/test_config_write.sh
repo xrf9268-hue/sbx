@@ -69,19 +69,19 @@ test_write_config_defined_in_module() {
 
 test_write_config_uses_jq() {
     # write_config should use jq for JSON handling
-    grep -E "jq" lib/config.sh | grep -q ""
+    grep -Eq "jq" lib/config.sh
 }
 
 test_write_config_validates_before_write() {
     # Should validate JSON before writing
-    grep -E "(validate|check|test)" lib/config.sh | grep -q ""
+    grep -Eq "(validate|check|test)" lib/config.sh
 }
 
 test_write_config_uses_with_flock() {
     # write_config should be protected by with_flock to avoid concurrent writes
     local write_impl
     write_impl=$(sed -n '/^write_config()/,/^}/p' lib/config.sh)
-    echo "${write_impl}" | grep -q "with_flock"
+    grep -q "with_flock" <<< "${write_impl}"
 }
 
 #==============================================================================
@@ -98,7 +98,7 @@ test_create_all_inbounds_defined_in_module() {
 
 test_create_all_inbounds_creates_reality_inbound() {
     # Should call create_reality_inbound
-    grep "_create_all_inbounds" lib/config.sh | head -20 || grep "create_reality_inbound" lib/config.sh | grep -q ""
+    grep -q "create_reality_inbound" lib/config.sh
 }
 
 #==============================================================================

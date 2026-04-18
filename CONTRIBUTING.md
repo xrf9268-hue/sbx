@@ -21,9 +21,9 @@ Thank you for contributing to sbx-lite! This document provides guidelines and se
 # Required
 - bash 4.0+
 - git
+- jq (required for local unit tests)
 
 # Recommended
-- jq (JSON processing)
 - shellcheck (bash linting)
 - openssl (cryptographic operations)
 ```
@@ -34,6 +34,10 @@ Thank you for contributing to sbx-lite! This document provides guidelines and se
 # Clone the repository
 git clone https://github.com/xrf9268-hue/sbx.git
 cd sbx
+
+# Install local test dependency
+sudo apt-get update
+sudo apt-get install -y jq
 
 # Install git hooks (REQUIRED - see next section)
 bash hooks/install-hooks.sh
@@ -200,6 +204,9 @@ When adding constants used during bootstrap (before module loading):
 ### Before Committing
 
 ```bash
+# Ensure local test dependency is available
+sudo apt-get install -y jq
+
 # Run all unit tests
 bash tests/test-runner.sh unit
 
