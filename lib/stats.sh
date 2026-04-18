@@ -2,21 +2,9 @@
 # lib/stats.sh - Traffic statistics via sing-box Clash API
 # Part of sbx-lite modular architecture
 #
-# Queries the local sing-box Clash API (experimental.clash_api) and renders
-# traffic / connection / memory / uptime information for operators.
-#
-# Security model:
-#   - The Clash API listens on 127.0.0.1 only (never a public address).
-#   - Every call carries a Bearer token stored in state.json (mode 600).
-#   - The secret is generated once per install via generate_hex_string 32.
-#
-# State shape (top-level .stats):
-#   {
-#     "enabled": true,
-#     "bind":    "127.0.0.1",
-#     "port":    9090,
-#     "secret":  "<64-char hex>"
-#   }
+# Clash API listens on 127.0.0.1 only; every call carries a Bearer token
+# stored in state.json (mode 600). Secret is generated once per install.
+# State shape: .stats = {enabled, bind, port, secret}.
 
 set -euo pipefail
 
