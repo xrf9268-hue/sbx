@@ -12,19 +12,15 @@ TOTAL_TESTS=0
 PASSED_TESTS=0
 FAILED_TESTS=0
 
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-NC='\033[0m'
-
 pass() {
   TOTAL_TESTS=$((TOTAL_TESTS + 1))
   PASSED_TESTS=$((PASSED_TESTS + 1))
-  echo -e "${GREEN}✓${NC} $1"
+  echo -e "${G}✓${N} $1"
 }
 fail() {
   TOTAL_TESTS=$((TOTAL_TESTS + 1))
   FAILED_TESTS=$((FAILED_TESTS + 1))
-  echo -e "${RED}✗${NC} $1"
+  echo -e "${R}✗${N} $1"
 }
 assert_eq() {
   local name="$1" want="$2" got="$3"
@@ -236,10 +232,10 @@ test_secret_never_printed() {
 
   TOTAL_TESTS=$((TOTAL_TESTS + 1))
   if echo "${combined}" | grep -qF "${_SECRET_FIXTURE}"; then
-    echo -e "${RED}✗${NC} secret leaked into user-facing output"
+    echo -e "${R}✗${N} secret leaked into user-facing output"
     FAILED_TESTS=$((FAILED_TESTS + 1))
   else
-    echo -e "${GREEN}✓${NC} secret absent from all stats command output"
+    echo -e "${G}✓${N} secret absent from all stats command output"
     PASSED_TESTS=$((PASSED_TESTS + 1))
   fi
 
@@ -312,7 +308,7 @@ main() {
   local missing=0
   for fn in "${required[@]}"; do
     if ! declare -f "${fn}" >/dev/null 2>&1; then
-      echo -e "${RED}✗${NC} ${fn} is not defined"
+      echo -e "${R}✗${N} ${fn} is not defined"
       missing=$((missing + 1))
     fi
   done
@@ -339,8 +335,8 @@ main() {
   echo "Test Summary"
   echo "========================================="
   echo "Total:  ${TOTAL_TESTS}"
-  echo -e "${GREEN}Passed: ${PASSED_TESTS}${NC}"
-  echo -e "${RED}Failed: ${FAILED_TESTS}${NC}"
+  echo -e "${G}Passed: ${PASSED_TESTS}${N}"
+  echo -e "${R}Failed: ${FAILED_TESTS}${N}"
   echo ""
   [[ "${FAILED_TESTS}" -eq 0 ]] && exit 0 || exit 1
 }

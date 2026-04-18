@@ -62,6 +62,14 @@ _stats_enabled() {
   [[ "${v}" == "true" ]]
 }
 
+# Emit the standard "stats disabled" notice and return 0. Used by every
+# *_pretty command so operators get a consistent hint.
+_stats_disabled_notice() {
+  echo -e "${Y:-}[!]${N:-} Traffic stats are disabled."
+  [[ "${1:-}" == "with_hint" ]] && echo "Enable with: sudo sbx stats enable"
+  return 0
+}
+
 _stats_bind() {
   local v=''
   v=$(_stats_state_get bind)
@@ -269,11 +277,10 @@ _stats_group_by_user_json() {
 
 # Pretty-printed overview for humans.
 stats_overview_pretty() {
-  if ! _stats_enabled; then
-    echo -e "${Y:-}[!]${N:-} Traffic stats are disabled."
-    echo "Enable with: sudo sbx stats enable"
+  _stats_enabled || {
+    _stats_disabled_notice with_hint
     return 0
-  fi
+  }
 
   local base='' uptime_s=0 traffic='' mem='' conns=''
   base=$(stats_api_base)
@@ -363,10 +370,10 @@ stats_overview_json() {
 #==============================================================================
 
 stats_connections_pretty() {
-  if ! _stats_enabled; then
-    echo -e "${Y:-}[!]${N:-} Traffic stats are disabled."
+  _stats_enabled || {
+    _stats_disabled_notice
     return 0
-  fi
+  }
   local conns=''
   conns=$(_stats_connections_snapshot)
 
@@ -437,10 +444,10 @@ stats_connections_json() {
 #==============================================================================
 
 stats_users_pretty() {
-  if ! _stats_enabled; then
-    echo -e "${Y:-}[!]${N:-} Traffic stats are disabled."
+  _stats_enabled || {
+    _stats_disabled_notice
     return 0
-  fi
+  }
   local conns='' grouped=''
   conns=$(_stats_connections_snapshot)
   grouped=$(_stats_group_by_user_json "${conns}")
@@ -479,32 +486,10 @@ stats_users_json() {
 # Public: enable / disable
 #==============================================================================
 
-# Flip .stats.enabled to true, regenerate config, restart sing-box.
-stats_enable() {
-  stats_ensure_state_block || return 1
-  local state_file=''
-  state_file=$(_stats_state_file)
-
-  state_json_apply "${state_file}" '.stats.enabled = true' || return 1
-
-  if declare -f write_config >/dev/null 2>&1; then
-    write_config || {
-      err "Config regeneration failed"
-      return 1
-    }
-  fi
-
-  if have systemctl; then
-    systemctl restart sing-box 2>/dev/null &&
-      success "sing-box restarted with Clash API enabled" ||
-      warn "Failed to restart sing-box; run: systemctl restart sing-box"
-  fi
-  msg "Endpoint: $(stats_api_base)"
-  msg "Stats enabled. Use 'sbx stats' to view."
-}
-
-# Flip .stats.enabled to false, regenerate config, restart sing-box.
-stats_disable() {
+# Flip .stats.enabled and, if the value actually changed, regenerate the
+# sing-box config and restart the service. Arg: "true" or "false".
+_stats_set_enabled() {
+  local target="$1" restart_msg="$2"
   local state_file=''
   state_file=$(_stats_state_file)
   [[ -f "${state_file}" ]] || {
@@ -512,7 +497,12 @@ stats_disable() {
     return 1
   }
 
-  state_json_apply "${state_file}" '.stats.enabled = false' || return 1
+  if [[ "$(_stats_state_get enabled)" == "${target}" ]]; then
+    msg "Stats already $([[ "${target}" == "true" ]] && echo enabled || echo disabled); no changes."
+    return 0
+  fi
+
+  state_json_apply "${state_file}" ".stats.enabled = ${target}" || return 1
 
   if declare -f write_config >/dev/null 2>&1; then
     write_config || {
@@ -523,9 +513,20 @@ stats_disable() {
 
   if have systemctl; then
     systemctl restart sing-box 2>/dev/null &&
-      success "sing-box restarted without Clash API" ||
+      success "${restart_msg}" ||
       warn "Failed to restart sing-box; run: systemctl restart sing-box"
   fi
+}
+
+stats_enable() {
+  stats_ensure_state_block || return 1
+  _stats_set_enabled true "sing-box restarted with Clash API enabled" || return 1
+  msg "Endpoint: $(stats_api_base)"
+  msg "Stats enabled. Use 'sbx stats' to view."
+}
+
+stats_disable() {
+  _stats_set_enabled false "sing-box restarted without Clash API" || return 1
   msg "Stats disabled."
 }
 

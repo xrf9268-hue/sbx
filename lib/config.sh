@@ -589,10 +589,14 @@ add_experimental_config() {
   fi
 
   local enabled='false' bind='127.0.0.1' port='9090' secret=''
-  enabled=$(jq -r '.stats.enabled // false' "${state_file}" 2>/dev/null || echo false)
-  bind=$(jq -r '.stats.bind   // "127.0.0.1"' "${state_file}" 2>/dev/null || echo 127.0.0.1)
-  port=$(jq -r '.stats.port   // 9090' "${state_file}" 2>/dev/null || echo 9090)
-  secret=$(jq -r '.stats.secret // ""' "${state_file}" 2>/dev/null || echo '')
+  {
+    IFS=$'\t' read -r enabled bind port secret
+  } < <(jq -r '[
+      (.stats.enabled // false),
+      (.stats.bind    // "127.0.0.1"),
+      (.stats.port    // 9090),
+      (.stats.secret  // "")
+    ] | @tsv' "${state_file}" 2>/dev/null || echo $'false\t127.0.0.1\t9090\t')
 
   if [[ "${enabled}" != "true" || -z "${secret}" ]]; then
     echo "${config}"

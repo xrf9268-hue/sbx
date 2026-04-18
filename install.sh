@@ -1549,19 +1549,6 @@ save_state_info() {
   local trojan_pass=''
   local state_json=''
 
-  # Traffic statistics (Clash API): generate or reuse a random Bearer secret.
-  # SBX_STATS_ENABLE=0 disables the API; the secret is still persisted so
-  # re-enabling does not invalidate previously-bookmarked Web UI sessions.
-  local stats_enabled=true
-  local stats_secret=''
-  [[ "${SBX_STATS_ENABLE:-1}" == "0" ]] && stats_enabled=false
-  if [[ -f "${state_file}" ]]; then
-    stats_secret=$(jq -r '.stats.secret // empty' "${state_file}" 2>/dev/null || true)
-  fi
-  if [[ -z "${stats_secret}" || "${#stats_secret}" -ne 64 ]]; then
-    stats_secret=$(generate_hex_string 32 2>/dev/null || openssl rand -hex 32)
-  fi
-
   if [[ "${REALITY_ONLY_MODE:-0}" != "1" ]]; then
     local enable_ws="${ENABLE_WS:-}"
     local enable_hy2="${ENABLE_HY2:-}"
@@ -1632,10 +1619,6 @@ save_state_info() {
     --arg tunnel_mode "${TUNNEL_MODE:-}" \
     --arg tunnel_hostname "${TUNNEL_HOSTNAME:-}" \
     --argjson tunnel_upstream "${WS_PORT_CHOSEN:-0}" \
-    --argjson stats_enabled "${stats_enabled}" \
-    --arg stats_bind "127.0.0.1" \
-    --argjson stats_port 9090 \
-    --arg stats_secret "${stats_secret}" \
     '{
       version: $version,
       installed_at: $installed_at,
@@ -1691,12 +1674,6 @@ save_state_info() {
         mode: (if $tunnel_mode == "" then null else $tunnel_mode end),
         hostname: (if $tunnel_hostname == "" then null else $tunnel_hostname end),
         upstream_port: (if $tunnel_upstream == 0 then null else $tunnel_upstream end)
-      },
-      stats: {
-        enabled: $stats_enabled,
-        bind: $stats_bind,
-        port: $stats_port,
-        secret: $stats_secret
       }
     }') || return 1
 
@@ -2131,6 +2108,7 @@ install_flow() {
     # (currently: .stats for experimental.clash_api) from state.json.
     save_client_info
     save_state_info
+    stats_ensure_state_block
 
     # Write configuration
     write_config
