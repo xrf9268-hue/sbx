@@ -16,6 +16,10 @@ Single source of truth for coding-agent instructions in this repository.
 ## Setup Commands
 
 ```bash
+# Local test prerequisite
+sudo apt-get update
+sudo apt-get install -y jq
+
 # Install local git hooks (required)
 bash hooks/install-hooks.sh
 
@@ -26,6 +30,11 @@ bash tests/unit/test_bootstrap_constants.sh
 # Docker lifecycle smoke e2e
 bash scripts/e2e/install-lifecycle-smoke.sh
 ```
+
+Local note:
+
+- `jq` is required for `bash tests/test-runner.sh unit` on a clean Ubuntu/WSL machine.
+- The Docker lifecycle smoke script installs its own container dependencies, but host-side unit tests still expect `jq` to be available locally.
 
 ## Code and Shell Standards
 

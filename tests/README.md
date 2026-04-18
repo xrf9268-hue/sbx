@@ -14,6 +14,15 @@ tests/
 
 ## Run tests locally
 
+Local prerequisite:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y jq
+```
+
+`jq` is required for the host-side unit suite. The Docker lifecycle smoke script installs its own container dependencies separately.
+
 ```bash
 # Unit tests
 bash tests/test-runner.sh unit
