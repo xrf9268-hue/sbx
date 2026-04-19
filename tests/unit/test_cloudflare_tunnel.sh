@@ -16,6 +16,8 @@ export CLOUDFLARED_SVC="${TEST_TMP_DIR}/cloudflared.service"
 export CLOUDFLARED_CONF_DIR="${TEST_TMP_DIR}/etc-cloudflared"
 export CLOUDFLARED_CONFIG="${CLOUDFLARED_CONF_DIR}/config.yml"
 export CLOUDFLARED_ENV_FILE="${CLOUDFLARED_CONF_DIR}/tunnel.env"
+export SBX_LOCK_FILE="${TEST_TMP_DIR}/sbx.lock"
+export SBX_STATE_LOCK_FILE="${TEST_TMP_DIR}/sbx-state.lock"
 mkdir -p "${CLOUDFLARED_CONF_DIR}"
 
 # Source modules. Each re-enables strict mode and may install its own EXIT trap;
@@ -238,6 +240,11 @@ fi
 echo ""
 echo "Testing cloudflared_update_state..."
 
+assert_eq "test overrides general lock file" \
+  "${TEST_TMP_DIR}/sbx.lock" "${SBX_LOCK_FILE:-}"
+assert_eq "test overrides state lock file" \
+  "${TEST_TMP_DIR}/sbx-state.lock" "${SBX_STATE_LOCK_FILE:-}"
+
 if command -v jq >/dev/null 2>&1; then
   state_file="${TEST_TMP_DIR}/state.json"
   cat >"${state_file}" <<'JSON'
@@ -256,6 +263,11 @@ JSON
   assert_eq "state.tunnel.mode" "token" "${mode}"
   assert_eq "state.tunnel.hostname" "abc.example.com" "${hostname}"
   assert_eq "state.tunnel.upstream_port" "8444" "${upstream}"
+  if [[ -f "${SBX_STATE_LOCK_FILE}" ]]; then
+    test_result "state update uses test state lock file" "pass"
+  else
+    test_result "state update uses test state lock file" "fail"
+  fi
 
   # Disable path: nulls out hostname/mode but keeps file valid JSON
   TEST_STATE_FILE="${state_file}" cloudflared_update_state "false" "" "" 0 >/dev/null 2>&1

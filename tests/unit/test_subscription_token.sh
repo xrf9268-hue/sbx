@@ -14,11 +14,15 @@ source "${SCRIPT_DIR}/../test_framework.sh"
 TEST_TMP=""
 STATE_FILE_PATH=""
 CACHE_DIR=""
+LOCK_FILE_PATH=""
+STATE_LOCK_FILE_PATH=""
 
 setup_fixture() {
   TEST_TMP=$(mktemp -d /tmp/sbx-sub-token.XXXXXX)
   STATE_FILE_PATH="${TEST_TMP}/state.json"
   CACHE_DIR="${TEST_TMP}/cache"
+  LOCK_FILE_PATH="${TEST_TMP}/sbx.lock"
+  STATE_LOCK_FILE_PATH="${TEST_TMP}/sbx-state.lock"
   mkdir -p "${CACHE_DIR}"
 
   cat >"${STATE_FILE_PATH}" <<'EOF'
@@ -64,6 +68,8 @@ teardown_fixture() {
 _run_subscription() {
   local cmd="$1"
   TEST_STATE_FILE="${STATE_FILE_PATH}" \
+    SBX_LOCK_FILE="${LOCK_FILE_PATH}" \
+    SBX_STATE_LOCK_FILE="${STATE_LOCK_FILE_PATH}" \
     TEST_CLIENT_INFO="${TEST_TMP}/nope" \
     SUB_UNIT_DRY_RUN=1 \
     SUB_CACHE_DIR_OVERRIDE="${CACHE_DIR}" \
@@ -82,6 +88,7 @@ test_enable_generates_token_and_sets_enabled() {
   local token=''
   token=$(jq -r '.subscription.token' "${STATE_FILE_PATH}")
   assert_matches "${token}" '^[a-f0-9]{32}$' "token is 32 hex chars"
+  assert_file_exists "${STATE_LOCK_FILE_PATH}" "subscription_enable uses test state lock file"
   assert_contains "${output}" "http://127.0.0.1:8838/sub/${token}" "url is printed with token"
 }
 

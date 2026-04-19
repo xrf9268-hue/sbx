@@ -16,6 +16,8 @@ source "${SCRIPT_DIR}/../test_framework.sh"
 
 TEST_TMP=""
 STATE_FILE_PATH=""
+LOCK_FILE_PATH=""
+STATE_LOCK_FILE_PATH=""
 
 # A minimal legacy state.json: no `subscription` key at all.
 _write_legacy_state() {
@@ -82,6 +84,8 @@ EOF
 setup_fixture() {
   TEST_TMP=$(mktemp -d /tmp/sbx-sub-schema.XXXXXX)
   STATE_FILE_PATH="${TEST_TMP}/state.json"
+  LOCK_FILE_PATH="${TEST_TMP}/sbx.lock"
+  STATE_LOCK_FILE_PATH="${TEST_TMP}/sbx-state.lock"
 }
 
 teardown_fixture() {
@@ -137,6 +141,8 @@ test_ensure_block_adds_defaults_when_missing() {
   _write_legacy_state
 
   TEST_STATE_FILE="${STATE_FILE_PATH}" \
+    SBX_LOCK_FILE="${LOCK_FILE_PATH}" \
+    SBX_STATE_LOCK_FILE="${STATE_LOCK_FILE_PATH}" \
     bash -c "
       source '${PROJECT_ROOT}/lib/common.sh'
       source '${PROJECT_ROOT}/lib/subscription.sh'
@@ -145,6 +151,8 @@ test_ensure_block_adds_defaults_when_missing() {
 
   assert_success "jq -e '.subscription | type == \"object\"' '${STATE_FILE_PATH}' >/dev/null" \
     "subscription block is added to legacy state.json"
+  assert_success "test -f '${STATE_LOCK_FILE_PATH}'" \
+    "subscription_ensure_state_block uses test state lock file"
   assert_equals "false" "$(jq -r '.subscription.enabled' "${STATE_FILE_PATH}")" \
     "default enabled=false"
   assert_equals "8838" "$(jq -r '.subscription.port' "${STATE_FILE_PATH}")" \
@@ -163,6 +171,8 @@ test_ensure_block_is_idempotent() {
   before=$(jq -c '.subscription' "${STATE_FILE_PATH}")
 
   TEST_STATE_FILE="${STATE_FILE_PATH}" \
+    SBX_LOCK_FILE="${LOCK_FILE_PATH}" \
+    SBX_STATE_LOCK_FILE="${STATE_LOCK_FILE_PATH}" \
     bash -c "
       source '${PROJECT_ROOT}/lib/common.sh'
       source '${PROJECT_ROOT}/lib/subscription.sh'

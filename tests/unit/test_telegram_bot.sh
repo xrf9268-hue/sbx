@@ -21,6 +21,8 @@ export SBX_TG_ENV_FILE="${TEST_TMP_DIR}/telegram.env"
 export SBX_TG_SVC="${TEST_TMP_DIR}/sbx-telegram-bot.service"
 export SBX_TG_BIN="${TEST_TMP_DIR}/sbx-telegram-bot"
 export TEST_STATE_FILE="${TEST_TMP_DIR}/state.json"
+export SBX_LOCK_FILE="${TEST_TMP_DIR}/sbx.lock"
+export SBX_STATE_LOCK_FILE="${TEST_TMP_DIR}/sbx-state.lock"
 
 source "${PROJECT_ROOT}/lib/common.sh" 2>/dev/null || {
   echo "ERROR: Failed to load lib/common.sh"

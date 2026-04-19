@@ -10,9 +10,13 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 source "$SCRIPT_DIR/../test_framework.sh"
 
 TEST_TMP=""
+LOCK_FILE_PATH=""
+STATE_LOCK_FILE_PATH=""
 
 setup_state_persistence_fixture() {
     TEST_TMP=$(mktemp -d /tmp/sbx-install-state.XXXXXX)
+    LOCK_FILE_PATH="${TEST_TMP}/sbx.lock"
+    STATE_LOCK_FILE_PATH="${TEST_TMP}/sbx-state.lock"
 }
 
 teardown_state_persistence_fixture() {
@@ -57,6 +61,8 @@ test_save_state_info_writes_json() {
       source "'"${PROJECT_ROOT}"'/install.sh" >/dev/null 2>&1
       trap - EXIT INT TERM HUP QUIT ERR RETURN
       export TEST_STATE_FILE="'"${TEST_TMP}"'/state.json"
+      export SBX_LOCK_FILE="'"${LOCK_FILE_PATH}"'"
+      export SBX_STATE_LOCK_FILE="'"${STATE_LOCK_FILE_PATH}"'"
       export DOMAIN="example.com"
       export REALITY_ONLY_MODE=0
       export UUID="11111111-2222-3333-4444-555555555555"
@@ -76,6 +82,7 @@ test_save_state_info_writes_json() {
 
     assert_equals "0" "${rc}" "save_state_info command succeeds"
     assert_file_exists "${TEST_TMP}/state.json" "state.json is created"
+    assert_file_exists "${STATE_LOCK_FILE_PATH}" "save_state_info uses test state lock file"
     assert_contains "${output}" "pubkey123" "state.json stores reality public key"
 }
 
@@ -86,6 +93,8 @@ test_save_state_info_acme_marks_ws_hy2_enabled() {
       source "'"${PROJECT_ROOT}"'/install.sh" >/dev/null 2>&1
       trap - EXIT INT TERM HUP QUIT ERR RETURN
       export TEST_STATE_FILE="'"${TEST_TMP}"'/state-acme.json"
+      export SBX_LOCK_FILE="'"${LOCK_FILE_PATH}"'"
+      export SBX_STATE_LOCK_FILE="'"${STATE_LOCK_FILE_PATH}"'"
       export DOMAIN="example.com"
       export REALITY_ONLY_MODE=0
       export ENABLE_WS=1
@@ -107,6 +116,7 @@ test_save_state_info_acme_marks_ws_hy2_enabled() {
 
     assert_equals "0" "${rc}" "save_state_info ACME scenario succeeds"
     assert_file_exists "${TEST_TMP}/state-acme.json" "ACME state.json is created"
+    assert_file_exists "${STATE_LOCK_FILE_PATH}" "ACME save_state_info uses test state lock file"
     assert_contains "${output}" $'true\n8444\ntrue\n8443' "ACME state marks ws/hy2 enabled with ports"
 }
 

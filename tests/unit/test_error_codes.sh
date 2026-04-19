@@ -137,6 +137,8 @@ test_backup_restore_uses_structured_code() {
     local output=''
     set +e
     output=$(bash -c '
+      tmp=$(mktemp -d /tmp/sbx-test-error-codes.XXXXXX)
+      export SBX_LOCK_FILE="${tmp}/sbx.lock"
       source "'"${PROJECT_ROOT}"'/lib/backup.sh" >/dev/null 2>&1
       trap - EXIT INT TERM HUP QUIT ERR RETURN
       backup_restore /tmp/sbx-missing-backup.tar.gz
