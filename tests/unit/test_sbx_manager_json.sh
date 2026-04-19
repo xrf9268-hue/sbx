@@ -31,6 +31,8 @@ HY2_PORT="8443"
 HY2_PASS="hy2pass123"
 TUIC_PORT="8445"
 TUIC_PASS="tuicpass123"
+TROJAN_PORT="8446"
+TROJAN_PASS="trojanpass123"
 CERT_FULLCHAIN="/tmp/fake-fullchain.pem"
 CERT_KEY="/tmp/fake-key.pem"
 EOF
@@ -58,28 +60,49 @@ cat >"${LIB_DIR_STUB}/export.sh" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 load_client_info() {
-  unset WS_ENABLED HY2_ENABLED TUIC_ENABLED WS_PORT HY2_PORT HY2_PASS TUIC_PORT TUIC_PASS CERT_FULLCHAIN CERT_KEY
+  unset REALITY_ENABLED WS_ENABLED HY2_ENABLED TUIC_ENABLED TROJAN_ENABLED WS_PORT HY2_PORT HY2_PASS TUIC_PORT TUIC_PASS TROJAN_PORT TROJAN_PASS CERT_FULLCHAIN CERT_KEY
   source "${TEST_CLIENT_INFO:?}"
-  if [[ -n "${WS_PORT+x}" ]]; then
+  if [[ -n "${REALITY_PORT:-}" ]]; then
+    REALITY_ENABLED="true"
+  else
+    REALITY_ENABLED="false"
+  fi
+  if [[ -n "${WS_PORT:-}" ]]; then
     WS_ENABLED="true"
   else
     WS_ENABLED="false"
   fi
-  if [[ -n "${HY2_PORT+x}" || -n "${HY2_PASS+x}" ]]; then
+  if [[ -n "${HY2_PORT:-}" || -n "${HY2_PASS:-}" ]]; then
     HY2_ENABLED="true"
   else
     HY2_ENABLED="false"
   fi
-  if [[ -n "${TUIC_PORT+x}" || -n "${TUIC_PASS+x}" ]]; then
+  if [[ -n "${TUIC_PORT:-}" || -n "${TUIC_PASS:-}" ]]; then
     TUIC_ENABLED="true"
   else
     TUIC_ENABLED="false"
   fi
-  REALITY_PORT="${REALITY_PORT:-443}"
-  SNI="${SNI:-www.microsoft.com}"
-  WS_PORT="${WS_PORT:-8444}"
-  HY2_PORT="${HY2_PORT:-8443}"
-  TUIC_PORT="${TUIC_PORT:-8445}"
+  if [[ -n "${TROJAN_PORT:-}" || -n "${TROJAN_PASS:-}" ]]; then
+    TROJAN_ENABLED="true"
+  else
+    TROJAN_ENABLED="false"
+  fi
+  if [[ "${REALITY_ENABLED}" == "true" ]]; then
+    REALITY_PORT="${REALITY_PORT:-443}"
+    SNI="${SNI:-www.microsoft.com}"
+  fi
+  if [[ "${WS_ENABLED}" == "true" ]]; then
+    WS_PORT="${WS_PORT:-8444}"
+  fi
+  if [[ "${HY2_ENABLED}" == "true" ]]; then
+    HY2_PORT="${HY2_PORT:-8443}"
+  fi
+  if [[ "${TUIC_ENABLED}" == "true" ]]; then
+    TUIC_PORT="${TUIC_PORT:-8445}"
+  fi
+  if [[ "${TROJAN_ENABLED}" == "true" ]]; then
+    TROJAN_PORT="${TROJAN_PORT:-8446}"
+  fi
 }
 export_uri() {
   case "${1:-all}" in
@@ -89,6 +112,10 @@ export_uri() {
     tuic)
       [[ -n "${TUIC_PORT:-}" && -n "${TUIC_PASS:-}" ]] || return 46
       echo "tuic://tuic-uri"
+      ;;
+    trojan)
+      [[ -n "${TROJAN_PORT:-}" && -n "${TROJAN_PASS:-}" ]] || return 47
+      echo "trojan://trojan-uri"
       ;;
     *) echo "vless://all-uri" ;;
   esac
@@ -202,6 +229,10 @@ test_json_output_commands() {
     assert_equals "8445" "$(echo "$info_json" | jq -r '.protocols.tuic.port')" "info --json includes tuic port"
     assert_equals "tuicpass123" "$(echo "$info_json" | jq -r '.protocols.tuic.password')" "info --json includes tuic password"
     assert_equals "tuic://tuic-uri" "$(echo "$info_json" | jq -r '.protocols.tuic.uri')" "info --json includes tuic URI"
+    assert_equals "true" "$(echo "$info_json" | jq -r '.protocols.trojan.enabled')" "info --json marks trojan enabled"
+    assert_equals "8446" "$(echo "$info_json" | jq -r '.protocols.trojan.port')" "info --json includes trojan port"
+    assert_equals "trojanpass123" "$(echo "$info_json" | jq -r '.protocols.trojan.password')" "info --json includes trojan password"
+    assert_equals "trojan://trojan-uri" "$(echo "$info_json" | jq -r '.protocols.trojan.uri')" "info --json includes trojan URI"
 
     # --json status (global flag form)
     status_json=$(run_sbx_json --json status 2>/dev/null)
@@ -250,6 +281,10 @@ EOF
     assert_equals "null" "$(echo "$info_json_acme" | jq -r '.protocols.tuic.port')" "info --json ACME omits tuic port"
     assert_equals "null" "$(echo "$info_json_acme" | jq -r '.protocols.tuic.password')" "info --json ACME omits tuic password"
     assert_equals "null" "$(echo "$info_json_acme" | jq -r '.protocols.tuic.uri')" "info --json ACME omits tuic URI"
+    assert_equals "false" "$(echo "$info_json_acme" | jq -r '.protocols.trojan.enabled')" "info --json ACME marks trojan disabled"
+    assert_equals "null" "$(echo "$info_json_acme" | jq -r '.protocols.trojan.port')" "info --json ACME omits trojan port"
+    assert_equals "null" "$(echo "$info_json_acme" | jq -r '.protocols.trojan.password')" "info --json ACME omits trojan password"
+    assert_equals "null" "$(echo "$info_json_acme" | jq -r '.protocols.trojan.uri')" "info --json ACME omits trojan URI"
 }
 
 main() {

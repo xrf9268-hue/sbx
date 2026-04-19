@@ -1546,6 +1546,7 @@ save_state_info() {
   local server_ip=''
   local ws_enabled=false
   local hy2_enabled=false
+  local reality_enabled=false
   local cert_path=''
   local cert_key=''
   local ws_port=''
@@ -1555,6 +1556,7 @@ save_state_info() {
   [[ "${REALITY_ONLY_MODE:-0}" == "1" ]] && mode="reality_only"
   installed_at=$(date -Iseconds 2>/dev/null || date)
   resolved_version=$(get_installed_version 2>/dev/null || echo "")
+  [[ "${ENABLE_REALITY:-1}" == "1" ]] && reality_enabled=true
 
   if validate_ip_address "${DOMAIN}" >/dev/null 2>&1; then
     server_ip="${DOMAIN}"
@@ -1617,6 +1619,7 @@ save_state_info() {
     --arg reality_public_key "${PUB}" \
     --arg reality_short_id "${SID}" \
     --arg reality_sni "${SNI:-${SNI_DEFAULT}}" \
+    --argjson reality_enabled "${reality_enabled}" \
     --argjson reality_port "${REALITY_PORT_CHOSEN:-0}" \
     --arg default_user_name "default" \
     --argjson ws_enabled "${ws_enabled}" \
@@ -1651,8 +1654,8 @@ save_state_info() {
       },
       protocols: {
         reality: {
-          enabled: true,
-          port: (if $reality_port == 0 then null else $reality_port end),
+          enabled: $reality_enabled,
+          port: (if $reality_enabled and $reality_port != 0 then $reality_port else null end),
           uuid: $reality_uuid,
           users: [{name: $default_user_name, uuid: $reality_uuid, created_at: $installed_at}],
           public_key: $reality_public_key,

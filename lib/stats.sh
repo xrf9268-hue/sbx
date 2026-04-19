@@ -74,6 +74,60 @@ _stats_secret() {
   _stats_state_get secret
 }
 
+_stats_single_reality_user_name() {
+  local state_file=''
+  state_file=$(_stats_state_file)
+  [[ -f "${state_file}" ]] || {
+    echo ""
+    return 0
+  }
+  have jq || {
+    echo ""
+    return 0
+  }
+
+  jq -r '
+    (.protocols.reality.users // null) as $users
+    | if ($users | type) == "array" then
+        if ($users | length) == 1 and (($users[0].name // "") != "") then
+          $users[0].name
+        else
+          ""
+        end
+      elif (.protocols.reality.uuid // empty) != "" then
+        "default"
+      else
+        ""
+      end
+  ' "${state_file}" 2>/dev/null || echo ""
+}
+
+_stats_connections_with_resolved_user_json() {
+  local conns_json="$1"
+  local fallback_reality_user=''
+  fallback_reality_user=$(_stats_single_reality_user_name)
+
+  echo "${conns_json}" | jq --arg fallback_reality_user "${fallback_reality_user}" '
+    def resolved_user:
+      (.metadata.user // "") as $user
+      | if $user != "" then
+          $user
+        elif $fallback_reality_user != "" and (
+          (.metadata.type // "") == "vless/in-reality" or
+          (.metadata.type // "") == "vless/in-ws" or
+          (.metadata.inboundTag // "") == "in-reality" or
+          (.metadata.inboundTag // "") == "in-ws" or
+          (.metadata.inboundName // "") == "in-reality" or
+          (.metadata.inboundName // "") == "in-ws"
+        ) then
+          $fallback_reality_user
+        else
+          "unknown"
+        end;
+    .connections = ((.connections // []) | map(. + {resolved_user: resolved_user}))
+  '
+}
+
 stats_api_base() {
   local bind='' port=''
   bind=$(_stats_bind)
@@ -246,11 +300,12 @@ _stats_human_duration() {
 # in metadata.user for Reality/WS inbounds.
 _stats_group_by_user_json() {
   local conns_json="$1"
+  conns_json=$(_stats_connections_with_resolved_user_json "${conns_json}")
   echo "${conns_json}" | jq '
     (.connections // [])
-    | group_by(.metadata.user // "")
+    | group_by(.resolved_user // "unknown")
     | map({
-        user: (.[0].metadata.user // "unknown"),
+        user: (.[0].resolved_user // "unknown"),
         count: length,
         upload: (map(.upload // 0) | add // 0),
         download: (map(.download // 0) | add // 0)
@@ -364,6 +419,7 @@ stats_connections_pretty() {
   }
   local conns=''
   conns=$(_stats_connections_snapshot)
+  conns=$(_stats_connections_with_resolved_user_json "${conns}")
 
   local count=0
   count=$(echo "${conns}" | jq -r '(.connections // []) | length')
@@ -399,7 +455,7 @@ stats_connections_pretty() {
         ((.metadata.host // .metadata.destinationIP // "") + ":" + (.metadata.destinationPort // "")),
         (.rule // ""),
         (.metadata.inboundName // .metadata.inboundTag // .metadata.type // ""),
-        (.metadata.user // ""),
+        (.resolved_user // .metadata.user // ""),
         (.upload // 0),
         (.download // 0),
         (.start // "")
@@ -418,6 +474,7 @@ stats_connections_json() {
   fi
   local conns=''
   conns=$(_stats_connections_snapshot)
+  conns=$(_stats_connections_with_resolved_user_json "${conns}")
   echo "${conns}" | jq '{
     enabled: true,
     count: ((.connections // []) | length),

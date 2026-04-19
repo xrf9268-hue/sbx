@@ -276,8 +276,10 @@ _tg_get_updates() {
       -o "${output_file}" \
       --data-urlencode "offset=${offset}" \
       --data-urlencode "timeout=${SBX_TG_POLL_TIMEOUT}" \
-      "${SBX_TG_API_BASE}/bot${BOT_TOKEN}/getUpdates" \
-      2>/dev/null; then
+      --config - \
+      2>/dev/null <<EOF; then
+url = "${SBX_TG_API_BASE}/bot${BOT_TOKEN}/getUpdates"
+EOF
       return 0
     fi
 
@@ -317,15 +319,19 @@ _tg_send_message() {
   while [[ ${attempts} -lt ${max_attempts} ]]; do
     attempts=$((attempts + 1))
     local http_code=""
-    http_code=$("${curl_cmd}" -sS \
-      -o "${body_file}" \
-      -w '%{http_code}' \
-      --max-time 30 \
-      --connect-timeout 10 \
-      --data-urlencode "chat_id=${chat_id}" \
-      --data-urlencode "text=${text}" \
-      "${SBX_TG_API_BASE}/bot${BOT_TOKEN}/sendMessage" \
-      2>/dev/null) || http_code="000"
+    http_code=$(
+      "${curl_cmd}" -sS \
+        -o "${body_file}" \
+        -w '%{http_code}' \
+        --max-time 30 \
+        --connect-timeout 10 \
+        --data-urlencode "chat_id=${chat_id}" \
+        --data-urlencode "text=${text}" \
+        --config - \
+        2>/dev/null <<EOF
+url = "${SBX_TG_API_BASE}/bot${BOT_TOKEN}/sendMessage"
+EOF
+    ) || http_code="000"
 
     if [[ "${http_code}" == "200" ]]; then
       return 0

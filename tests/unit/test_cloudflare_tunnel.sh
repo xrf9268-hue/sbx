@@ -16,6 +16,8 @@ export CLOUDFLARED_SVC="${TEST_TMP_DIR}/cloudflared.service"
 export CLOUDFLARED_CONF_DIR="${TEST_TMP_DIR}/etc-cloudflared"
 export CLOUDFLARED_CONFIG="${CLOUDFLARED_CONF_DIR}/config.yml"
 export CLOUDFLARED_ENV_FILE="${CLOUDFLARED_CONF_DIR}/tunnel.env"
+export SBX_LOCK_FILE="${TEST_TMP_DIR}/sbx.lock"
+export SBX_STATE_LOCK_FILE="${TEST_TMP_DIR}/sbx-state.lock"
 mkdir -p "${CLOUDFLARED_CONF_DIR}"
 
 # Source modules. Each re-enables strict mode and may install its own EXIT trap;
@@ -110,11 +112,12 @@ cloudflared_write_config_yml "h.example.com" 8444 >/dev/null 2>&1
 yml_content=""
 [[ -f "${CLOUDFLARED_CONFIG}" ]] && yml_content=$(cat "${CLOUDFLARED_CONFIG}")
 assert_contains "config.yml has hostname" "hostname: h.example.com" "${yml_content}"
-assert_contains "config.yml has localhost upstream" "service: http://127.0.0.1:8444" "${yml_content}"
+assert_contains "config.yml has localhost upstream" "service: https://127.0.0.1:8444" "${yml_content}"
+assert_contains "config.yml disables origin TLS verification" "noTLSVerify: true" "${yml_content}"
 assert_contains "config.yml has 404 catch-all" "service: http_status:404" "${yml_content}"
 
 perm=$(stat -c '%a' "${CLOUDFLARED_CONFIG}" 2>/dev/null || stat -f '%Lp' "${CLOUDFLARED_CONFIG}" 2>/dev/null)
-assert_eq "config.yml is mode 600" "600" "${perm}"
+assert_eq "config.yml is mode 644" "644" "${perm}"
 
 #==============================================================================
 # Upstream port resolution (issue #121)
@@ -142,7 +145,7 @@ JSON
   yml_state=""
   [[ -f "${CLOUDFLARED_CONFIG}" ]] && yml_state=$(cat "${CLOUDFLARED_CONFIG}")
   assert_contains "config.yml default uses state.json port" \
-    "service: http://127.0.0.1:9443" "${yml_state}"
+    "service: https://127.0.0.1:9443" "${yml_state}"
 
   # Quick-mode unit must also honor state.json.
   TEST_STATE_FILE="${resolve_state_file}" \
@@ -150,7 +153,7 @@ JSON
   unit_state=""
   [[ -f "${CLOUDFLARED_SVC}" ]] && unit_state=$(cat "${CLOUDFLARED_SVC}")
   assert_contains "quick-mode unit uses state.json port" \
-    "tunnel --url http://127.0.0.1:9443" "${unit_state}"
+    "tunnel --url https://127.0.0.1:9443 --no-tls-verify" "${unit_state}"
 
   # Explicit CLI override must still win.
   TEST_STATE_FILE="${resolve_state_file}" \
@@ -158,7 +161,7 @@ JSON
   yml_override=""
   [[ -f "${CLOUDFLARED_CONFIG}" ]] && yml_override=$(cat "${CLOUDFLARED_CONFIG}")
   assert_contains "explicit port overrides state.json" \
-    "service: http://127.0.0.1:7777" "${yml_override}"
+    "service: https://127.0.0.1:7777" "${yml_override}"
 
   # Missing state file falls back to WS_PORT_DEFAULT (compile-time default).
   # WS_PORT_DEFAULT is readonly after bootstrap; read it instead of overriding.
@@ -214,6 +217,7 @@ assert_contains "unit has [Unit]" "[Unit]" "${unit_content}"
 assert_contains "unit has [Service]" "[Service]" "${unit_content}"
 assert_contains "unit has [Install]" "[Install]" "${unit_content}"
 assert_contains "unit references EnvironmentFile" "EnvironmentFile=-${CLOUDFLARED_ENV_FILE}" "${unit_content}"
+assert_contains "token mode ExecStart pins config path" "--config ${CLOUDFLARED_CONFIG}" "${unit_content}"
 assert_contains "unit ExecStart uses tunnel run --token" 'tunnel run --token ${TUNNEL_TOKEN}' "${unit_content}"
 assert_contains "unit hardened with NoNewPrivileges" "NoNewPrivileges=true" "${unit_content}"
 assert_contains "unit hardened with ProtectSystem" "ProtectSystem=strict" "${unit_content}"
@@ -221,7 +225,8 @@ assert_contains "unit hardened with ProtectSystem" "ProtectSystem=strict" "${uni
 cloudflared_write_service_file "quick" >/dev/null 2>&1
 unit_quick=""
 [[ -f "${CLOUDFLARED_SVC}" ]] && unit_quick=$(cat "${CLOUDFLARED_SVC}")
-assert_contains "quick mode ExecStart uses --url" "tunnel --url http://127.0.0.1:" "${unit_quick}"
+assert_contains "quick mode ExecStart uses https origin" "tunnel --url https://127.0.0.1:" "${unit_quick}"
+assert_contains "quick mode ExecStart disables origin TLS verification" "--no-tls-verify" "${unit_quick}"
 
 # Negative: bogus mode
 out=$(cloudflared_write_service_file "bogus" 2>&1)
@@ -237,6 +242,11 @@ fi
 #==============================================================================
 echo ""
 echo "Testing cloudflared_update_state..."
+
+assert_eq "test overrides general lock file" \
+  "${TEST_TMP_DIR}/sbx.lock" "${SBX_LOCK_FILE:-}"
+assert_eq "test overrides state lock file" \
+  "${TEST_TMP_DIR}/sbx-state.lock" "${SBX_STATE_LOCK_FILE:-}"
 
 if command -v jq >/dev/null 2>&1; then
   state_file="${TEST_TMP_DIR}/state.json"
@@ -256,6 +266,11 @@ JSON
   assert_eq "state.tunnel.mode" "token" "${mode}"
   assert_eq "state.tunnel.hostname" "abc.example.com" "${hostname}"
   assert_eq "state.tunnel.upstream_port" "8444" "${upstream}"
+  if [[ -f "${SBX_STATE_LOCK_FILE}" ]]; then
+    test_result "state update uses test state lock file" "pass"
+  else
+    test_result "state update uses test state lock file" "fail"
+  fi
 
   # Disable path: nulls out hostname/mode but keeps file valid JSON
   TEST_STATE_FILE="${state_file}" cloudflared_update_state "false" "" "" 0 >/dev/null 2>&1

@@ -235,7 +235,10 @@ cloudflared_write_env_file() {
 }
 
 # cloudflared_write_config_yml <hostname> [upstream_port]
-# Writes a minimal named-tunnel config.yml routing <hostname> -> local WS.
+# Writes a minimal named-tunnel config.yml routing <hostname> -> local WS-TLS.
+# sing-box terminates TLS on the WS inbound, so cloudflared must speak HTTPS to
+# the local origin. We disable origin verification because sbx commonly uses a
+# self-signed or domain-mismatched cert on loopback.
 cloudflared_write_config_yml() {
   local hostname="$1"
   local upstream_port="${2:-$(cloudflared_resolve_upstream_port)}"
@@ -251,10 +254,12 @@ cloudflared_write_config_yml() {
 # Routes public hostname traffic to the local sing-box WebSocket inbound.
 ingress:
   - hostname: ${hostname}
-    service: http://127.0.0.1:${upstream_port}
+    service: https://127.0.0.1:${upstream_port}
+    originRequest:
+      noTLSVerify: true
   - service: http_status:404
 EOF
-  chmod 600 "${CLOUDFLARED_CONFIG}"
+  chmod 644 "${CLOUDFLARED_CONFIG}"
 }
 
 # cloudflared_write_service_file <mode>
@@ -267,12 +272,12 @@ cloudflared_write_service_file() {
     token)
       # The token is pulled from EnvironmentFile at start-time so it never
       # appears on the command line (and therefore not in `ps`/journal).
-      exec_line='ExecStart=/usr/local/bin/cloudflared --no-autoupdate tunnel run --token ${TUNNEL_TOKEN}'
+      exec_line="ExecStart=/usr/local/bin/cloudflared --config ${CLOUDFLARED_CONFIG} --no-autoupdate tunnel run --token \${TUNNEL_TOKEN}"
       ;;
     quick)
       local quick_port=""
       quick_port=$(cloudflared_resolve_upstream_port)
-      exec_line="ExecStart=/usr/local/bin/cloudflared --no-autoupdate tunnel --url http://127.0.0.1:${quick_port}"
+      exec_line="ExecStart=/usr/local/bin/cloudflared --no-autoupdate tunnel --url https://127.0.0.1:${quick_port} --no-tls-verify"
       ;;
     *)
       err "cloudflared_write_service_file: unknown mode '${mode}'"

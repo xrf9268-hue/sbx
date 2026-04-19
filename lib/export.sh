@@ -39,7 +39,7 @@ _export_die() {
 # Load client info from saved configuration with strict validation
 load_client_info() {
   local client_info_file='' state_file='' resolved='' owner='' perm='' invalid_line=''
-  local ws_enabled_raw='' hy2_enabled_raw='' tuic_enabled_raw='' trojan_enabled_raw=''
+  local reality_enabled_raw='' ws_enabled_raw='' hy2_enabled_raw='' tuic_enabled_raw='' trojan_enabled_raw=''
   local -a state_fields=()
   local allowed_keys_regex="^(DOMAIN|UUID|PUBLIC_KEY|SHORT_ID|SNI|REALITY_PORT|WS_PORT|HY2_PORT|HY2_PASS|TUIC_PORT|TUIC_PASS|TROJAN_PORT|TROJAN_PASS|CERT_FULLCHAIN|CERT_KEY|TUNNEL_ENABLED|TUNNEL_HOSTNAME|TUNNEL_MODE)$"
 
@@ -53,9 +53,14 @@ load_client_info() {
       "Ensure state path exists and is readable."
     perm=$(stat -c '%a' "${resolved}" 2>/dev/null || stat -f '%Lp' "${resolved}" 2>/dev/null) || _export_die "SBX-EXPORT-003" "Unable to read state file permissions" \
       "Check file permissions and stat command availability."
-    [[ "${perm}" == "600" ]] || _export_die "SBX-EXPORT-004" "State file permissions must be 600 (found ${perm})" \
-      "Restrict state file permissions to owner read/write only." \
-      "chmod 600 /etc/sing-box/state.json"
+    case "${perm}" in
+      600 | 640) ;;
+      *)
+        _export_die "SBX-EXPORT-004" "State file permissions must be 600 or 640 (found ${perm})" \
+          "Restrict state file permissions to owner read/write, with optional group-read for subscription." \
+          "chmod 600 /etc/sing-box/state.json"
+        ;;
+    esac
     [[ -s "${resolved}" ]] || _export_die "SBX-EXPORT-005" "State file is empty" \
       "Re-run install or restore state.json from backup."
 
@@ -100,6 +105,7 @@ load_client_info() {
           (.tunnel.enabled // false | tostring),
           (.tunnel.hostname // ""),
           (.tunnel.mode // ""),
+          (.protocols.reality.enabled | if . == null then "" else tostring end),
           (.protocols.ws_tls.enabled | if . == null then "" else tostring end),
           (.protocols.hysteria2.enabled | if . == null then "" else tostring end),
           (.protocols.tuic.enabled | if . == null then "" else tostring end),
@@ -110,7 +116,7 @@ load_client_info() {
     ) || _export_die "SBX-EXPORT-010" "Failed to extract client info from state file" \
       "Repair or regenerate state.json."
 
-    [[ "${#state_fields[@]}" -eq 28 ]] || _export_die "SBX-EXPORT-011" "Unexpected state data shape while loading client info" \
+    [[ "${#state_fields[@]}" -eq 29 ]] || _export_die "SBX-EXPORT-011" "Unexpected state data shape while loading client info" \
       "Repair or regenerate state.json."
 
     DOMAIN="${state_fields[0]}"
@@ -137,10 +143,19 @@ load_client_info() {
     TUNNEL_ENABLED="${state_fields[21]}"
     TUNNEL_HOSTNAME="${state_fields[22]}"
     TUNNEL_MODE="${state_fields[23]}"
-    ws_enabled_raw="${state_fields[24]}"
-    hy2_enabled_raw="${state_fields[25]}"
-    tuic_enabled_raw="${state_fields[26]}"
-    trojan_enabled_raw="${state_fields[27]}"
+    reality_enabled_raw="${state_fields[24]}"
+    ws_enabled_raw="${state_fields[25]}"
+    hy2_enabled_raw="${state_fields[26]}"
+    tuic_enabled_raw="${state_fields[27]}"
+    trojan_enabled_raw="${state_fields[28]}"
+
+    case "${reality_enabled_raw}" in
+      true | 1 | yes | on) REALITY_ENABLED="true" ;;
+      false | 0 | no | off) REALITY_ENABLED="false" ;;
+      *)
+        [[ -n "${REALITY_PORT:-}" ]] && REALITY_ENABLED="true" || REALITY_ENABLED="false"
+        ;;
+    esac
 
     case "${ws_enabled_raw}" in
       true | 1 | yes | on) WS_ENABLED="true" ;;
@@ -174,12 +189,40 @@ load_client_info() {
         ;;
     esac
 
-    REALITY_PORT="${REALITY_PORT:-${REALITY_PORT_DEFAULT:-443}}"
-    SNI="${SNI:-${SNI_DEFAULT:-www.microsoft.com}}"
-    WS_PORT="${WS_PORT:-${WS_PORT_DEFAULT:-8444}}"
-    HY2_PORT="${HY2_PORT:-${HY2_PORT_DEFAULT:-8443}}"
-    TUIC_PORT="${TUIC_PORT:-${TUIC_PORT_DEFAULT:-8445}}"
-    TROJAN_PORT="${TROJAN_PORT:-${TROJAN_PORT_DEFAULT:-8446}}"
+    if [[ "${REALITY_ENABLED}" == "true" ]]; then
+      REALITY_PORT="${REALITY_PORT:-${REALITY_PORT_DEFAULT:-443}}"
+      SNI="${SNI:-${SNI_DEFAULT:-www.microsoft.com}}"
+    else
+      REALITY_PORT=''
+    fi
+
+    if [[ "${WS_ENABLED}" == "true" ]]; then
+      WS_PORT="${WS_PORT:-${WS_PORT_DEFAULT:-8444}}"
+    else
+      WS_PORT=''
+    fi
+
+    if [[ "${HY2_ENABLED}" == "true" ]]; then
+      HY2_PORT="${HY2_PORT:-${HY2_PORT_DEFAULT:-8443}}"
+    else
+      HY2_PORT=''
+      HY2_PASS=''
+      HY2_PORT_RANGE=''
+    fi
+
+    if [[ "${TUIC_ENABLED}" == "true" ]]; then
+      TUIC_PORT="${TUIC_PORT:-${TUIC_PORT_DEFAULT:-8445}}"
+    else
+      TUIC_PORT=''
+      TUIC_PASS=''
+    fi
+
+    if [[ "${TROJAN_ENABLED}" == "true" ]]; then
+      TROJAN_PORT="${TROJAN_PORT:-${TROJAN_PORT_DEFAULT:-8446}}"
+    else
+      TROJAN_PORT=''
+      TROJAN_PASS=''
+    fi
     return 0
   fi
 
@@ -254,37 +297,70 @@ load_client_info() {
     printf -v "${key}" '%s' "${client_info_map[${key}]}"
   done
 
-  if [[ -v client_info_map[WS_PORT] ]]; then
+  if [[ -n "${REALITY_PORT:-}" ]]; then
+    REALITY_ENABLED="true"
+  else
+    REALITY_ENABLED="false"
+  fi
+
+  if [[ -n "${WS_PORT:-}" ]]; then
     WS_ENABLED="true"
   else
     WS_ENABLED="false"
   fi
 
-  if [[ -v client_info_map[HY2_PORT] || -v client_info_map[HY2_PASS] ]]; then
+  if [[ -n "${HY2_PORT:-}" || -n "${HY2_PASS:-}" ]]; then
     HY2_ENABLED="true"
   else
     HY2_ENABLED="false"
   fi
 
-  if [[ -v client_info_map[TUIC_PORT] || -v client_info_map[TUIC_PASS] ]]; then
+  if [[ -n "${TUIC_PORT:-}" || -n "${TUIC_PASS:-}" ]]; then
     TUIC_ENABLED="true"
   else
     TUIC_ENABLED="false"
   fi
 
-  if [[ -v client_info_map[TROJAN_PORT] || -v client_info_map[TROJAN_PASS] ]]; then
+  if [[ -n "${TROJAN_PORT:-}" || -n "${TROJAN_PASS:-}" ]]; then
     TROJAN_ENABLED="true"
   else
     TROJAN_ENABLED="false"
   fi
 
-  # Set defaults for missing variables to ensure valid URIs
-  REALITY_PORT="${REALITY_PORT:-${REALITY_PORT_DEFAULT:-443}}"
-  SNI="${SNI:-${SNI_DEFAULT:-www.microsoft.com}}"
-  WS_PORT="${WS_PORT:-${WS_PORT_DEFAULT:-8444}}"
-  HY2_PORT="${HY2_PORT:-${HY2_PORT_DEFAULT:-8443}}"
-  TUIC_PORT="${TUIC_PORT:-${TUIC_PORT_DEFAULT:-8445}}"
-  TROJAN_PORT="${TROJAN_PORT:-${TROJAN_PORT_DEFAULT:-8446}}"
+  if [[ "${REALITY_ENABLED}" == "true" ]]; then
+    REALITY_PORT="${REALITY_PORT:-${REALITY_PORT_DEFAULT:-443}}"
+    SNI="${SNI:-${SNI_DEFAULT:-www.microsoft.com}}"
+  else
+    REALITY_PORT=''
+  fi
+
+  if [[ "${WS_ENABLED}" == "true" ]]; then
+    WS_PORT="${WS_PORT:-${WS_PORT_DEFAULT:-8444}}"
+  else
+    WS_PORT=''
+  fi
+
+  if [[ "${HY2_ENABLED}" == "true" ]]; then
+    HY2_PORT="${HY2_PORT:-${HY2_PORT_DEFAULT:-8443}}"
+  else
+    HY2_PORT=''
+    HY2_PASS=''
+    HY2_PORT_RANGE=''
+  fi
+
+  if [[ "${TUIC_ENABLED}" == "true" ]]; then
+    TUIC_PORT="${TUIC_PORT:-${TUIC_PORT_DEFAULT:-8445}}"
+  else
+    TUIC_PORT=''
+    TUIC_PASS=''
+  fi
+
+  if [[ "${TROJAN_ENABLED}" == "true" ]]; then
+    TROJAN_PORT="${TROJAN_PORT:-${TROJAN_PORT_DEFAULT:-8446}}"
+  else
+    TROJAN_PORT=''
+    TROJAN_PASS=''
+  fi
 }
 
 #==============================================================================
@@ -299,6 +375,8 @@ export_v2rayn_json() {
   local config=""
   case "${protocol}" in
     reality)
+      [[ "${REALITY_ENABLED:-false}" == "true" && -n "${REALITY_PORT:-}" ]] || _export_die "SBX-EXPORT-039" "Reality not configured" \
+        "Enable Reality during install or export another protocol."
       config=$(
         cat <<EOF
 {
@@ -337,7 +415,7 @@ EOF
       )
       ;;
     ws)
-      [[ -n "${WS_PORT}" ]] || _export_die "SBX-EXPORT-040" "WS-TLS not configured" \
+      [[ "${WS_ENABLED:-false}" == "true" && -n "${WS_PORT:-}" ]] || _export_die "SBX-EXPORT-040" "WS-TLS not configured" \
         "Enable WS during install or export Reality only."
       local ws_host="" ws_port=""
       ws_host=$(_effective_ws_host)
@@ -396,9 +474,13 @@ EOF
 # Generate Clash/Clash Meta YAML configuration
 export_clash_yaml() {
   load_client_info
+  local ws_host='' ws_port='' proxy_name=''
+  local -a proxy_names=()
 
-  cat <<EOF
-proxies:
+  echo "proxies:"
+
+  if [[ "${REALITY_ENABLED:-false}" == "true" && -n "${REALITY_PORT:-}" ]]; then
+    cat <<EOF
   - name: "sbx-reality-${DOMAIN}"
     type: vless
     server: ${DOMAIN}
@@ -413,11 +495,10 @@ proxies:
     client-fingerprint: ${REALITY_FINGERPRINT_DEFAULT}
     servername: ${SNI}
 EOF
+    proxy_names+=("\"sbx-reality-${DOMAIN}\"")
+  fi
 
-  # WS-TLS proxy: rendered when WS is configured and either a local cert
-  # exists (direct mode) or Cloudflare Tunnel terminates TLS at the edge.
-  if [[ -n "${WS_PORT}" && (-n "${CERT_FULLCHAIN}" || "${TUNNEL_ENABLED:-false}" == "true") ]]; then
-    local ws_host="" ws_port=""
+  if [[ "${WS_ENABLED:-false}" == "true" && -n "${WS_PORT:-}" ]]; then
     ws_host=$(_effective_ws_host)
     ws_port=$(_effective_ws_port)
     cat <<EOF
@@ -436,9 +517,10 @@ EOF
     servername: ${ws_host}
     client-fingerprint: ${REALITY_FINGERPRINT_DEFAULT}
 EOF
+    proxy_names+=("\"sbx-ws-${DOMAIN}\"")
   fi
 
-  if [[ -n "${WS_PORT}" && -n "${CERT_FULLCHAIN}" ]]; then
+  if [[ "${HY2_ENABLED:-false}" == "true" && -n "${HY2_PORT:-}" && -n "${HY2_PASS:-}" ]]; then
     cat <<EOF
 
   - name: "sbx-hysteria2-${DOMAIN}"
@@ -454,6 +536,7 @@ EOF
     ports: ${HY2_PORT_RANGE}
 EOF
     fi
+    proxy_names+=("\"sbx-hysteria2-${DOMAIN}\"")
   fi
 
   if [[ "${TUIC_ENABLED:-false}" == "true" && -n "${TUIC_PORT:-}" && -n "${TUIC_PASS:-}" ]]; then
@@ -471,6 +554,7 @@ EOF
     sni: ${DOMAIN}
     skip-cert-verify: false
 EOF
+    proxy_names+=("\"sbx-tuic-${DOMAIN}\"")
   fi
 
   if [[ "${TROJAN_ENABLED:-false}" == "true" && -n "${TROJAN_PORT:-}" && -n "${TROJAN_PASS:-}" ]]; then
@@ -485,6 +569,7 @@ EOF
     skip-cert-verify: false
     client-fingerprint: ${REALITY_FINGERPRINT_DEFAULT}
 EOF
+    proxy_names+=("\"sbx-trojan-${DOMAIN}\"")
   fi
 
   cat <<EOF
@@ -493,31 +578,11 @@ proxy-groups:
   - name: "sbx-lite"
     type: select
     proxies:
-      - "sbx-reality-${DOMAIN}"
 EOF
 
-  if [[ -n "${WS_PORT}" && (-n "${CERT_FULLCHAIN}" || "${TUNNEL_ENABLED:-false}" == "true") ]]; then
-    cat <<EOF
-      - "sbx-ws-${DOMAIN}"
-EOF
-  fi
-  if [[ -n "${WS_PORT}" && -n "${CERT_FULLCHAIN}" ]]; then
-    cat <<EOF
-      - "sbx-hysteria2-${DOMAIN}"
-EOF
-  fi
-
-  if [[ "${TUIC_ENABLED:-false}" == "true" ]]; then
-    cat <<EOF
-      - "sbx-tuic-${DOMAIN}"
-EOF
-  fi
-
-  if [[ "${TROJAN_ENABLED:-false}" == "true" ]]; then
-    cat <<EOF
-      - "sbx-trojan-${DOMAIN}"
-EOF
-  fi
+  for proxy_name in "${proxy_names[@]}"; do
+    echo "      - ${proxy_name}"
+  done
 }
 
 #==============================================================================
@@ -554,15 +619,17 @@ export_uri() {
 
   case "${protocol}" in
     reality)
+      [[ "${REALITY_ENABLED:-false}" == "true" && -n "${REALITY_PORT:-}" ]] || _export_die "SBX-EXPORT-039" "Reality not configured" \
+        "Enable Reality during install or export another protocol."
       echo "vless://${UUID}@${DOMAIN}:${REALITY_PORT}?encryption=none&security=reality&flow=${REALITY_FLOW_VISION}&sni=${SNI}&pbk=${PUBLIC_KEY}&sid=${SHORT_ID}&type=tcp&fp=${REALITY_FINGERPRINT_DEFAULT}#Reality-${DOMAIN}"
       ;;
     ws)
-      [[ -n "${WS_PORT}" ]] || _export_die "SBX-EXPORT-040" "WS-TLS not configured" \
+      [[ "${WS_ENABLED:-false}" == "true" && -n "${WS_PORT:-}" ]] || _export_die "SBX-EXPORT-040" "WS-TLS not configured" \
         "Enable WS during install or export Reality only."
       echo "vless://${UUID}@${ws_host}:${ws_port}?encryption=none&security=tls&type=ws&host=${ws_host}&path=/ws&sni=${ws_host}&fp=${REALITY_FINGERPRINT_DEFAULT}#WS-TLS-${ws_host}"
       ;;
     hysteria2 | hy2)
-      [[ -n "${HY2_PORT}" ]] || _export_die "SBX-EXPORT-042" "Hysteria2 not configured" \
+      [[ "${HY2_ENABLED:-false}" == "true" && -n "${HY2_PORT:-}" && -n "${HY2_PASS:-}" ]] || _export_die "SBX-EXPORT-042" "Hysteria2 not configured" \
         "Enable Hysteria2 during install or export Reality only."
       local hy2_uri="hysteria2://${HY2_PASS}@${DOMAIN}:${HY2_PORT}/?sni=${DOMAIN}&alpn=h3&insecure=0"
       [[ -n "${HY2_PORT_RANGE:-}" ]] && hy2_uri+="&mport=${HY2_PORT_RANGE}"
@@ -580,11 +647,21 @@ export_uri() {
       echo "trojan://${TROJAN_PASS}@${DOMAIN}:${TROJAN_PORT}?sni=${DOMAIN}&security=tls&type=tcp&fp=${REALITY_FINGERPRINT_DEFAULT}#Trojan-${DOMAIN}"
       ;;
     all)
-      export_uri reality
-      [[ -n "${WS_PORT}" ]] && export_uri ws
-      [[ -n "${HY2_PORT}" ]] && export_uri hy2
-      [[ "${TUIC_ENABLED:-false}" == "true" ]] && export_uri tuic
-      [[ "${TROJAN_ENABLED:-false}" == "true" ]] && export_uri trojan
+      if [[ "${REALITY_ENABLED:-false}" == "true" ]]; then
+        export_uri reality
+      fi
+      if [[ "${WS_ENABLED:-false}" == "true" ]]; then
+        export_uri ws
+      fi
+      if [[ "${HY2_ENABLED:-false}" == "true" ]]; then
+        export_uri hy2
+      fi
+      if [[ "${TUIC_ENABLED:-false}" == "true" ]]; then
+        export_uri tuic
+      fi
+      if [[ "${TROJAN_ENABLED:-false}" == "true" ]]; then
+        export_uri trojan
+      fi
       ;;
     *)
       _export_die "SBX-EXPORT-043" "Invalid protocol: ${protocol} (use: reality, ws, hy2, tuic, trojan, all)" \
@@ -609,19 +686,20 @@ export_qr_codes() {
 
   mkdir -p "${output_dir}"
 
-  # Reality QR
-  reality_uri=$(export_uri reality)
-  qrencode -t PNG -o "${output_dir}/reality-qr.png" "${reality_uri}"
-  qrencode -t UTF8 -o "${output_dir}/reality-qr.txt" "${reality_uri}"
-  success "  ✓ Reality QR code: ${output_dir}/reality-qr.png"
+  if [[ "${REALITY_ENABLED:-false}" == "true" ]]; then
+    reality_uri=$(export_uri reality)
+    qrencode -t PNG -o "${output_dir}/reality-qr.png" "${reality_uri}"
+    qrencode -t UTF8 -o "${output_dir}/reality-qr.txt" "${reality_uri}"
+    success "  ✓ Reality QR code: ${output_dir}/reality-qr.png"
+  fi
 
-  if [[ -n "${WS_PORT}" ]]; then
-    # WS-TLS QR
+  if [[ "${WS_ENABLED:-false}" == "true" ]]; then
     ws_uri=$(export_uri ws)
     qrencode -t PNG -o "${output_dir}/ws-qr.png" "${ws_uri}"
     success "  ✓ WS-TLS QR code: ${output_dir}/ws-qr.png"
+  fi
 
-    # Hysteria2 QR
+  if [[ "${HY2_ENABLED:-false}" == "true" ]]; then
     hy2_uri=$(export_uri hy2)
     qrencode -t PNG -o "${output_dir}/hy2-qr.png" "${hy2_uri}"
     success "  ✓ Hysteria2 QR code: ${output_dir}/hy2-qr.png"
@@ -649,26 +727,10 @@ export_qr_codes() {
 # Generate subscription link (Base64 encoded URIs)
 export_subscription() {
   local output_file="${1:-/var/www/html/sub.txt}"
-  local subscription='' sub_url=''
+  local subscription='' sub_url='' uris=''
   load_client_info
 
-  local uris=""
-
-  # Reality URI
-  uris+=$(export_uri reality)
-
-  if [[ -n "${WS_PORT}" ]]; then
-    uris+=$'\n'$(export_uri ws)
-    uris+=$'\n'$(export_uri hy2)
-  fi
-
-  if [[ "${TUIC_ENABLED:-false}" == "true" ]]; then
-    uris+=$'\n'$(export_uri tuic)
-  fi
-
-  if [[ "${TROJAN_ENABLED:-false}" == "true" ]]; then
-    uris+=$'\n'$(export_uri trojan)
-  fi
+  uris=$(export_uri all)
 
   # Base64 encode
   subscription=$(echo -n "${uris}" | base64 -w 0)

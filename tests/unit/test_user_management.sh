@@ -5,6 +5,9 @@
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+LOCK_TMP_DIR="$(mktemp -d /tmp/sbx-user-mgmt-locks.XXXXXX)"
+export SBX_LOCK_FILE="${LOCK_TMP_DIR}/sbx.lock"
+export SBX_STATE_LOCK_FILE="${LOCK_TMP_DIR}/sbx-state.lock"
 
 # Disable strict mode so individual test failures don't abort the suite
 set +e
@@ -24,6 +27,7 @@ source "${PROJECT_ROOT}/lib/users.sh" 2>/dev/null || {
 
 # Disable traps after loading modules
 trap - EXIT INT TERM
+trap 'rm -rf "${LOCK_TMP_DIR}"' EXIT
 set +e
 
 # Test counters

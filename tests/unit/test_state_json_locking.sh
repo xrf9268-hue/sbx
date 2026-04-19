@@ -12,10 +12,14 @@ source "${SCRIPT_DIR}/../test_framework.sh"
 
 TEST_TMP=""
 STATE_FILE_PATH=""
+LOCK_FILE_PATH=""
+STATE_LOCK_FILE_PATH=""
 
 setup_fixture() {
   TEST_TMP=$(mktemp -d /tmp/sbx-state-locking.XXXXXX)
   STATE_FILE_PATH="${TEST_TMP}/state.json"
+  LOCK_FILE_PATH="${TEST_TMP}/sbx.lock"
+  STATE_LOCK_FILE_PATH="${TEST_TMP}/sbx-state.lock"
   cat >"${STATE_FILE_PATH}" <<'EOF'
 {
   "subscription": {
@@ -59,6 +63,8 @@ teardown_fixture() {
 
 test_state_json_apply_updates_fixture() {
   TEST_STATE_FILE="${STATE_FILE_PATH}" \
+  SBX_LOCK_FILE="${LOCK_FILE_PATH}" \
+  SBX_STATE_LOCK_FILE="${STATE_LOCK_FILE_PATH}" \
     bash -c "
       source '${PROJECT_ROOT}/lib/common.sh'
       state_json_apply '${STATE_FILE_PATH}' '.subscription.enabled = true'
@@ -66,6 +72,8 @@ test_state_json_apply_updates_fixture() {
 
   assert_success "jq -e '.subscription.enabled == true' '${STATE_FILE_PATH}' >/dev/null" \
     "state_json_apply updates the target file"
+  assert_success "test -f '${STATE_LOCK_FILE_PATH}'" \
+    "state_json_apply uses the test state lock file"
   local perm=''
   perm=$(stat -c '%a' "${STATE_FILE_PATH}" 2>/dev/null || stat -f '%Lp' "${STATE_FILE_PATH}" 2>/dev/null)
   assert_equals "600" "${perm}" "state_json_apply preserves secure permissions"
