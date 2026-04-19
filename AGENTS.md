@@ -13,28 +13,46 @@ Single source of truth for coding-agent instructions in this repository.
 - **Primary entrypoint**: `install.sh`
 - **Core validation path**: `bash tests/test-runner.sh unit`
 
+## Default Development/Test Environment
+
+- Use the existing AWS VM as the default environment for runtime validation and smoke testing.
+- VM connection:
+  - host: `admin@18.217.254.125`
+  - ssh key: `~/.ssh/ai-polling-proxy.pem`
+  - remote repo: `~/sbx`
+  - remote OS: Debian 12 x86_64
+- Default remote working copy should be a fresh clone of the upstream repository:
+  `https://github.com/xrf9268-hue/sbx`
+- Do not assume the local workspace is the source of truth unless the user explicitly says so.
+- Do not create new AWS resources or use other machines unless the user explicitly requests it.
+- Prefer the VM for changes involving `install.sh`, systemd, ports, networking, Docker, integration tests, or lifecycle/smoke behavior.
+- Purely static inspection, documentation edits, and quick text-only checks can still run locally.
+
 ## Setup Commands
 
 ```bash
-# Local test prerequisite
-sudo apt-get update
-sudo apt-get install -y jq
+# Check VM connectivity
+ssh -i ~/.ssh/ai-polling-proxy.pem -o StrictHostKeyChecking=accept-new \
+  admin@18.217.254.125 \
+  'hostname && whoami && uname -a && test -d ~/sbx && echo repo_ok || echo repo_missing'
 
-# Install local git hooks (required)
+# Remote unit validation
+ssh -i ~/.ssh/ai-polling-proxy.pem -o StrictHostKeyChecking=accept-new \
+  admin@18.217.254.125 \
+  'cd ~/sbx && bash tests/test-runner.sh unit'
+
+ssh -i ~/.ssh/ai-polling-proxy.pem -o StrictHostKeyChecking=accept-new \
+  admin@18.217.254.125 \
+  'cd ~/sbx && bash tests/unit/test_bootstrap_constants.sh'
+
+# Remote Docker lifecycle smoke
+ssh -i ~/.ssh/ai-polling-proxy.pem -o StrictHostKeyChecking=accept-new \
+  admin@18.217.254.125 \
+  'cd ~/sbx && bash scripts/e2e/install-lifecycle-smoke.sh'
+
+# Install git hooks in the current working tree when editing locally
 bash hooks/install-hooks.sh
-
-# Fast validation
-bash tests/test-runner.sh unit
-bash tests/unit/test_bootstrap_constants.sh
-
-# Docker lifecycle smoke e2e
-bash scripts/e2e/install-lifecycle-smoke.sh
 ```
-
-Local note:
-
-- `jq` is required for `bash tests/test-runner.sh unit` on a clean Ubuntu/WSL machine.
-- The Docker lifecycle smoke script installs its own container dependencies, but host-side unit tests still expect `jq` to be available locally.
 
 ## Code and Shell Standards
 
@@ -54,20 +72,20 @@ Local note:
 
 ## Testing and Verification
 
-- For changes in shell runtime code (`install.sh`, `lib/**`, `bin/**`), run:
+- For changes in shell runtime code (`install.sh`, `lib/**`, `bin/**`), run on the VM:
   - `bash tests/test-runner.sh unit`
-- For docker smoke changes, run:
+- For docker smoke or lifecycle changes, run on the VM:
   - `bash scripts/e2e/install-lifecycle-smoke.sh`
 - For CI/workflow policy changes, run:
   - `bash tests/unit/test_ci_workflows.sh`
   - `bash tests/unit/test_coverage_suite_invocations.sh`
 
-## Local Docker Smoke Policy
+## Docker Smoke Policy
 
 - Default base image: `ubuntu:24.04`
-- Local fallback image (only when official pull fails): `docker.950288.xyz/library/ubuntu:24.04`
+- Fallback image on non-CI hosts (only when official pull fails): `docker.950288.xyz/library/ubuntu:24.04`
 - In GitHub CI (`GITHUB_ACTIONS=true`), use official image only; do not force proxy-fallback images.
-- Mirror fallback strategy for local apt bootstrap uses both HTTPS and HTTP mirrors.
+- Mirror fallback strategy for non-CI apt bootstrap uses both HTTPS and HTTP mirrors.
 
 Related environment variables:
 
@@ -85,6 +103,7 @@ TEST_DOMAIN=1.1.1.1
 - User guide: `README.md`
 - Contributor process: `CONTRIBUTING.md`
 - Test guide: `tests/README.md`
+- VM environment notes: `vm-env-notes.md`
 - Troubleshooting: `docs/REALITY_TROUBLESHOOTING.md`
 - Internal architecture and coding notes: `.claude/ARCHITECTURE.md`, `.claude/CODING_STANDARDS.md`
 
