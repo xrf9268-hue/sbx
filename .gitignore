@@ -13,3 +13,6 @@
 
 # Refactor progress notes (local-only)
 .claude/refactor-progress.md
+
+# Local git worktrees
+.worktrees/

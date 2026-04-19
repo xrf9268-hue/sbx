@@ -519,7 +519,7 @@ _download_and_validate_manager_script() {
 _load_modules() {
   local github_repo="https://raw.githubusercontent.com/xrf9268-hue/sbx/main"
   # Module loading order: colors first (required by common and logging), then common loads logging and generators, tools after common
-  local modules=(colors common logging generators tools retry download network validation checksum version certificate caddy_cleanup config config_validator schema_validator service ui backup export messages users port_hopping subscription stats cloudflare_tunnel telegram_bot)
+  local modules=(colors common logging generators tools retry download network validation checksum version certificate caddy_cleanup config config_validator schema_validator service ui backup export messages users port_hopping subscription reality_rotation stats cloudflare_tunnel telegram_bot)
   local temp_lib_dir=""
 
   # Check if lib directory exists
@@ -681,6 +681,7 @@ _verify_module_apis() {
     ["users"]="user_add user_list user_remove user_reset sync_users_to_config"
     ["port_hopping"]="validate_port_range apply_port_hopping_rules remove_port_hopping_rules show_port_hopping_status"
     ["subscription"]="subscription_render subscription_enable subscription_disable subscription_status subscription_url subscription_ensure_state_block"
+    ["reality_rotation"]="reality_rotate_shortid reality_rotation_schedule reality_rotation_remove_units"
     ["stats"]="stats_ensure_state_block stats_overview_pretty stats_overview_json stats_enable stats_disable"
     ["cloudflare_tunnel"]="cloudflared_install cloudflared_enable_token cloudflared_disable cloudflared_status cloudflared_update_state"
     ["telegram_bot"]="telegram_bot_setup telegram_bot_enable telegram_bot_disable telegram_bot_status telegram_bot_run"
@@ -2218,6 +2219,22 @@ uninstall_flow() {
     systemctl stop "${SUBSCRIPTION_SERVICE_NAME}" 2>/dev/null || true
     systemctl disable "${SUBSCRIPTION_SERVICE_NAME}" 2>/dev/null || true
     rm -f "/etc/systemd/system/${SUBSCRIPTION_SERVICE_NAME}.service"
+    systemctl daemon-reload 2>/dev/null || true
+  fi
+
+  # Remove short-id rotation units (best effort)
+  if declare -f reality_rotation_remove_units >/dev/null 2>&1; then
+    reality_rotation_remove_units || true
+  elif declare -f remove_systemd_unit >/dev/null 2>&1; then
+    remove_systemd_unit "sbx-shortid-rotate.timer" "/etc/systemd/system/sbx-shortid-rotate.timer" "best_effort" || true
+    remove_systemd_unit "sbx-shortid-rotate.service" "/etc/systemd/system/sbx-shortid-rotate.service" "best_effort" || true
+  else
+    systemctl stop "sbx-shortid-rotate.timer" 2>/dev/null || true
+    systemctl disable "sbx-shortid-rotate.timer" 2>/dev/null || true
+    rm -f "/etc/systemd/system/sbx-shortid-rotate.timer"
+    systemctl stop "sbx-shortid-rotate.service" 2>/dev/null || true
+    systemctl disable "sbx-shortid-rotate.service" 2>/dev/null || true
+    rm -f "/etc/systemd/system/sbx-shortid-rotate.service"
     systemctl daemon-reload 2>/dev/null || true
   fi
   rm -f /usr/local/bin/sbx-sub-server

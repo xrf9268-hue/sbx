@@ -224,3 +224,58 @@ tmpfile=$(create_temp_file "backup") || return 1
 # Secure temp directory (700 permissions automatic)
 tmpdir=$(create_temp_dir "restore") || return 1
 ```
+
+## Runtime Mutation Discipline
+
+When a command mutates installed runtime artifacts, treat locking and rollback as
+part of the feature, not as follow-up cleanup.
+
+**Locking order is mandatory:**
+- If a flow mutates `config.json`, systemd units, or restarts services, take the
+  shared mutation lock with `with_flock` at the top-level boundary.
+- If the same flow also mutates `state.json`, nest `with_state_lock` inside the
+  global lock, in that order.
+- Do **not** add a state-only mutator that can race with existing global
+  mutators such as `write_config`, `restart_service`, or `backup_restore`.
+
+**Nested restart paths must avoid lock inheritance:**
+- If code already runs under the shared mutation lock, prefer calling the
+  unlocked implementation (`_restart_service_impl`) from a helper/subshell
+  instead of re-entering `restart_service`.
+- Re-entering `restart_service` while `SBX_LOCK_FILE` still points at
+  `sbx-state.lock` can deadlock on the same lock file.
+
+**Multi-file rollback must be staged:**
+- For restores involving multiple live files (`config.json`,
+  `client-info.txt`, `state.json`, unit files), stage backup copies into temp
+  files in the destination directory first, then switch them into place with
+  `mv`.
+- Do **not** sequentially `cp` over live files. If a later copy fails, you
+  leave a mixed on-disk state and rollback becomes unsafe.
+- If the apply step itself fails, restore the captured pre-restore files before
+  returning failure.
+
+**State-mutating tests must isolate lock files:**
+- Unit tests that call `state_json_apply`, `with_state_lock`, or any higher-level
+  state mutator must override `SBX_LOCK_FILE` and `SBX_STATE_LOCK_FILE` to temp
+  paths.
+- Tests must not depend on host `/var/lock` ownership or on side effects from
+  prior root-run installs.
+
+## Failure Propagation for Shared Helpers
+
+When a shared helper performs side effects, its return value must reflect the
+first failing step. Do not rely on `set -e` to stop execution inside helpers
+that may be called from `if`, `&&`, or `||` contexts.
+
+- Do **not** end a side-effecting helper with unconditional `return 0` after
+  commands that may fail. That converts partial failure into false success for
+  every caller.
+- In helpers such as unit installers, config writers, or state mutators, guard
+  each critical step explicitly: `write_file ... || return 1`,
+  `chmod ... || return 1`, `systemctl daemon-reload ... || return 1`.
+- Callers may still use `helper || { rollback; return 1; }`, but the helper
+  itself must already have correct failure semantics.
+- Add a regression test for the negative path that triggered the bug. Prefer
+  reproductions like missing target directories, unwritable destinations, or
+  failing `systemctl` stubs over purely synthetic assertions.
