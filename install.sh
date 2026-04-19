@@ -1432,7 +1432,14 @@ gen_materials() {
 save_client_info() {
   msg "Saving client information..."
 
-  cat >"${CLIENT_INFO}" <<EOF
+  local client_info_file="${CLIENT_INFO}"
+  local client_info_dir=''
+  client_info_dir="$(dirname "${client_info_file}")"
+
+  mkdir -p "${client_info_dir}"
+  chmod "${SECURE_DIR_PERMISSIONS}" "${client_info_dir}" 2>/dev/null || true
+
+  cat >"${client_info_file}" <<EOF
 # sing-box client configuration
 # Generated: $(date)
 
@@ -1446,47 +1453,47 @@ EOF
 
   if [[ "${REALITY_ONLY_MODE:-0}" != "1" ]]; then
     if [[ "${ENABLE_WS:-0}" == "1" ]]; then
-      cat >>"${CLIENT_INFO}" <<EOF
+      cat >>"${client_info_file}" <<EOF
 WS_PORT="${WS_PORT_CHOSEN}"
 EOF
     fi
 
     if [[ "${ENABLE_HY2:-0}" == "1" ]]; then
-      cat >>"${CLIENT_INFO}" <<EOF
+      cat >>"${client_info_file}" <<EOF
 HY2_PORT="${HY2_PORT_CHOSEN}"
 HY2_PASS="${HY2_PASS}"
 EOF
       if [[ -n "${HY2_PORT_RANGE:-}" ]]; then
-        cat >>"${CLIENT_INFO}" <<EOF
+        cat >>"${client_info_file}" <<EOF
 HY2_PORT_RANGE="${HY2_PORT_RANGE}"
 EOF
       fi
     fi
 
     if [[ "${ENABLE_TUIC:-0}" == "1" ]]; then
-      cat >>"${CLIENT_INFO}" <<EOF
+      cat >>"${client_info_file}" <<EOF
 TUIC_PORT="${TUIC_PORT_CHOSEN}"
 TUIC_PASS="${TUIC_PASS}"
 EOF
     fi
 
     if [[ "${ENABLE_TROJAN:-0}" == "1" ]]; then
-      cat >>"${CLIENT_INFO}" <<EOF
+      cat >>"${client_info_file}" <<EOF
 TROJAN_PORT="${TROJAN_PORT_CHOSEN}"
 TROJAN_PASS="${TROJAN_PASS}"
 EOF
     fi
 
     if [[ -n "${CERT_FULLCHAIN:-}" || -n "${CERT_KEY:-}" ]]; then
-      cat >>"${CLIENT_INFO}" <<EOF
+      cat >>"${client_info_file}" <<EOF
 CERT_FULLCHAIN="${CERT_FULLCHAIN}"
 CERT_KEY="${CERT_KEY}"
 EOF
     fi
   fi
 
-  chmod "${SECURE_FILE_PERMISSIONS}" "${CLIENT_INFO}"
-  success "  ✓ Client info saved to: ${CLIENT_INFO}"
+  chmod "${SECURE_FILE_PERMISSIONS}" "${client_info_file}"
+  success "  ✓ Client info saved to: ${client_info_file}"
 }
 
 # Save structured state for future compatibility and typed access.
