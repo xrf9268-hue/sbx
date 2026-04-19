@@ -88,8 +88,12 @@ _stats_single_reality_user_name() {
 
   jq -r '
     (.protocols.reality.users // null) as $users
-    | if ($users | type) == "array" and ($users | length) == 1 and (($users[0].name // "") != "") then
-        $users[0].name
+    | if ($users | type) == "array" then
+        if ($users | length) == 1 and (($users[0].name // "") != "") then
+          $users[0].name
+        else
+          ""
+        end
       elif (.protocols.reality.uuid // empty) != "" then
         "default"
       else

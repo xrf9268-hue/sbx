@@ -246,6 +246,39 @@ test_single_user_fallback_from_state() {
   _teardown_state
 }
 
+test_multi_user_missing_metadata_stays_unknown() {
+  echo ""
+  echo "Testing multi-user installs do not fall back to default"
+  echo "------------------------------------------------------"
+  _setup_state true
+  STATS_CONNECTIONS_FIXTURE="no_metadata_user_reality"
+
+  local tmp_state=""
+  tmp_state=$(mktemp)
+  jq '.protocols.reality = {
+        uuid: "uuid-default",
+        users: [
+          {name: "default", uuid: "uuid-default"},
+          {name: "alice", uuid: "uuid-alice"}
+        ]
+      }' "${_TMP_STATE}" >"${tmp_state}"
+  mv -f "${tmp_state}" "${_TMP_STATE}"
+
+  local out=""
+  out=$(stats_users_json)
+  assert_jq "multi-user payload valid" "${out}" '.enabled' "true"
+  assert_jq "multi-user fallback keeps unknown bucket" "${out}" '.users[0].user' "unknown"
+  assert_jq "multi-user upload stays on unknown bucket" "${out}" '.users[0].upload' "100"
+  assert_jq "multi-user download stays on unknown bucket" "${out}" '.users[0].download' "200"
+
+  out=$(stats_connections_json)
+  assert_jq "multi-user connections keep resolved_user unknown" "${out}" \
+    '.connections[0].resolved_user' "unknown"
+
+  STATS_CONNECTIONS_FIXTURE="default"
+  _teardown_state
+}
+
 test_bearer_token_sent() {
   echo ""
   echo "Testing Bearer token is attached to requests"
@@ -372,6 +405,7 @@ main() {
   test_overview_json_structure
   test_per_user_grouping
   test_single_user_fallback_from_state
+  test_multi_user_missing_metadata_stays_unknown
   test_bearer_token_sent
   test_secret_never_printed
   test_curl_failure_handled
