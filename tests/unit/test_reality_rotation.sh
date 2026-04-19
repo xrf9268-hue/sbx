@@ -280,6 +280,22 @@ run_schedule() {
   )
 }
 
+run_restart_inside_state_lock() {
+  bash -c '
+    set -euo pipefail
+    source "'"${PROJECT_ROOT}"'/lib/common.sh"
+    source "'"${PROJECT_ROOT}"'/lib/validation.sh"
+    source "'"${PROJECT_ROOT}"'/lib/service.sh"
+    source "'"${PROJECT_ROOT}"'/lib/reality_rotation.sh"
+    restart_lock_file="'"${TEST_TMP}"'/restart-lock-file.txt"
+    restart_service() {
+      printf "%s\n" "${SBX_LOCK_FILE-__unset__}" >"${restart_lock_file}"
+      with_flock "${SBX_LOCK_TIMEOUT_SEC:-30}" true
+    }
+    with_state_lock "${SBX_LOCK_TIMEOUT_SEC:-30}" _reality_rotation_restart_service_safely
+  '
+}
+
 test_manual_rotation_updates_files() {
   local before_state=''
   local before_client=''
@@ -375,6 +391,18 @@ test_restart_failure_with_exit_rolls_back_and_restarts_restored_config() {
     "second restart saw restored config"
   assert_file_not_exists "${TEST_TMP}/subscription-refresh.log" "failed rotation does not refresh subscription cache"
   assert_equals "abcd1234" "$(current_state_short_id)" "non-returning restart failure restores original state short ID"
+}
+
+test_rotation_restart_does_not_inherit_state_lock_file() {
+  local restart_lock_value=''
+
+  assert_success "SBX_LOCK_TIMEOUT_SEC=0 run_restart_inside_state_lock" \
+    "restart inside rotation succeeds without re-locking the state lock file"
+
+  assert_file_exists "${TEST_TMP}/restart-lock-file.txt" "restart path captures the inherited lock file"
+  restart_lock_value=$(cat "${TEST_TMP}/restart-lock-file.txt")
+  assert_equals "__unset__" "${restart_lock_value}" \
+    "restart inside rotation clears SBX_LOCK_FILE before calling restart_service"
 }
 
 test_scheduled_run_records_timer_trigger() {
@@ -526,6 +554,9 @@ main() {
   teardown_fixture
   setup_fixture
   test_restart_failure_with_exit_rolls_back_and_restarts_restored_config
+  teardown_fixture
+  setup_fixture
+  test_rotation_restart_does_not_inherit_state_lock_file
   teardown_fixture
   setup_fixture
   test_scheduled_run_records_timer_trigger

@@ -310,6 +310,7 @@ _reality_rotation_restore_backups() {
 
 _reality_rotation_restart_service_safely() {
   (
+    unset SBX_LOCK_FILE
     restart_service
   )
 }
