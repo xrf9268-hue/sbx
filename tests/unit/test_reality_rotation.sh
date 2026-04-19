@@ -701,6 +701,23 @@ test_schedule_enable_failure_rolls_back_state_and_units() {
     "failed activation exercises rollback removal"
 }
 
+test_schedule_unit_write_failure_rolls_back_state_and_units() {
+  local before_state=''
+
+  before_state=$(cat "${STATE_FILE_PATH}")
+  rm -rf "${SYSTEMD_DIR_PATH}"
+
+  assert_failure "run_schedule weekly" \
+    "failed unit writes should make schedule changes fail"
+
+  assert_equals "${before_state}" "$(cat "${STATE_FILE_PATH}")" \
+    "failed unit writes leave state.json untouched"
+  assert_file_not_exists "$(rotation_service_unit_path)" \
+    "failed unit writes leave the service unit absent"
+  assert_file_not_exists "$(rotation_timer_unit_path)" \
+    "failed unit writes leave the timer unit absent"
+}
+
 test_schedule_change_failure_restores_prior_active_schedule() {
   local before_state=''
   local before_service=''
@@ -881,6 +898,9 @@ main() {
   teardown_fixture
   setup_fixture
   test_schedule_enable_failure_rolls_back_state_and_units
+  teardown_fixture
+  setup_fixture
+  test_schedule_unit_write_failure_rolls_back_state_and_units
   teardown_fixture
   setup_fixture
   test_schedule_change_failure_restores_prior_active_schedule

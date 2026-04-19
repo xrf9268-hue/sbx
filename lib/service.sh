@@ -29,9 +29,9 @@ install_systemd_unit() {
   local unit_path="$1"
   local unit_content="${2:-}"
 
-  printf '%s\n' "${unit_content}" >"${unit_path}"
-  chmod 644 "${unit_path}"
-  systemctl daemon-reload >/dev/null 2>&1 || true
+  printf '%s\n' "${unit_content}" >"${unit_path}" || return 1
+  chmod 644 "${unit_path}" || return 1
+  systemctl daemon-reload >/dev/null 2>&1 || return 1
 
   return 0
 }
@@ -59,7 +59,7 @@ WantedBy=multi-user.target
 EOF
   )
 
-  install_systemd_unit "${SB_SVC}" "${unit_content}"
+  install_systemd_unit "${SB_SVC}" "${unit_content}" || return 1
 
   success "  ✓ Service file created"
   return 0

@@ -275,9 +275,11 @@ _rotation_install_units() {
   service_unit_content=$(_rotation_service_unit_content)
   timer_unit_content=$(_rotation_timer_unit_content "${on_calendar}")
 
-  install_systemd_unit "${service_unit_path}" "${service_unit_content}"
-  install_systemd_unit "${timer_unit_path}" "${timer_unit_content}"
-  systemctl enable --now "${ROTATION_TIMER_NAME}" >/dev/null 2>&1
+  install_systemd_unit "${service_unit_path}" "${service_unit_content}" || return 1
+  install_systemd_unit "${timer_unit_path}" "${timer_unit_content}" || return 1
+  systemctl enable --now "${ROTATION_TIMER_NAME}" >/dev/null 2>&1 || return 1
+
+  return 0
 }
 
 reality_rotation_remove_units() {
