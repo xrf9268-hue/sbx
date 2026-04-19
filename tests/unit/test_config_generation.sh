@@ -36,7 +36,7 @@ assert_success() {
 
   TOTAL_TESTS=$((TOTAL_TESTS + 1))
 
-  if eval "$command" > /dev/null 2>&1; then
+  if eval "$command" >/dev/null 2>&1; then
     echo -e "${GREEN}✓${NC} $test_name"
     PASSED_TESTS=$((PASSED_TESTS + 1))
   else
@@ -52,7 +52,7 @@ assert_failure() {
 
   TOTAL_TESTS=$((TOTAL_TESTS + 1))
 
-  if eval "$command" > /dev/null 2>&1; then
+  if eval "$command" >/dev/null 2>&1; then
     echo -e "${RED}✗${NC} $test_name (expected failure, got success)"
     FAILED_TESTS=$((FAILED_TESTS + 1))
   else
@@ -68,7 +68,7 @@ assert_json_valid() {
 
   TOTAL_TESTS=$((TOTAL_TESTS + 1))
 
-  if echo "$json_string" | jq empty 2> /dev/null; then
+  if echo "$json_string" | jq empty 2>/dev/null; then
     echo -e "${GREEN}✓${NC} $test_name"
     PASSED_TESTS=$((PASSED_TESTS + 1))
   else
@@ -86,7 +86,7 @@ assert_json_has_key() {
   TOTAL_TESTS=$((TOTAL_TESTS + 1))
 
   local value
-  value=$(echo "$json_string" | jq -r "$key_path" 2> /dev/null)
+  value=$(echo "$json_string" | jq -r "$key_path" 2>/dev/null)
 
   if [[ -n "$value" && "$value" != "null" ]]; then
     echo -e "${GREEN}✓${NC} $test_name"
@@ -107,7 +107,7 @@ assert_json_value_equals() {
   TOTAL_TESTS=$((TOTAL_TESTS + 1))
 
   local actual
-  actual=$(echo "$json_string" | jq -r "$key_path" 2> /dev/null)
+  actual=$(echo "$json_string" | jq -r "$key_path" 2>/dev/null)
 
   if [[ "$actual" == "$expected" ]]; then
     echo -e "${GREEN}✓${NC} $test_name"
@@ -131,7 +131,7 @@ test_create_base_config_ipv4_only() {
   echo "----------------------------------------------"
 
   local config
-  config=$(create_base_config "false" "warn" 2> /dev/null)
+  config=$(create_base_config "false" "warn" 2>/dev/null)
 
   assert_json_valid "Generates valid JSON" "$config"
   assert_json_has_key "Has log section" "$config" ".log"
@@ -148,7 +148,7 @@ test_create_base_config_ipv4_only() {
   # Check outbounds
   TOTAL_TESTS=$((TOTAL_TESTS + 1))
   local outbound_count
-  outbound_count=$(echo "$config" | jq '.outbounds | length' 2> /dev/null)
+  outbound_count=$(echo "$config" | jq '.outbounds | length' 2>/dev/null)
   if [[ "$outbound_count" -ge 1 ]]; then
     echo -e "${GREEN}✓${NC} Has outbounds (direct)"
     PASSED_TESTS=$((PASSED_TESTS + 1))
@@ -164,14 +164,14 @@ test_create_base_config_dual_stack() {
   echo "-----------------------------------------------"
 
   local config
-  config=$(create_base_config "true" "info" 2> /dev/null)
+  config=$(create_base_config "true" "info" 2>/dev/null)
 
   assert_json_valid "Generates valid JSON" "$config"
 
   # Check NO IPv4-only strategy for dual-stack
   TOTAL_TESTS=$((TOTAL_TESTS + 1))
   local strategy
-  strategy=$(echo "$config" | jq -r '.dns.strategy // "none"' 2> /dev/null)
+  strategy=$(echo "$config" | jq -r '.dns.strategy // "none"' 2>/dev/null)
   if [[ "$strategy" == "none" || "$strategy" == "null" ]]; then
     echo -e "${GREEN}✓${NC} DNS strategy not set (dual-stack default)"
     PASSED_TESTS=$((PASSED_TESTS + 1))
@@ -194,10 +194,10 @@ test_create_base_config_log_levels() {
   for level in "${levels[@]}"; do
     TOTAL_TESTS=$((TOTAL_TESTS + 1))
     local config
-    config=$(create_base_config "false" "$level" 2> /dev/null)
+    config=$(create_base_config "false" "$level" 2>/dev/null)
 
     local actual_level
-    actual_level=$(echo "$config" | jq -r '.log.level' 2> /dev/null)
+    actual_level=$(echo "$config" | jq -r '.log.level' 2>/dev/null)
 
     if [[ "$actual_level" == "$level" ]]; then
       echo -e "${GREEN}✓${NC} Accepts log level: $level"
@@ -228,7 +228,7 @@ test_create_reality_inbound_basic() {
 
   local reality_config
   reality_config=$(create_reality_inbound "$test_uuid" "$test_port" "$test_listen" \
-    "$test_sni" "$test_priv" "$test_sid" 2> /dev/null)
+    "$test_sni" "$test_priv" "$test_sid" 2>/dev/null)
 
   assert_json_valid "Generates valid JSON" "$reality_config"
   assert_json_has_key "Has type field" "$reality_config" ".type"
@@ -251,7 +251,7 @@ test_create_reality_inbound_basic() {
   # Check user configuration
   TOTAL_TESTS=$((TOTAL_TESTS + 1))
   local user_uuid
-  user_uuid=$(echo "$reality_config" | jq -r '.users[0].uuid' 2> /dev/null)
+  user_uuid=$(echo "$reality_config" | jq -r '.users[0].uuid' 2>/dev/null)
   if [[ "$user_uuid" == "$test_uuid" ]]; then
     echo -e "${GREEN}✓${NC} User UUID correctly set"
     PASSED_TESTS=$((PASSED_TESTS + 1))
@@ -275,12 +275,12 @@ test_create_reality_inbound_security() {
 
   local reality_config
   reality_config=$(create_reality_inbound "$test_uuid" "$test_port" "$test_listen" \
-    "$test_sni" "$test_priv" "$test_sid" 2> /dev/null)
+    "$test_sni" "$test_priv" "$test_sid" 2>/dev/null)
 
   # Check for XTLS flow
   TOTAL_TESTS=$((TOTAL_TESTS + 1))
   local flow
-  flow=$(echo "$reality_config" | jq -r '.users[0].flow // "none"' 2> /dev/null)
+  flow=$(echo "$reality_config" | jq -r '.users[0].flow // "none"' 2>/dev/null)
   if [[ "$flow" == "xtls-rprx-vision" ]]; then
     echo -e "${GREEN}✓${NC} Uses XTLS-RPRX-Vision flow"
     PASSED_TESTS=$((PASSED_TESTS + 1))
@@ -306,7 +306,7 @@ test_json_structure_compliance() {
   echo "-----------------------------------------------------"
 
   local base_config
-  base_config=$(create_base_config "false" "warn" 2> /dev/null)
+  base_config=$(create_base_config "false" "warn" 2>/dev/null)
 
   # Check for required top-level sections
   assert_json_has_key "Has log section" "$base_config" ".log"
@@ -317,7 +317,7 @@ test_json_structure_compliance() {
   # Check DNS servers format (sing-box 1.13.0+)
   TOTAL_TESTS=$((TOTAL_TESTS + 1))
   local dns_server_type
-  dns_server_type=$(echo "$base_config" | jq -r '.dns.servers[0].type' 2> /dev/null)
+  dns_server_type=$(echo "$base_config" | jq -r '.dns.servers[0].type' 2>/dev/null)
   if [[ "$dns_server_type" == "local" ]]; then
     echo -e "${GREEN}✓${NC} DNS server uses modern format (type: local)"
     PASSED_TESTS=$((PASSED_TESTS + 1))
@@ -329,7 +329,7 @@ test_json_structure_compliance() {
   # Check log has timestamp
   TOTAL_TESTS=$((TOTAL_TESTS + 1))
   local log_timestamp
-  log_timestamp=$(echo "$base_config" | jq -r '.log.timestamp' 2> /dev/null)
+  log_timestamp=$(echo "$base_config" | jq -r '.log.timestamp' 2>/dev/null)
   if [[ "$log_timestamp" == "true" ]]; then
     echo -e "${GREEN}✓${NC} Log timestamp enabled"
     PASSED_TESTS=$((PASSED_TESTS + 1))
@@ -346,12 +346,12 @@ test_deprecated_fields_not_present() {
 
   local reality_config
   reality_config=$(create_reality_inbound "test-uuid" "443" "::" \
-    "www.microsoft.com" "test-key" "abcdef12" 2> /dev/null)
+    "www.microsoft.com" "test-key" "abcdef12" 2>/dev/null)
 
   # Check NO deprecated inbound fields (sing-box 1.13.0+)
   TOTAL_TESTS=$((TOTAL_TESTS + 1))
   local has_sniff
-  has_sniff=$(echo "$reality_config" | jq 'has("sniff")' 2> /dev/null)
+  has_sniff=$(echo "$reality_config" | jq 'has("sniff")' 2>/dev/null)
   if [[ "$has_sniff" == "false" ]]; then
     echo -e "${GREEN}✓${NC} No deprecated 'sniff' field in inbound"
     PASSED_TESTS=$((PASSED_TESTS + 1))
@@ -362,7 +362,7 @@ test_deprecated_fields_not_present() {
 
   TOTAL_TESTS=$((TOTAL_TESTS + 1))
   local has_sniff_override
-  has_sniff_override=$(echo "$reality_config" | jq 'has("sniff_override_destination")' 2> /dev/null)
+  has_sniff_override=$(echo "$reality_config" | jq 'has("sniff_override_destination")' 2>/dev/null)
   if [[ "$has_sniff_override" == "false" ]]; then
     echo -e "${GREEN}✓${NC} No deprecated 'sniff_override_destination' field"
     PASSED_TESTS=$((PASSED_TESTS + 1))
@@ -373,11 +373,11 @@ test_deprecated_fields_not_present() {
 
   # Check outbound doesn't have deprecated domain_strategy
   local base_config
-  base_config=$(create_base_config "false" "warn" 2> /dev/null)
+  base_config=$(create_base_config "false" "warn" 2>/dev/null)
 
   TOTAL_TESTS=$((TOTAL_TESTS + 1))
   local has_domain_strategy
-  has_domain_strategy=$(echo "$base_config" | jq '.outbounds[0] | has("domain_strategy")' 2> /dev/null)
+  has_domain_strategy=$(echo "$base_config" | jq '.outbounds[0] | has("domain_strategy")' 2>/dev/null)
   if [[ "$has_domain_strategy" == "false" ]]; then
     echo -e "${GREEN}✓${NC} No deprecated 'domain_strategy' in outbounds"
     PASSED_TESTS=$((PASSED_TESTS + 1))
@@ -398,7 +398,7 @@ test_build_tls_block_manual_cert() {
 
   local tls_block
   tls_block=$(_build_tls_block "example.com" '["h2","http/1.1"]' \
-    "/etc/ssl/cert.pem" "/etc/ssl/key.pem" "" "" 2> /dev/null)
+    "/etc/ssl/cert.pem" "/etc/ssl/key.pem" "" "" 2>/dev/null)
 
   assert_json_valid "Generates valid JSON" "$tls_block"
   assert_json_value_equals "TLS enabled" "$tls_block" ".enabled" "true"
@@ -409,7 +409,7 @@ test_build_tls_block_manual_cert() {
   # Must NOT have acme block in manual mode
   TOTAL_TESTS=$((TOTAL_TESTS + 1))
   local has_acme
-  has_acme=$(echo "$tls_block" | jq 'has("acme")' 2> /dev/null)
+  has_acme=$(echo "$tls_block" | jq 'has("acme")' 2>/dev/null)
   if [[ "$has_acme" == "false" ]]; then
     echo -e "${GREEN}✓${NC} No ACME block in manual cert mode"
     PASSED_TESTS=$((PASSED_TESTS + 1))
@@ -421,7 +421,7 @@ test_build_tls_block_manual_cert() {
   # Check ALPN array
   TOTAL_TESTS=$((TOTAL_TESTS + 1))
   local alpn_count
-  alpn_count=$(echo "$tls_block" | jq '.alpn | length' 2> /dev/null)
+  alpn_count=$(echo "$tls_block" | jq '.alpn | length' 2>/dev/null)
   if [[ "$alpn_count" == "2" ]]; then
     echo -e "${GREEN}✓${NC} ALPN array has 2 entries"
     PASSED_TESTS=$((PASSED_TESTS + 1))
@@ -433,7 +433,7 @@ test_build_tls_block_manual_cert() {
   # Manual cert mode must NOT have Chrome Root Store (certificate.store)
   TOTAL_TESTS=$((TOTAL_TESTS + 1))
   local has_cert_block
-  has_cert_block=$(echo "$tls_block" | jq 'has("certificate")' 2> /dev/null)
+  has_cert_block=$(echo "$tls_block" | jq 'has("certificate")' 2>/dev/null)
   if [[ "$has_cert_block" == "false" ]]; then
     echo -e "${GREEN}✓${NC} No certificate block in manual cert mode"
     PASSED_TESTS=$((PASSED_TESTS + 1))
@@ -450,7 +450,7 @@ test_build_tls_block_acme_http01() {
 
   local tls_block
   tls_block=$(_build_tls_block "test.example.com" '["h2","http/1.1"]' \
-    "" "" "acme" "" 2> /dev/null)
+    "" "" "acme" "" 2>/dev/null)
 
   assert_json_valid "Generates valid JSON" "$tls_block"
   assert_json_value_equals "TLS enabled" "$tls_block" ".enabled" "true"
@@ -464,7 +464,7 @@ test_build_tls_block_acme_http01() {
   # HTTP-01 mode must NOT disable HTTP challenge
   TOTAL_TESTS=$((TOTAL_TESTS + 1))
   local has_disable_http
-  has_disable_http=$(echo "$tls_block" | jq '.acme | has("disable_http_challenge")' 2> /dev/null)
+  has_disable_http=$(echo "$tls_block" | jq '.acme | has("disable_http_challenge")' 2>/dev/null)
   if [[ "$has_disable_http" == "false" ]]; then
     echo -e "${GREEN}✓${NC} HTTP challenge not disabled (correct for HTTP-01)"
     PASSED_TESTS=$((PASSED_TESTS + 1))
@@ -476,7 +476,7 @@ test_build_tls_block_acme_http01() {
   # Must NOT have dns01_challenge block
   TOTAL_TESTS=$((TOTAL_TESTS + 1))
   local has_dns01
-  has_dns01=$(echo "$tls_block" | jq '.acme | has("dns01_challenge")' 2> /dev/null)
+  has_dns01=$(echo "$tls_block" | jq '.acme | has("dns01_challenge")' 2>/dev/null)
   if [[ "$has_dns01" == "false" ]]; then
     echo -e "${GREEN}✓${NC} No DNS-01 block in HTTP-01 mode"
     PASSED_TESTS=$((PASSED_TESTS + 1))
@@ -488,7 +488,7 @@ test_build_tls_block_acme_http01() {
   # Must NOT have certificate_path (ACME manages certs)
   TOTAL_TESTS=$((TOTAL_TESTS + 1))
   local has_cert_path
-  has_cert_path=$(echo "$tls_block" | jq 'has("certificate_path")' 2> /dev/null)
+  has_cert_path=$(echo "$tls_block" | jq 'has("certificate_path")' 2>/dev/null)
   if [[ "$has_cert_path" == "false" ]]; then
     echo -e "${GREEN}✓${NC} No certificate_path in ACME mode"
     PASSED_TESTS=$((PASSED_TESTS + 1))
@@ -500,7 +500,7 @@ test_build_tls_block_acme_http01() {
   # ACME mode must not emit a legacy certificate block
   TOTAL_TESTS=$((TOTAL_TESTS + 1))
   local has_cert_block
-  has_cert_block=$(echo "$tls_block" | jq 'has("certificate")' 2> /dev/null)
+  has_cert_block=$(echo "$tls_block" | jq 'has("certificate")' 2>/dev/null)
   if [[ "$has_cert_block" == "false" ]]; then
     echo -e "${GREEN}✓${NC} No certificate block in ACME HTTP-01 mode"
     PASSED_TESTS=$((PASSED_TESTS + 1))
@@ -517,7 +517,7 @@ test_build_tls_block_acme_dns01() {
 
   local tls_block
   tls_block=$(_build_tls_block "dns.example.com" '["h2","http/1.1"]' \
-    "" "" "cf_dns" "fake-cf-api-token-1234567890" 2> /dev/null)
+    "" "" "cf_dns" "fake-cf-api-token-1234567890" 2>/dev/null)
 
   assert_json_valid "Generates valid JSON" "$tls_block"
   assert_json_value_equals "TLS enabled" "$tls_block" ".enabled" "true"
@@ -538,7 +538,7 @@ test_build_tls_block_acme_dns01() {
   # ACME DNS-01 mode must not emit a legacy certificate block
   TOTAL_TESTS=$((TOTAL_TESTS + 1))
   local has_cert_block
-  has_cert_block=$(echo "$tls_block" | jq 'has("certificate")' 2> /dev/null)
+  has_cert_block=$(echo "$tls_block" | jq 'has("certificate")' 2>/dev/null)
   if [[ "$has_cert_block" == "false" ]]; then
     echo -e "${GREEN}✓${NC} No certificate block in ACME DNS-01 mode"
     PASSED_TESTS=$((PASSED_TESTS + 1))
@@ -556,9 +556,9 @@ test_build_tls_block_caddy_compat() {
   # 'caddy' cert_mode should produce same output as 'acme'
   local tls_caddy tls_acme
   tls_caddy=$(_build_tls_block "compat.example.com" '["h2","http/1.1"]' \
-    "" "" "caddy" "" 2> /dev/null)
+    "" "" "caddy" "" 2>/dev/null)
   tls_acme=$(_build_tls_block "compat.example.com" '["h2","http/1.1"]' \
-    "" "" "acme" "" 2> /dev/null)
+    "" "" "acme" "" 2>/dev/null)
 
   assert_json_valid "caddy mode generates valid JSON" "$tls_caddy"
   assert_json_has_key "caddy mode has ACME block" "$tls_caddy" ".acme"
@@ -601,11 +601,11 @@ test_create_ws_inbound_basic() {
   # Build a TLS block first
   local tls_json
   tls_json=$(_build_tls_block "${test_domain}" '["h2","http/1.1"]' \
-    "" "" "acme" "" 2> /dev/null)
+    "" "" "acme" "" 2>/dev/null)
 
   local ws_config
   ws_config=$(create_ws_inbound "${test_uuid}" "${test_port}" "${test_listen}" \
-    "${test_domain}" "${tls_json}" 2> /dev/null)
+    "${test_domain}" "${tls_json}" 2>/dev/null)
 
   assert_json_valid "Generates valid JSON" "$ws_config"
   assert_json_value_equals "Type is vless" "$ws_config" ".type" "vless"
@@ -635,11 +635,11 @@ test_create_ws_inbound_manual_cert() {
 
   local tls_json
   tls_json=$(_build_tls_block "manual.example.com" '["h2","http/1.1"]' \
-    "/etc/ssl/cert.pem" "/etc/ssl/key.pem" "" "" 2> /dev/null)
+    "/etc/ssl/cert.pem" "/etc/ssl/key.pem" "" "" 2>/dev/null)
 
   local ws_config
   ws_config=$(create_ws_inbound "${test_uuid}" "443" "::" \
-    "manual.example.com" "${tls_json}" 2> /dev/null)
+    "manual.example.com" "${tls_json}" 2>/dev/null)
 
   assert_json_valid "Generates valid JSON" "$ws_config"
   assert_json_value_equals "TLS has cert path" "$ws_config" ".tls.certificate_path" "/etc/ssl/cert.pem"
@@ -648,7 +648,7 @@ test_create_ws_inbound_manual_cert() {
   # Must NOT have ACME block
   TOTAL_TESTS=$((TOTAL_TESTS + 1))
   local has_acme
-  has_acme=$(echo "$ws_config" | jq '.tls | has("acme")' 2> /dev/null)
+  has_acme=$(echo "$ws_config" | jq '.tls | has("acme")' 2>/dev/null)
   if [[ "$has_acme" == "false" ]]; then
     echo -e "${GREEN}✓${NC} No ACME block with manual certs"
     PASSED_TESTS=$((PASSED_TESTS + 1))
@@ -673,11 +673,11 @@ test_create_hysteria2_inbound_basic() {
 
   local tls_json
   tls_json=$(_build_tls_block "hy2.example.com" '["h3"]' \
-    "" "" "acme" "" 2> /dev/null)
+    "" "" "acme" "" 2>/dev/null)
 
   local hy2_config
   hy2_config=$(create_hysteria2_inbound "${test_password}" "${test_port}" \
-    "${test_listen}" "${tls_json}" 2> /dev/null)
+    "${test_listen}" "${tls_json}" 2>/dev/null)
 
   assert_json_valid "Generates valid JSON" "$hy2_config"
   assert_json_value_equals "Type is hysteria2" "$hy2_config" ".type" "hysteria2"
@@ -702,11 +702,11 @@ test_create_hysteria2_inbound_dns01() {
 
   local tls_json
   tls_json=$(_build_tls_block "hy2-dns.example.com" '["h3"]' \
-    "" "" "cf_dns" "fake-cf-token-abcdef" 2> /dev/null)
+    "" "" "cf_dns" "fake-cf-token-abcdef" 2>/dev/null)
 
   local hy2_config
   hy2_config=$(create_hysteria2_inbound "password123" "8443" "::" \
-    "${tls_json}" 2> /dev/null)
+    "${tls_json}" 2>/dev/null)
 
   assert_json_valid "Generates valid JSON" "$hy2_config"
 
@@ -748,10 +748,10 @@ test_add_outbound_config() {
   echo "-------------------------------------------------------"
 
   local base_config
-  base_config=$(create_base_config "false" "warn" 2> /dev/null)
+  base_config=$(create_base_config "false" "warn" 2>/dev/null)
 
   local config
-  config=$(add_outbound_config "$base_config" 2> /dev/null)
+  config=$(add_outbound_config "$base_config" 2>/dev/null)
 
   assert_json_valid "Generates valid JSON" "$config"
 
@@ -767,7 +767,7 @@ test_add_outbound_config() {
   # kernel_tx/kernel_rx apply to TLS inbound, not outbound.
   TOTAL_TESTS=$((TOTAL_TESTS + 1))
   local has_ktls
-  has_ktls=$(echo "$config" | jq '.outbounds[0] | has("kernel_tx")' 2> /dev/null)
+  has_ktls=$(echo "$config" | jq '.outbounds[0] | has("kernel_tx")' 2>/dev/null)
   if [[ "$has_ktls" == "false" ]]; then
     echo -e "${GREEN}✓${NC} kernel_tx absent in outbound config"
     PASSED_TESTS=$((PASSED_TESTS + 1))
@@ -783,7 +783,7 @@ test_add_outbound_config_kernel_release_suffix() {
   echo "-------------------------------------------------------------"
 
   local base_config
-  base_config=$(create_base_config "false" "warn" 2> /dev/null)
+  base_config=$(create_base_config "false" "warn" 2>/dev/null)
 
   local config=""
   local status=0
@@ -812,12 +812,126 @@ test_add_outbound_config_kernel_release_suffix() {
   fi
 
   TOTAL_TESTS=$((TOTAL_TESTS + 1))
-  if [[ "$(echo "$config" | jq '.outbounds[0] | has("kernel_tx")' 2> /dev/null)" == "false" ]]; then
+  if [[ "$(echo "$config" | jq '.outbounds[0] | has("kernel_tx")' 2>/dev/null)" == "false" ]]; then
     echo -e "${GREEN}✓${NC} kernel_tx absent for 5.15-rc1 outbound config"
     PASSED_TESTS=$((PASSED_TESTS + 1))
   else
     echo -e "${RED}✗${NC} kernel_tx should be absent for 5.15-rc1 outbound config"
     FAILED_TESTS=$((FAILED_TESTS + 1))
+  fi
+}
+
+#=============================================================================
+# add_experimental_config() Tests
+#=============================================================================
+
+_write_stats_state_file() {
+  local path="$1"
+  local enabled="$2"
+  local secret="$3"
+  jq -n \
+    --argjson enabled "${enabled}" \
+    --arg secret "${secret}" \
+    '{stats: {enabled: $enabled, bind: "127.0.0.1", port: 9090, secret: $secret}}' \
+    >"${path}"
+}
+
+test_add_experimental_config_enabled() {
+  echo ""
+  echo "Testing add_experimental_config() - stats enabled"
+  echo "-------------------------------------------------"
+
+  local tmp_state=""
+  tmp_state=$(mktemp)
+  local fake_secret="f0e1d2c3b4a5968778695a4b3c2d1e0f1122334455667788990011aabbccddee"
+  _write_stats_state_file "${tmp_state}" true "${fake_secret}"
+
+  local base_config=""
+  base_config=$(create_base_config "false" "warn" 2>/dev/null)
+
+  local config=""
+  config=$(TEST_STATE_FILE="${tmp_state}" \
+    add_experimental_config "${base_config}" 2>/dev/null)
+
+  assert_json_valid "add_experimental_config output is valid JSON" "${config}"
+  assert_json_has_key "experimental.clash_api is present" "${config}" '.experimental.clash_api'
+
+  TOTAL_TESTS=$((TOTAL_TESTS + 1))
+  local ec
+  ec=$(echo "${config}" | jq -r '.experimental.clash_api.external_controller' 2>/dev/null)
+  if [[ "${ec}" == "127.0.0.1:9090" ]]; then
+    echo -e "${GREEN}✓${NC} external_controller bound to 127.0.0.1:9090"
+    PASSED_TESTS=$((PASSED_TESTS + 1))
+  else
+    echo -e "${RED}✗${NC} external_controller wrong: ${ec}"
+    FAILED_TESTS=$((FAILED_TESTS + 1))
+  fi
+
+  TOTAL_TESTS=$((TOTAL_TESTS + 1))
+  local got_secret
+  got_secret=$(echo "${config}" | jq -r '.experimental.clash_api.secret' 2>/dev/null)
+  if [[ "${got_secret}" == "${fake_secret}" && "${#got_secret}" -eq 64 ]]; then
+    echo -e "${GREEN}✓${NC} secret propagated from state.json (64 hex chars)"
+    PASSED_TESTS=$((PASSED_TESTS + 1))
+  else
+    echo -e "${RED}✗${NC} secret mismatch (len=${#got_secret})"
+    FAILED_TESTS=$((FAILED_TESTS + 1))
+  fi
+
+  rm -f "${tmp_state}"
+}
+
+test_add_experimental_config_disabled() {
+  echo ""
+  echo "Testing add_experimental_config() - stats disabled"
+  echo "--------------------------------------------------"
+
+  local tmp_state=""
+  tmp_state=$(mktemp)
+  _write_stats_state_file "${tmp_state}" false "$(printf 'a%.0s' {1..64})"
+
+  local base_config=""
+  base_config=$(create_base_config "false" "warn" 2>/dev/null)
+
+  local config=""
+  config=$(TEST_STATE_FILE="${tmp_state}" \
+    add_experimental_config "${base_config}" 2>/dev/null)
+
+  assert_json_valid "disabled: output is still valid JSON" "${config}"
+
+  TOTAL_TESTS=$((TOTAL_TESTS + 1))
+  if echo "${config}" | jq -e '.experimental' >/dev/null 2>&1; then
+    echo -e "${RED}✗${NC} experimental block should NOT be present when disabled"
+    FAILED_TESTS=$((FAILED_TESTS + 1))
+  else
+    echo -e "${GREEN}✓${NC} experimental block absent when stats disabled"
+    PASSED_TESTS=$((PASSED_TESTS + 1))
+  fi
+
+  rm -f "${tmp_state}"
+}
+
+test_add_experimental_config_no_state_file() {
+  echo ""
+  echo "Testing add_experimental_config() - missing state.json"
+  echo "------------------------------------------------------"
+
+  local base_config=""
+  base_config=$(create_base_config "false" "warn" 2>/dev/null)
+
+  local config=""
+  config=$(TEST_STATE_FILE="/nonexistent/state.json" \
+    add_experimental_config "${base_config}" 2>/dev/null)
+
+  assert_json_valid "no-state: output remains valid JSON" "${config}"
+
+  TOTAL_TESTS=$((TOTAL_TESTS + 1))
+  if echo "${config}" | jq -e '.experimental' >/dev/null 2>&1; then
+    echo -e "${RED}✗${NC} experimental block should NOT be present without state.json"
+    FAILED_TESTS=$((FAILED_TESTS + 1))
+  else
+    echo -e "${GREEN}✓${NC} add_experimental_config is a no-op without state.json"
+    PASSED_TESTS=$((PASSED_TESTS + 1))
   fi
 }
 
@@ -842,11 +956,12 @@ main() {
     "create_ws_inbound"
     "create_hysteria2_inbound"
     "add_outbound_config"
+    "add_experimental_config"
   )
 
   local missing_functions=0
   for func in "${required_functions[@]}"; do
-    if declare -f "$func" > /dev/null 2>&1; then
+    if declare -f "$func" >/dev/null 2>&1; then
       echo -e "${GREEN}✓${NC} $func is available"
     else
       echo -e "${RED}✗${NC} $func is NOT available (not exported?)"
@@ -855,7 +970,7 @@ main() {
   done
 
   # Check for jq
-  if command -v jq > /dev/null 2>&1; then
+  if command -v jq >/dev/null 2>&1; then
     echo -e "${GREEN}✓${NC} jq is available"
   else
     echo -e "${RED}✗${NC} jq is NOT available (required for config generation)"
@@ -895,6 +1010,11 @@ main() {
   # Run test suites — outbound 1.13.0 fields
   test_add_outbound_config
   test_add_outbound_config_kernel_release_suffix
+
+  # Run test suites — experimental.clash_api (stats)
+  test_add_experimental_config_enabled
+  test_add_experimental_config_disabled
+  test_add_experimental_config_no_state_file
 
   # Run test suites — error handling
   test_error_handling

@@ -37,6 +37,7 @@ CF_API_TOKEN=your_token CERT_MODE=cf_dns DOMAIN=your.domain.com bash <(curl -fsS
 - **Cloudflare support** - CF_MODE for CDN proxying when IP is blocked
 - **DNS-01 challenge** - Certificate issuance without port 80 via Cloudflare API
 - **Easy export** - QR codes, v2rayN/Clash configs, share URIs
+- **Traffic statistics** - `sbx stats` live throughput, connections and per-user breakdown via Clash API (see [docs/STATS.md](docs/STATS.md))
 
 ## Usage
 
@@ -98,6 +99,7 @@ See [REALITY_TROUBLESHOOTING.md](docs/REALITY_TROUBLESHOOTING.md) for more solut
 | [Best Practices](docs/REALITY_BEST_PRACTICES.md) | Security & performance tips |
 | [Advanced Options](docs/ADVANCED.md) | Environment variables & customization |
 | [Telegram Bot](docs/TELEGRAM_BOT.md) | Remote management via Telegram commands |
+| [Traffic Statistics](docs/STATS.md) | `sbx stats` CLI, Clash API secret rotation, yacd/metacubexd setup |
 | [Architecture Diagrams](docs/ARCHITECTURE_DIAGRAMS.md) | Module structure & installation flowcharts |
 | [Contributing](CONTRIBUTING.md) | Developer setup & guidelines |
 

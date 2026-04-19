@@ -519,7 +519,7 @@ _download_and_validate_manager_script() {
 _load_modules() {
   local github_repo="https://raw.githubusercontent.com/xrf9268-hue/sbx/main"
   # Module loading order: colors first (required by common and logging), then common loads logging and generators, tools after common
-  local modules=(colors common logging generators tools retry download network validation checksum version certificate caddy_cleanup config config_validator schema_validator service ui backup export messages users port_hopping subscription cloudflare_tunnel telegram_bot)
+  local modules=(colors common logging generators tools retry download network validation checksum version certificate caddy_cleanup config config_validator schema_validator service ui backup export messages users port_hopping subscription stats cloudflare_tunnel telegram_bot)
   local temp_lib_dir=""
 
   # Check if lib directory exists
@@ -681,6 +681,7 @@ _verify_module_apis() {
     ["users"]="user_add user_list user_remove user_reset sync_users_to_config"
     ["port_hopping"]="validate_port_range apply_port_hopping_rules remove_port_hopping_rules show_port_hopping_status"
     ["subscription"]="subscription_render subscription_enable subscription_disable subscription_status subscription_url subscription_ensure_state_block"
+    ["stats"]="stats_ensure_state_block stats_overview_pretty stats_overview_json stats_enable stats_disable"
     ["cloudflare_tunnel"]="cloudflared_install cloudflared_enable_token cloudflared_disable cloudflared_status cloudflared_update_state"
     ["telegram_bot"]="telegram_bot_setup telegram_bot_enable telegram_bot_disable telegram_bot_status telegram_bot_run"
   )
@@ -1444,7 +1445,14 @@ gen_materials() {
 save_client_info() {
   msg "Saving client information..."
 
-  cat >"${CLIENT_INFO}" <<EOF
+  local client_info_file="${CLIENT_INFO}"
+  local client_info_dir=''
+  client_info_dir="$(dirname "${client_info_file}")"
+
+  mkdir -p "${client_info_dir}"
+  chmod "${SECURE_DIR_PERMISSIONS}" "${client_info_dir}" 2>/dev/null || true
+
+  cat >"${client_info_file}" <<EOF
 # sing-box client configuration
 # Generated: $(date)
 
@@ -1458,47 +1466,47 @@ EOF
 
   if [[ "${REALITY_ONLY_MODE:-0}" != "1" ]]; then
     if [[ "${ENABLE_WS:-0}" == "1" ]]; then
-      cat >>"${CLIENT_INFO}" <<EOF
+      cat >>"${client_info_file}" <<EOF
 WS_PORT="${WS_PORT_CHOSEN}"
 EOF
     fi
 
     if [[ "${ENABLE_HY2:-0}" == "1" ]]; then
-      cat >>"${CLIENT_INFO}" <<EOF
+      cat >>"${client_info_file}" <<EOF
 HY2_PORT="${HY2_PORT_CHOSEN}"
 HY2_PASS="${HY2_PASS}"
 EOF
       if [[ -n "${HY2_PORT_RANGE:-}" ]]; then
-        cat >>"${CLIENT_INFO}" <<EOF
+        cat >>"${client_info_file}" <<EOF
 HY2_PORT_RANGE="${HY2_PORT_RANGE}"
 EOF
       fi
     fi
 
     if [[ "${ENABLE_TUIC:-0}" == "1" ]]; then
-      cat >>"${CLIENT_INFO}" <<EOF
+      cat >>"${client_info_file}" <<EOF
 TUIC_PORT="${TUIC_PORT_CHOSEN}"
 TUIC_PASS="${TUIC_PASS}"
 EOF
     fi
 
     if [[ "${ENABLE_TROJAN:-0}" == "1" ]]; then
-      cat >>"${CLIENT_INFO}" <<EOF
+      cat >>"${client_info_file}" <<EOF
 TROJAN_PORT="${TROJAN_PORT_CHOSEN}"
 TROJAN_PASS="${TROJAN_PASS}"
 EOF
     fi
 
     if [[ -n "${CERT_FULLCHAIN:-}" || -n "${CERT_KEY:-}" ]]; then
-      cat >>"${CLIENT_INFO}" <<EOF
+      cat >>"${client_info_file}" <<EOF
 CERT_FULLCHAIN="${CERT_FULLCHAIN}"
 CERT_KEY="${CERT_KEY}"
 EOF
     fi
   fi
 
-  chmod "${SECURE_FILE_PERMISSIONS}" "${CLIENT_INFO}"
-  success "  ✓ Client info saved to: ${CLIENT_INFO}"
+  chmod "${SECURE_FILE_PERMISSIONS}" "${client_info_file}"
+  success "  ✓ Client info saved to: ${client_info_file}"
 }
 
 # Save structured state for future compatibility and typed access.
@@ -2116,15 +2124,17 @@ install_flow() {
       chmod "${SECURE_DIR_PERMISSIONS}" "${ACME_DATA_DIRECTORY}"
     fi
 
+    # Persist structured state first so write_config can read feature toggles
+    # (currently: .stats for experimental.clash_api) from state.json.
+    save_client_info
+    save_state_info
+    stats_ensure_state_block
+
     # Write configuration
     write_config
 
     # Setup and start service
     setup_service
-
-    # Save client info
-    save_client_info
-    save_state_info
 
     # Install manager script
     install_manager_script
