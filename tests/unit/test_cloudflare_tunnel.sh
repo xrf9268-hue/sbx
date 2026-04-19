@@ -117,7 +117,7 @@ assert_contains "config.yml disables origin TLS verification" "noTLSVerify: true
 assert_contains "config.yml has 404 catch-all" "service: http_status:404" "${yml_content}"
 
 perm=$(stat -c '%a' "${CLOUDFLARED_CONFIG}" 2>/dev/null || stat -f '%Lp' "${CLOUDFLARED_CONFIG}" 2>/dev/null)
-assert_eq "config.yml is mode 600" "600" "${perm}"
+assert_eq "config.yml is mode 644" "644" "${perm}"
 
 #==============================================================================
 # Upstream port resolution (issue #121)
@@ -217,6 +217,7 @@ assert_contains "unit has [Unit]" "[Unit]" "${unit_content}"
 assert_contains "unit has [Service]" "[Service]" "${unit_content}"
 assert_contains "unit has [Install]" "[Install]" "${unit_content}"
 assert_contains "unit references EnvironmentFile" "EnvironmentFile=-${CLOUDFLARED_ENV_FILE}" "${unit_content}"
+assert_contains "token mode ExecStart pins config path" "--config ${CLOUDFLARED_CONFIG}" "${unit_content}"
 assert_contains "unit ExecStart uses tunnel run --token" 'tunnel run --token ${TUNNEL_TOKEN}' "${unit_content}"
 assert_contains "unit hardened with NoNewPrivileges" "NoNewPrivileges=true" "${unit_content}"
 assert_contains "unit hardened with ProtectSystem" "ProtectSystem=strict" "${unit_content}"

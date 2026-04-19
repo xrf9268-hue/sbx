@@ -259,7 +259,7 @@ ingress:
       noTLSVerify: true
   - service: http_status:404
 EOF
-  chmod 600 "${CLOUDFLARED_CONFIG}"
+  chmod 644 "${CLOUDFLARED_CONFIG}"
 }
 
 # cloudflared_write_service_file <mode>
@@ -272,7 +272,7 @@ cloudflared_write_service_file() {
     token)
       # The token is pulled from EnvironmentFile at start-time so it never
       # appears on the command line (and therefore not in `ps`/journal).
-      exec_line='ExecStart=/usr/local/bin/cloudflared --no-autoupdate tunnel run --token ${TUNNEL_TOKEN}'
+      exec_line="ExecStart=/usr/local/bin/cloudflared --config ${CLOUDFLARED_CONFIG} --no-autoupdate tunnel run --token \${TUNNEL_TOKEN}"
       ;;
     quick)
       local quick_port=""
