@@ -17,9 +17,9 @@ Single source of truth for coding-agent instructions in this repository.
 
 - Use the existing AWS VM as the default environment for runtime validation and smoke testing.
 - VM connection:
-  - host: `admin@18.217.254.125`
+  - host: `admin@3.135.246.117`
   - ssh key: `~/.ssh/ai-polling-proxy.pem`
-  - remote repo: `~/sbx`
+  - remote repo: prefer a fresh clone of `https://github.com/xrf9268-hue/sbx` in a temporary directory; do not assume `~/sbx` is a clean validation tree
   - remote OS: Debian 12 x86_64
 - Default remote working copy should be a fresh clone of the upstream repository:
   `https://github.com/xrf9268-hue/sbx`
@@ -33,22 +33,22 @@ Single source of truth for coding-agent instructions in this repository.
 ```bash
 # Check VM connectivity
 ssh -i ~/.ssh/ai-polling-proxy.pem -o StrictHostKeyChecking=accept-new \
-  admin@18.217.254.125 \
-  'hostname && whoami && uname -a && test -d ~/sbx && echo repo_ok || echo repo_missing'
+  admin@3.135.246.117 \
+  'hostname && whoami && uname -a'
 
 # Remote unit validation
 ssh -i ~/.ssh/ai-polling-proxy.pem -o StrictHostKeyChecking=accept-new \
-  admin@18.217.254.125 \
-  'cd ~/sbx && bash tests/test-runner.sh unit'
+  admin@3.135.246.117 \
+  'workdir=$(mktemp -d /tmp/sbx-verify.XXXXXX) && trap "rm -rf \"$workdir\"" EXIT && git clone --branch main --single-branch https://github.com/xrf9268-hue/sbx "$workdir" >/dev/null 2>&1 && cd "$workdir" && bash tests/test-runner.sh unit'
 
 ssh -i ~/.ssh/ai-polling-proxy.pem -o StrictHostKeyChecking=accept-new \
-  admin@18.217.254.125 \
-  'cd ~/sbx && bash tests/unit/test_bootstrap_constants.sh'
+  admin@3.135.246.117 \
+  'workdir=$(mktemp -d /tmp/sbx-verify.XXXXXX) && trap "rm -rf \"$workdir\"" EXIT && git clone --branch main --single-branch https://github.com/xrf9268-hue/sbx "$workdir" >/dev/null 2>&1 && cd "$workdir" && bash tests/unit/test_bootstrap_constants.sh'
 
 # Remote Docker lifecycle smoke
 ssh -i ~/.ssh/ai-polling-proxy.pem -o StrictHostKeyChecking=accept-new \
-  admin@18.217.254.125 \
-  'cd ~/sbx && bash scripts/e2e/install-lifecycle-smoke.sh'
+  admin@3.135.246.117 \
+  'workdir=$(mktemp -d /tmp/sbx-verify.XXXXXX) && trap "rm -rf \"$workdir\"" EXIT && git clone --branch main --single-branch https://github.com/xrf9268-hue/sbx "$workdir" >/dev/null 2>&1 && cd "$workdir" && bash scripts/e2e/install-lifecycle-smoke.sh'
 
 # Install git hooks in the current working tree when editing locally
 bash hooks/install-hooks.sh
@@ -105,6 +105,7 @@ TEST_DOMAIN=1.1.1.1
 - Test guide: `tests/README.md`
 - VM environment notes: `vm-env-notes.md`
 - Troubleshooting: `docs/REALITY_TROUBLESHOOTING.md`
+- Cloudflare Tunnel: `docs/CLOUDFLARE_TUNNEL.md`
 - Internal architecture and coding notes: `.claude/ARCHITECTURE.md`, `.claude/CODING_STANDARDS.md`
 
 ## Compatibility

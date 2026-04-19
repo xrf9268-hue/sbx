@@ -98,6 +98,7 @@ See [REALITY_TROUBLESHOOTING.md](docs/REALITY_TROUBLESHOOTING.md) for more solut
 | [Troubleshooting](docs/REALITY_TROUBLESHOOTING.md) | Connection & installation issues |
 | [Best Practices](docs/REALITY_BEST_PRACTICES.md) | Security & performance tips |
 | [Advanced Options](docs/ADVANCED.md) | Environment variables & customization |
+| [Cloudflare Tunnel](docs/CLOUDFLARE_TUNNEL.md) | Expose WS-TLS through Cloudflare Tunnel with `sbx tunnel` |
 | [Telegram Bot](docs/TELEGRAM_BOT.md) | Remote management via Telegram commands |
 | [Traffic Statistics](docs/STATS.md) | `sbx stats` CLI, Clash API secret rotation, yacd/metacubexd setup |
 | [Architecture Diagrams](docs/ARCHITECTURE_DIAGRAMS.md) | Module structure & installation flowcharts |

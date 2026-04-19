@@ -30,10 +30,10 @@ reboots and you can manage everything from the Cloudflare dashboard.
 1. **Create a tunnel** in the Cloudflare Zero Trust dashboard:
    *Networks → Tunnels → Create a tunnel → Cloudflared*. Copy the **token**
    (a long base64 string starting with `ey...`).
-2. **Add a public hostname** to the tunnel pointing at
-   `http://localhost:8444` (or whichever port your sing-box WS inbound uses).
-   Choose any hostname under a domain you've added to Cloudflare, e.g.
-   `vpn.example.com`.
+2. **Route a public hostname** to the tunnel, e.g. `vpn.example.com`.
+   `sbx` manages the local origin itself and maps that hostname to the active
+   sing-box WS-TLS inbound at `https://127.0.0.1:<WS_PORT>` with origin TLS
+   verification disabled for loopback/self-signed certificates.
 3. **Enable the tunnel on the server**:
 
    ```bash
@@ -62,7 +62,7 @@ randomly assigned at start, and disappears the moment cloudflared restarts.
 ```bash
 sudo sbx tunnel install
 # Run cloudflared in the foreground to capture the trycloudflare.com URL
-cloudflared --no-autoupdate tunnel --url http://127.0.0.1:8444
+cloudflared --no-autoupdate tunnel --url https://127.0.0.1:8444 --no-tls-verify
 ```
 
 Copy the printed `https://*.trycloudflare.com` hostname and use it manually
@@ -74,7 +74,7 @@ for testing. For persistent deployments, switch to the token mode above.
 |-----------------------------------------|---------|
 | `/usr/local/bin/cloudflared`            | Official Cloudflare binary |
 | `/etc/systemd/system/cloudflared.service` | systemd unit (hardened: `NoNewPrivileges`, `ProtectSystem=strict`, `PrivateTmp`) |
-| `/etc/cloudflared/config.yml`           | Ingress map: `<hostname> → http://127.0.0.1:<WS_PORT>` |
+| `/etc/cloudflared/config.yml`           | Ingress map: `<hostname> → https://127.0.0.1:<WS_PORT>` with `originRequest.noTLSVerify: true` (mode `644`, non-secret but readable by the service user) |
 | `/etc/cloudflared/tunnel.env`           | `TUNNEL_TOKEN=...` (mode `600`, root-only) — referenced by the unit's `EnvironmentFile` so the token never appears on the command line |
 
 The tunnel state is persisted under `.tunnel` in
@@ -107,8 +107,11 @@ sudo sbx tunnel enable <NEW_TOKEN> vpn.example.com
 | Symptom | Check |
 |---------|-------|
 | `sbx tunnel status` shows `inactive` | `journalctl -u cloudflared -n 80 --no-pager` |
-| Connection times out from client | Confirm the tunnel public hostname routes to `http://localhost:<WS_PORT>` in the Cloudflare dashboard, and that sing-box is listening: `ss -tlnp \| grep <WS_PORT>` |
+| Connection times out from client | Confirm the hostname is routed to the tunnel, and that sing-box is listening on the WS port: `ss -tlnp \| grep <WS_PORT>` |
+| All HTTP/WS requests return `503` | Check whether `cloudflared` actually loaded `/etc/cloudflared/config.yml`: `journalctl -u cloudflared -n 80 --no-pager`. Current `sbx` versions start token mode with `--config /etc/cloudflared/config.yml`; older installs may need to be re-enabled after upgrade. |
+| Requests return Cloudflare `1033` / `530` | The tunnel has no active connector. Check `journalctl -u cloudflared -n 80 --no-pager` and `sbx tunnel status`. |
 | `cloudflared` complains about token | Ensure the token wasn't truncated; the file at `/etc/cloudflared/tunnel.env` should contain a single line `TUNNEL_TOKEN=ey...` |
+| `cloudflared` shows `permission denied` for `config.yml` | `/etc/cloudflared/config.yml` should be readable by the service user. Current `sbx` writes it as mode `644`; `tunnel.env` remains the only secret file and stays `600`. |
 | Reality / Hy2 / TUIC URIs no longer work | Expected — those protocols cannot be tunneled. Use the WS URI when tunnel mode is on, or expose those ports directly through the firewall. |
 | Want to fall back to direct connect | `sudo sbx tunnel disable` — sing-box keeps running and Reality/Hy2/TUIC remain reachable on the host's public IP |
 
