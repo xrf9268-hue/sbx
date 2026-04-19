@@ -38,6 +38,136 @@ _reality_rotation_config_file() {
   echo "${TEST_CONFIG_FILE:-${SB_CONF:-${SB_CONF_DIR:-/etc/sing-box}/config.json}}"
 }
 
+_rotation_unit_dir() {
+  echo "${TEST_SYSTEMD_DIR:-${SBX_SYSTEMD_DIR:-/etc/systemd/system}}"
+}
+
+_rotation_service_unit_path() {
+  printf '%s/%s\n' "$(_rotation_unit_dir)" "${ROTATION_SERVICE_NAME}"
+}
+
+_rotation_timer_unit_path() {
+  printf '%s/%s\n' "$(_rotation_unit_dir)" "${ROTATION_TIMER_NAME}"
+}
+
+_rotation_schedule_to_oncalendar() {
+  local schedule="$1"
+
+  case "${schedule}" in
+    daily|weekly|monthly)
+      printf '%s\n' "${schedule}"
+      return 0
+      ;;
+    off)
+      printf '\n'
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+_rotation_append_history() {
+  local history_json="${1:-[]}"
+  local short_id="$2"
+  local rotated_at="$3"
+  local trigger="$4"
+  local history_limit="${5:-${ROTATION_HISTORY_LIMIT}}"
+
+  jq -c \
+    --arg short_id "${short_id}" \
+    --arg rotated_at "${rotated_at}" \
+    --arg trigger "${trigger}" \
+    --argjson history_limit "${history_limit}" \
+    '
+    ([{short_id: $short_id, rotated_at: $rotated_at, trigger: $trigger}] +
+      (if type == "array" then . else [] end))[:$history_limit]
+    ' <<<"${history_json}"
+}
+
+_rotation_service_unit_content() {
+  cat <<'EOF'
+[Unit]
+Description=sbx short ID rotation service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/sbx rotate-shortid --scheduled-run
+EOF
+}
+
+_rotation_timer_unit_content() {
+  local on_calendar="$1"
+
+  cat <<EOF
+[Unit]
+Description=sbx short ID rotation timer
+
+[Timer]
+OnCalendar=${on_calendar}
+Persistent=true
+Unit=${ROTATION_SERVICE_NAME}
+
+[Install]
+WantedBy=timers.target
+EOF
+}
+
+_rotation_install_units() {
+  local on_calendar="$1"
+  local service_unit_path=''
+  local timer_unit_path=''
+  local service_unit_content=''
+  local timer_unit_content=''
+
+  service_unit_path=$(_rotation_service_unit_path)
+  timer_unit_path=$(_rotation_timer_unit_path)
+  service_unit_content=$(_rotation_service_unit_content)
+  timer_unit_content=$(_rotation_timer_unit_content "${on_calendar}")
+
+  install_systemd_unit "${service_unit_path}" "${service_unit_content}"
+  install_systemd_unit "${timer_unit_path}" "${timer_unit_content}"
+  systemctl enable "${ROTATION_TIMER_NAME}" >/dev/null 2>&1 || true
+}
+
+reality_rotation_remove_units() {
+  local service_unit_path=''
+  local timer_unit_path=''
+
+  service_unit_path=$(_rotation_service_unit_path)
+  timer_unit_path=$(_rotation_timer_unit_path)
+
+  remove_systemd_unit "${ROTATION_TIMER_NAME}" "${timer_unit_path}" "strict" || return 1
+  remove_systemd_unit "${ROTATION_SERVICE_NAME}" "${service_unit_path}" "strict" || return 1
+}
+
+_rotation_write_schedule_state() {
+  local state_file="$1"
+  local output_file="$2"
+  local schedule="$3"
+  local enabled="$4"
+  local on_calendar="${5:-}"
+  local on_calendar_json='null'
+
+  if [[ -n "${on_calendar}" ]]; then
+    on_calendar_json=$(jq -Rn --arg value "${on_calendar}" '$value')
+  fi
+
+  jq \
+    --arg schedule "${schedule}" \
+    --argjson enabled "${enabled}" \
+    --argjson on_calendar "${on_calendar_json}" \
+    '
+    .protocols.reality.short_id_rotation = (
+      (.protocols.reality.short_id_rotation // {})
+      | .schedule = $schedule
+      | .enabled = $enabled
+      | .on_calendar = $on_calendar
+    )
+    ' "${state_file}" >"${output_file}"
+}
+
 _reality_rotation_usage() {
   cat <<'EOF'
 Usage: reality_rotate_shortid [--dry-run] [--scheduled-run]
@@ -142,13 +272,22 @@ _reality_rotation_update_state() {
   local new_short_id="$4"
   local trigger="$5"
   local rotated_at="$6"
+  local history=''
 
+  history=$(
+    _rotation_append_history \
+      "$(jq -c '.protocols.reality.short_id_rotation.history // []' "${state_file}" 2>/dev/null || echo '[]')" \
+      "${current_short_id}" \
+      "${rotated_at}" \
+      "${trigger}" \
+      "${ROTATION_HISTORY_LIMIT}"
+  )
   jq \
     --arg sid "${new_short_id}" \
     --arg old "${current_short_id}" \
     --arg trigger "${trigger}" \
     --arg rotated_at "${rotated_at}" \
-    --argjson history_limit "${ROTATION_HISTORY_LIMIT}" \
+    --argjson history "${history}" \
     '
     .protocols.reality.short_id = $sid
     | .protocols.reality.short_id_rotation = (
@@ -157,7 +296,7 @@ _reality_rotation_update_state() {
         | .previous_short_id = $old
         | .rotated_at = $rotated_at
         | .trigger = $trigger
-        | .history = ([{short_id: $old, rotated_at: $rotated_at, trigger: $trigger}] + (.history // []))[:$history_limit]
+        | .history = $history
       )
     ' "${state_file}" >"${output_file}"
 }
@@ -172,6 +311,64 @@ _reality_rotation_update_config() {
     '
     (.inbounds[]? | select(.tls.reality? != null) | .tls.reality.short_id) = [$sid]
     ' "${config_file}" >"${output_file}"
+}
+
+reality_rotation_schedule() {
+  local schedule="${1:-}"
+  local state_file=''
+  local state_tmp=''
+  local on_calendar=''
+
+  if [[ $# -ne 1 ]]; then
+    err "Usage: reality_rotation_schedule <daily|weekly|monthly|off>"
+    return 1
+  fi
+
+  case "${schedule}" in
+    daily|weekly|monthly)
+      on_calendar=$(_rotation_schedule_to_oncalendar "${schedule}") || {
+        err "Invalid schedule value: ${schedule}"
+        return 1
+      }
+      ;;
+    off)
+      on_calendar=''
+      ;;
+    *)
+      err "Invalid schedule value: ${schedule}"
+      return 1
+      ;;
+  esac
+
+  state_file=$(_reality_rotation_state_file)
+  [[ -f "${state_file}" ]] || {
+    err "state.json not found: ${state_file}"
+    return 1
+  }
+
+  state_tmp=$(create_temp_file_in_dir "$(dirname "${state_file}")" "state.json") || return 1
+
+  if [[ "${schedule}" == "off" ]]; then
+    reality_rotation_remove_units || {
+      rm -f "${state_tmp}" 2>/dev/null || true
+      return 1
+    }
+    _rotation_write_schedule_state "${state_file}" "${state_tmp}" "${schedule}" false "${on_calendar}" || {
+      rm -f "${state_tmp}" 2>/dev/null || true
+      return 1
+    }
+  else
+    _rotation_install_units "${on_calendar}" || {
+      rm -f "${state_tmp}" 2>/dev/null || true
+      return 1
+    }
+    _rotation_write_schedule_state "${state_file}" "${state_tmp}" "${schedule}" true "${on_calendar}" || {
+      rm -f "${state_tmp}" 2>/dev/null || true
+      return 1
+    }
+  fi
+
+  mv -f "${state_tmp}" "${state_file}"
 }
 
 _reality_rotate_shortid_locked() {
@@ -345,3 +542,4 @@ reality_rotate_shortid() {
 }
 
 export -f reality_rotate_shortid
+export -f reality_rotation_schedule reality_rotation_remove_units

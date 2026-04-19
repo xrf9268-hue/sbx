@@ -15,8 +15,12 @@ FAKE_BIN_DIR=""
 STATE_FILE_PATH=""
 CONFIG_FILE_PATH=""
 CLIENT_INFO_PATH=""
+SYSTEMD_DIR_PATH=""
 LOCK_FILE_PATH=""
 LAST_ROTATION_OUTPUT=""
+LAST_SCHEDULE_OUTPUT=""
+ROTATION_SERVICE_UNIT_NAME="sbx-shortid-rotate.service"
+ROTATION_TIMER_UNIT_NAME="sbx-shortid-rotate.timer"
 
 setup_fixture() {
   LAST_ROTATION_OUTPUT=""
@@ -25,9 +29,11 @@ setup_fixture() {
   STATE_FILE_PATH="${TEST_TMP}/state.json"
   CONFIG_FILE_PATH="${TEST_TMP}/config.json"
   CLIENT_INFO_PATH="${TEST_TMP}/client-info.txt"
+  SYSTEMD_DIR_PATH="${TEST_TMP}/systemd"
   LOCK_FILE_PATH="${TEST_TMP}/sbx-state.lock"
 
   mkdir -p "${FAKE_BIN_DIR}"
+  mkdir -p "${SYSTEMD_DIR_PATH}"
 
   cat >"${FAKE_BIN_DIR}/sing-box" <<'EOF'
 #!/usr/bin/env bash
@@ -127,6 +133,8 @@ EOF
   export TEST_CONFIG_FILE="${CONFIG_FILE_PATH}"
   export TEST_STATE_FILE="${STATE_FILE_PATH}"
   export TEST_CLIENT_INFO="${CLIENT_INFO_PATH}"
+  export TEST_SYSTEMD_DIR="${SYSTEMD_DIR_PATH}"
+  export SBX_SYSTEMD_DIR="${SYSTEMD_DIR_PATH}"
   export SBX_STATE_LOCK_FILE="${LOCK_FILE_PATH}"
   export SBX_LOCK_TIMEOUT_SEC=1
 
@@ -154,6 +162,39 @@ current_client_short_id() {
 
 current_config_short_id() {
   jq -r '.inbounds[] | select(.tls.reality) | .tls.reality.short_id[0]' "${CONFIG_FILE_PATH}"
+}
+
+rotation_service_unit_path() {
+  printf '%s/%s\n' "${SYSTEMD_DIR_PATH}" "${ROTATION_SERVICE_UNIT_NAME}"
+}
+
+rotation_timer_unit_path() {
+  printf '%s/%s\n' "${SYSTEMD_DIR_PATH}" "${ROTATION_TIMER_UNIT_NAME}"
+}
+
+seed_rotation_history() {
+  local count="$1"
+  local history_json='[]'
+  local i=1
+  local second=''
+
+  while [[ "${i}" -le "${count}" ]]; do
+    printf -v second '%02d' "${i}"
+    history_json=$(
+      jq -c \
+        --arg short_id "seed-${i}" \
+        --arg rotated_at "2026-04-18T00:00:${second}Z" \
+        --arg trigger "manual" \
+        '. + [{short_id: $short_id, rotated_at: $rotated_at, trigger: $trigger}]' \
+        <<<"${history_json}"
+    )
+    i=$((i + 1))
+  done
+
+  jq --argjson history "${history_json}" \
+    '.protocols.reality.short_id_rotation.history = $history' \
+    "${STATE_FILE_PATH}" >"${STATE_FILE_PATH}.tmp"
+  mv -f "${STATE_FILE_PATH}.tmp" "${STATE_FILE_PATH}"
 }
 
 run_rotation() {
@@ -190,6 +231,36 @@ run_rotation() {
         printf "subscription_refresh_cache\n" >>"'"${TEST_TMP}"'/subscription-refresh.log"
       }
       reality_rotate_shortid "$@"
+    ' -- "$@"
+  )
+}
+
+run_schedule() {
+  LAST_SCHEDULE_OUTPUT=$(
+    bash -c '
+      set -euo pipefail
+      source "'"${PROJECT_ROOT}"'/lib/common.sh"
+      source "'"${PROJECT_ROOT}"'/lib/validation.sh"
+      source "'"${PROJECT_ROOT}"'/lib/service.sh"
+      source "'"${PROJECT_ROOT}"'/lib/reality_rotation.sh"
+      systemctl() {
+        printf "systemctl %s\n" "$*" >>"'"${TEST_TMP}"'/systemctl.log"
+        return 0
+      }
+      install_systemd_unit() {
+        local unit_path="$1"
+        local unit_content="${2:-}"
+        printf "install_systemd_unit %s\n" "${unit_path}" >>"'"${TEST_TMP}"'/systemd.log"
+        printf "%s\n" "${unit_content}" >"${unit_path}"
+        chmod 644 "${unit_path}"
+      }
+      remove_systemd_unit() {
+        local unit_name="$1"
+        local unit_path="${2:-}"
+        printf "remove_systemd_unit %s %s\n" "${unit_name}" "${unit_path}" >>"'"${TEST_TMP}"'/systemd.log"
+        rm -f "${unit_path}"
+      }
+      reality_rotation_schedule "$@"
     ' -- "$@"
   )
 }
@@ -300,6 +371,51 @@ test_scheduled_run_records_timer_trigger() {
     "rotation history records timer trigger"
 }
 
+test_reality_rotation_schedule_weekly_installs_units_and_updates_state() {
+  run_schedule weekly
+
+  assert_equals "weekly" "$(jq -r '.protocols.reality.short_id_rotation.schedule' "${STATE_FILE_PATH}")" \
+    "state.json records weekly schedule"
+  assert_equals "true" "$(jq -r '.protocols.reality.short_id_rotation.enabled' "${STATE_FILE_PATH}")" \
+    "state.json records enabled schedule"
+  assert_equals "weekly" "$(jq -r '.protocols.reality.short_id_rotation.on_calendar' "${STATE_FILE_PATH}")" \
+    "state.json records weekly on-calendar"
+  assert_file_exists "$(rotation_service_unit_path)" "service unit is rendered"
+  assert_file_exists "$(rotation_timer_unit_path)" "timer unit is rendered"
+  assert_contains "$(cat "$(rotation_timer_unit_path)")" "OnCalendar=weekly" \
+    "timer unit contains weekly OnCalendar"
+  assert_contains "$(cat "$(rotation_timer_unit_path)")" "Persistent=true" \
+    "timer unit contains Persistent=true"
+}
+
+test_reality_rotation_schedule_off_removes_units_and_disables_state() {
+  run_schedule off
+
+  assert_equals "off" "$(jq -r '.protocols.reality.short_id_rotation.schedule' "${STATE_FILE_PATH}")" \
+    "state.json records off schedule"
+  assert_equals "false" "$(jq -r '.protocols.reality.short_id_rotation.enabled' "${STATE_FILE_PATH}")" \
+    "state.json records disabled schedule"
+  assert_equals "null" "$(jq -r '.protocols.reality.short_id_rotation.on_calendar' "${STATE_FILE_PATH}")" \
+    "state.json clears on-calendar when disabled"
+  assert_file_exists "${TEST_TMP}/systemd.log" "off schedule logs unit removal"
+  assert_not_contains "$(cat "${TEST_TMP}/systemd.log")" "install_systemd_unit" \
+    "off schedule does not render units"
+  assert_contains "$(cat "${TEST_TMP}/systemd.log")" "remove_systemd_unit" \
+    "off schedule exercises unit removal"
+}
+
+test_history_trimming_keeps_twenty_entries() {
+  local history_count=''
+
+  seed_rotation_history 25
+  run_rotation
+
+  history_count=$(jq '.protocols.reality.short_id_rotation.history | length' "${STATE_FILE_PATH}")
+  assert_equals "20" "${history_count}" "rotation history is trimmed to 20 entries"
+  assert_equals "abcd1234" "$(jq -r '.protocols.reality.short_id_rotation.history[0].short_id' "${STATE_FILE_PATH}")" \
+    "newest history entry stays first"
+}
+
 main() {
   set +e
   echo "Running: reality rotation"
@@ -317,6 +433,15 @@ main() {
   teardown_fixture
   setup_fixture
   test_scheduled_run_records_timer_trigger
+  teardown_fixture
+  setup_fixture
+  test_reality_rotation_schedule_weekly_installs_units_and_updates_state
+  teardown_fixture
+  setup_fixture
+  test_reality_rotation_schedule_off_removes_units_and_disables_state
+  teardown_fixture
+  setup_fixture
+  test_history_trimming_keeps_twenty_entries
   teardown_fixture
   print_test_summary
 }
