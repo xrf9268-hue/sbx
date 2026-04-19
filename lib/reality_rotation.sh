@@ -91,10 +91,12 @@ _rotation_schedule_backup_file() {
   local backup_file="$2"
 
   if [[ -f "${source_file}" ]]; then
-    cp -a "${source_file}" "${backup_file}"
+    cp -a "${source_file}" "${backup_file}" || return 1
   else
     rm -f "${backup_file}" 2>/dev/null || true
   fi
+
+  return 0
 }
 
 _rotation_schedule_restore_file() {
@@ -102,10 +104,12 @@ _rotation_schedule_restore_file() {
   local target_file="$2"
 
   if [[ -f "${backup_file}" ]]; then
-    cp -a "${backup_file}" "${target_file}"
+    cp -a "${backup_file}" "${target_file}" || return 1
   else
     rm -f "${target_file}" 2>/dev/null || true
   fi
+
+  return 0
 }
 
 _rotation_schedule_restore_consistency() {
@@ -116,17 +120,19 @@ _rotation_schedule_restore_consistency() {
   local timer_backup="$5"
   local timer_unit_path="$6"
 
-  _rotation_schedule_restore_file "${state_backup}" "${state_file}"
-  _rotation_schedule_restore_file "${service_backup}" "${service_unit_path}"
-  _rotation_schedule_restore_file "${timer_backup}" "${timer_unit_path}"
+  _rotation_schedule_restore_file "${state_backup}" "${state_file}" || return 1
+  _rotation_schedule_restore_file "${service_backup}" "${service_unit_path}" || return 1
+  _rotation_schedule_restore_file "${timer_backup}" "${timer_unit_path}" || return 1
+
+  systemctl daemon-reload >/dev/null 2>&1 || return 1
 
   if [[ -f "${timer_backup}" ]]; then
-    systemctl enable --now "${ROTATION_TIMER_NAME}" >/dev/null 2>&1 || true
+    systemctl enable --now "${ROTATION_TIMER_NAME}" >/dev/null 2>&1 || return 1
   else
-    remove_systemd_unit "${ROTATION_TIMER_NAME}" "${timer_unit_path}" "strict" >/dev/null 2>&1 || true
+    remove_systemd_unit "${ROTATION_TIMER_NAME}" "${timer_unit_path}" "strict" || return 1
   fi
 
-  systemctl daemon-reload >/dev/null 2>&1 || true
+  return 0
 }
 
 _rotation_service_unit_content() {

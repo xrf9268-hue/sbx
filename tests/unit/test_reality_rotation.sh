@@ -245,6 +245,18 @@ run_schedule() {
       source "'"${PROJECT_ROOT}"'/lib/reality_rotation.sh"
       systemctl() {
         printf "systemctl %s\n" "$*" >>"'"${TEST_TMP}"'/systemctl.log"
+        if [[ "${SYSTEMCTL_FAIL_ENABLE_NOW_ONCE:-0}" == "1" && "${1:-}" == "enable" && "${2:-}" == "--now" ]]; then
+          local enable_now_count_file="'"${TEST_TMP}"'/systemctl-enable-now.count"
+          local enable_now_count=0
+          if [[ -f "${enable_now_count_file}" ]]; then
+            enable_now_count=$(cat "${enable_now_count_file}")
+          fi
+          enable_now_count=$((enable_now_count + 1))
+          printf "%s\n" "${enable_now_count}" >"${enable_now_count_file}"
+          if [[ "${enable_now_count}" -eq 1 ]]; then
+            return 1
+          fi
+        fi
         if [[ "${SYSTEMCTL_FAIL_ENABLE_NOW:-0}" == "1" && "${1:-}" == "enable" && "${2:-}" == "--now" ]]; then
           return 1
         fi
@@ -454,6 +466,40 @@ test_schedule_enable_failure_rolls_back_state_and_units() {
     "failed activation exercises rollback removal"
 }
 
+test_schedule_change_failure_restores_prior_active_schedule() {
+  local before_state=''
+  local before_service=''
+  local before_timer=''
+  local daemon_reload_line=''
+  local rollback_enable_line=''
+
+  run_schedule weekly
+  before_state=$(cat "${STATE_FILE_PATH}")
+  before_service=$(cat "$(rotation_service_unit_path)")
+  before_timer=$(cat "$(rotation_timer_unit_path)")
+
+  SYSTEMCTL_FAIL_ENABLE_NOW_ONCE=1 assert_failure "run_schedule monthly" \
+    "failed schedule change should fail"
+
+  assert_equals "${before_state}" "$(cat "${STATE_FILE_PATH}")" \
+    "failed schedule change restores prior state"
+  assert_equals "${before_service}" "$(cat "$(rotation_service_unit_path)")" \
+    "failed schedule change restores prior service unit"
+  assert_equals "${before_timer}" "$(cat "$(rotation_timer_unit_path)")" \
+    "failed schedule change restores prior timer unit"
+  assert_equals "weekly" "$(jq -r '.protocols.reality.short_id_rotation.schedule' "${STATE_FILE_PATH}")" \
+    "failed schedule change keeps prior schedule"
+  assert_equals "true" "$(jq -r '.protocols.reality.short_id_rotation.enabled' "${STATE_FILE_PATH}")" \
+    "failed schedule change keeps prior enabled state"
+  assert_equals "weekly" "$(jq -r '.protocols.reality.short_id_rotation.on_calendar' "${STATE_FILE_PATH}")" \
+    "failed schedule change keeps prior on-calendar"
+
+  daemon_reload_line=$(grep -n 'systemctl daemon-reload' "${TEST_TMP}/systemctl.log" | tail -1 | cut -d: -f1)
+  rollback_enable_line=$(grep -n 'systemctl enable --now sbx-shortid-rotate.timer' "${TEST_TMP}/systemctl.log" | tail -1 | cut -d: -f1)
+  assert_greater_than "${rollback_enable_line}" "${daemon_reload_line}" \
+    "rollback re-enables timer only after daemon-reload"
+}
+
 test_history_trimming_keeps_twenty_entries() {
   local history_count=''
 
@@ -495,6 +541,9 @@ main() {
   teardown_fixture
   setup_fixture
   test_schedule_enable_failure_rolls_back_state_and_units
+  teardown_fixture
+  setup_fixture
+  test_schedule_change_failure_restores_prior_active_schedule
   teardown_fixture
   setup_fixture
   test_history_trimming_keeps_twenty_entries
