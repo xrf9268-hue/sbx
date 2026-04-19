@@ -205,6 +205,29 @@ test_load_client_info_exposes_sub_vars() {
   assert_contains "${out}" "SUB_PATH=/sub" "SUB_PATH populated"
 }
 
+test_load_client_info_accepts_group_readable_state() {
+  _write_state_with_subscription
+  chmod 640 "${STATE_FILE_PATH}"
+
+  local out=''
+  out=$(
+    TEST_STATE_FILE="${STATE_FILE_PATH}" \
+      TEST_CLIENT_INFO="${TEST_TMP}/nope" \
+      bash -c "
+        source '${PROJECT_ROOT}/lib/export.sh'
+        load_client_info >/dev/null
+        printf 'SUB_ENABLED=%s\nSUB_TOKEN=%s\n' \
+          \"\${SUB_ENABLED:-}\" \"\${SUB_TOKEN:-}\"
+      "
+  )
+  local rc=$?
+
+  assert_equals "0" "${rc}" "group-readable state.json remains loadable for subscription"
+  assert_contains "${out}" "SUB_ENABLED=true" "SUB_ENABLED loads from 640 state.json"
+  assert_contains "${out}" "SUB_TOKEN=deadbeefdeadbeefdeadbeefdeadbeef" \
+    "SUB_TOKEN loads from 640 state.json"
+}
+
 main() {
   set +e
   setup_fixture
@@ -212,6 +235,7 @@ main() {
   test_ensure_block_adds_defaults_when_missing
   test_ensure_block_is_idempotent
   test_load_client_info_exposes_sub_vars
+  test_load_client_info_accepts_group_readable_state
   test_load_client_info_batches_state_reads
   teardown_fixture
   print_test_summary

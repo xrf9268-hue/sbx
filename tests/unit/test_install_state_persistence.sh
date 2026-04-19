@@ -120,11 +120,55 @@ test_save_state_info_acme_marks_ws_hy2_enabled() {
     assert_contains "${output}" $'true\n8444\ntrue\n8443' "ACME state marks ws/hy2 enabled with ports"
 }
 
+test_save_state_info_cf_mode_disables_non_ws_protocols() {
+    local output='' rc=0
+    set +e
+    output=$(bash -c '
+      source "'"${PROJECT_ROOT}"'/install.sh" >/dev/null 2>&1
+      trap - EXIT INT TERM HUP QUIT ERR RETURN
+      export TEST_STATE_FILE="'"${TEST_TMP}"'/state-cf-mode.json"
+      export SBX_LOCK_FILE="'"${LOCK_FILE_PATH}"'"
+      export SBX_STATE_LOCK_FILE="'"${STATE_LOCK_FILE_PATH}"'"
+      export DOMAIN="x.950288.xyz"
+      export CF_MODE=1
+      export REALITY_ONLY_MODE=0
+      export ENABLE_REALITY=0
+      export ENABLE_WS=1
+      export ENABLE_HY2=0
+      export ENABLE_TUIC=0
+      export ENABLE_TROJAN=0
+      export UUID="11111111-2222-3333-4444-555555555555"
+      export PUB="pubkey123"
+      export SID="abcd1234"
+      export SNI="www.microsoft.com"
+      export REALITY_PORT_CHOSEN=""
+      export WS_PORT_CHOSEN=443
+      export HY2_PORT_CHOSEN=""
+      export HY2_PASS=""
+      export CERT_FULLCHAIN="/tmp/fake-fullchain.pem"
+      export CERT_KEY="/tmp/fake-key.pem"
+      save_state_info
+      jq -r ".protocols.reality.enabled,
+              (.protocols.reality.port | tostring),
+              .protocols.ws_tls.enabled,
+              .protocols.ws_tls.port,
+              .protocols.hysteria2.enabled,
+              (.protocols.hysteria2.port | tostring)" "${TEST_STATE_FILE}"
+    ' 2>&1)
+    rc=$?
+
+    assert_equals "0" "${rc}" "save_state_info CF_MODE scenario succeeds"
+    assert_file_exists "${TEST_TMP}/state-cf-mode.json" "CF_MODE state.json is created"
+    assert_contains "${output}" $'false\nnull\ntrue\n443\nfalse\nnull' \
+      "CF_MODE state disables reality and hysteria2 while keeping WS enabled"
+}
+
 main() {
     set +e
     run_test_suite "install client info persistence" setup_state_persistence_fixture test_save_client_info_creates_parent_dir teardown_state_persistence_fixture
     run_test_suite "install state persistence" setup_state_persistence_fixture test_save_state_info_writes_json teardown_state_persistence_fixture
     run_test_suite "install state persistence (acme ws/hy2)" setup_state_persistence_fixture test_save_state_info_acme_marks_ws_hy2_enabled teardown_state_persistence_fixture
+    run_test_suite "install state persistence (cf mode ws-only)" setup_state_persistence_fixture test_save_state_info_cf_mode_disables_non_ws_protocols teardown_state_persistence_fixture
     print_test_summary
 }
 

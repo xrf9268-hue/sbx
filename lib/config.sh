@@ -191,7 +191,7 @@ create_reality_inbound() {
   # Build sing-box users array: keep only uuid + flow fields
   local sb_users=''
   sb_users=$(echo "${users_json}" | jq --arg flow "${REALITY_FLOW_VISION}" \
-    '[.[] | {uuid: .uuid, flow: $flow}]') || {
+    '[.[] | ({uuid: .uuid, flow: $flow} + (if (.name // "") != "" then {name: .name} else {} end))]') || {
     err "Failed to build Reality users array from input"
     return 1
   }
@@ -368,7 +368,8 @@ create_ws_inbound() {
 
   # Build sing-box users array (uuid only, no flow for WS-TLS)
   local sb_users=''
-  sb_users=$(echo "${users_json}" | jq '[.[] | {uuid: .uuid}]') || {
+  sb_users=$(echo "${users_json}" | jq \
+    '[.[] | ({uuid: .uuid} + (if (.name // "") != "" then {name: .name} else {} end))]') || {
     err "Failed to build WS-TLS users array from input"
     return 1
   }
@@ -754,7 +755,7 @@ _create_all_inbounds() {
   # wrapping the positional uuid argument in a single-element array.
   local users_json="${USERS_JSON:-}"
   if [[ -z "${users_json}" ]]; then
-    users_json=$(jq -n --arg uuid "${uuid}" '[{uuid: $uuid}]')
+    users_json=$(jq -n --arg uuid "${uuid}" '[{name: "default", uuid: $uuid}]')
   fi
 
   # Add Reality inbound (if enabled and port is set)

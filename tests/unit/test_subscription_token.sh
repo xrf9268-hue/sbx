@@ -135,6 +135,14 @@ test_disable_clears_enabled_and_cache() {
   assert_file_not_exists "${CACHE_DIR}/uri.txt" "cache uri.txt removed"
 }
 
+test_state_read_grant_covers_parent_directory() {
+  local source=''
+  source=$(sed -n '/_subscription_grant_state_read()/,/^}/p' "${PROJECT_ROOT}/lib/subscription.sh")
+
+  assert_contains "${source}" "dirname" "_subscription_grant_state_read derives the state directory"
+  assert_contains "${source}" "chmod 750" "_subscription_grant_state_read grants group traverse on the state directory"
+}
+
 main() {
   set +e
   setup_fixture
@@ -143,6 +151,7 @@ main() {
   test_url_prints_current_token
   test_rotate_changes_token_but_keeps_enabled
   test_disable_clears_enabled_and_cache
+  test_state_read_grant_covers_parent_directory
   teardown_fixture
   print_test_summary
 }

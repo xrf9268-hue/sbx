@@ -49,6 +49,8 @@ HY2_PORT="8443"
 HY2_PASS="pass123"
 TUIC_PORT="8445"
 TUIC_PASS="tuicpass123"
+TROJAN_PORT="8446"
+TROJAN_PASS="trojanpass123"
 CERT_FULLCHAIN="/tmp/fullchain.pem"
 CERT_KEY="/tmp/key.pem"
 EOF
@@ -73,6 +75,10 @@ export_uri() {
       [[ -n "${TUIC_PORT:-}" && -n "${TUIC_PASS:-}" ]] || return 46
       echo "stub-tuic"
       ;;
+    trojan)
+      [[ -n "${TROJAN_PORT:-}" && -n "${TROJAN_PASS:-}" ]] || return 47
+      echo "stub-trojan"
+      ;;
     *)
       echo "stub-${1:-all}"
       ;;
@@ -80,10 +86,36 @@ export_uri() {
 }
 load_client_info() {
   source "${TEST_CLIENT_INFO:?}"
-  REALITY_PORT="${REALITY_PORT:-443}"
-  SNI="${SNI:-www.microsoft.com}"
-  WS_PORT="${WS_PORT:-8444}"
-  HY2_PORT="${HY2_PORT:-8443}"
+  if [[ -n "${REALITY_PORT:-}" ]]; then
+    REALITY_ENABLED="true"
+    REALITY_PORT="${REALITY_PORT:-443}"
+    SNI="${SNI:-www.microsoft.com}"
+  else
+    REALITY_ENABLED="false"
+  fi
+  if [[ -n "${WS_PORT:-}" ]]; then
+    WS_ENABLED="true"
+    WS_PORT="${WS_PORT:-8444}"
+  else
+    WS_ENABLED="false"
+  fi
+  if [[ -n "${HY2_PORT:-}" || -n "${HY2_PASS:-}" ]]; then
+    HY2_ENABLED="true"
+    HY2_PORT="${HY2_PORT:-8443}"
+  else
+    HY2_ENABLED="false"
+  fi
+  if [[ -n "${TUIC_PORT:-}" || -n "${TUIC_PASS:-}" ]]; then
+    TUIC_ENABLED="true"
+  else
+    TUIC_ENABLED="false"
+  fi
+  if [[ -n "${TROJAN_PORT:-}" || -n "${TROJAN_PASS:-}" ]]; then
+    TROJAN_ENABLED="true"
+    TROJAN_PORT="${TROJAN_PORT:-8446}"
+  else
+    TROJAN_ENABLED="false"
+  fi
 }
 EOF
 }
@@ -127,6 +159,45 @@ EOF
   chmod 600 "$path"
 }
 
+create_state_info() {
+  local path="$1"
+  cat > "$path" << 'EOF'
+{
+  "version": "1.0",
+  "installed_at": "2026-04-01T00:00:00Z",
+  "mode": "multi_protocol",
+  "server": {"domain": "example.com", "ip": null},
+  "protocols": {
+    "reality": {
+      "enabled": true,
+      "port": 443,
+      "uuid": "11111111-2222-3333-4444-555555555555",
+      "public_key": "pubkey123",
+      "short_id": "abcd1234",
+      "sni": "www.microsoft.com"
+    },
+    "ws_tls": {"enabled": true, "port": 8444, "certificate": null, "key": null},
+    "hysteria2": {
+      "enabled": true,
+      "port": 8443,
+      "password": "pass123",
+      "port_range": null
+    },
+    "tuic": {"enabled": false, "port": null, "password": null},
+    "trojan": {"enabled": false, "port": null, "password": null}
+  },
+  "subscription": {
+    "enabled": true,
+    "port": 8838,
+    "bind": "127.0.0.1",
+    "token": "deadbeefdeadbeefdeadbeefdeadbeef",
+    "path": "/sub",
+    "created_at": "2026-04-01T00:00:00Z"
+  }
+}
+EOF
+}
+
 test_stubbed_export_uri_used_in_info_and_qr() {
   echo ""
   echo "Test: sbx-manager uses export_uri hook"
@@ -158,6 +229,12 @@ EOF
     pass "info command prints TUIC URI when configured"
   else
     fail "info command should print TUIC URI" "$info_output"
+  fi
+
+  if echo "$info_output" | grep -q "stub-trojan"; then
+    pass "info command prints Trojan URI when configured"
+  else
+    fail "info command should print Trojan URI" "$info_output"
   fi
 
   LIB_DIR="$stub_lib" TEST_CLIENT_INFO="$client_info" PATH="$TEST_TMP_DIR/bin:$PATH" bash "$PROJECT_ROOT/bin/sbx-manager.sh" qr > /dev/null 2>&1 || true
@@ -305,6 +382,40 @@ test_hy2_uri_mport_param() {
   fi
 }
 
+test_info_accepts_group_readable_state_without_export_module() {
+  echo ""
+  echo "Test: sbx-manager info accepts 640 state.json without export module"
+
+  local state_file="$TEST_TMP_DIR/state-info.json"
+  create_state_info "$state_file"
+  chmod 640 "$state_file"
+
+  local stub_lib="$TEST_TMP_DIR/lib-fallback"
+  mkdir -p "$stub_lib"
+  cat > "${stub_lib}/common.sh" << EOF
+#!/usr/bin/env bash
+set -euo pipefail
+source "${PROJECT_ROOT}/lib/common.sh"
+EOF
+  chmod +x "${stub_lib}/common.sh"
+
+  local output=""
+  output=$(LIB_DIR="$stub_lib" TEST_STATE_FILE="$state_file" bash "$PROJECT_ROOT/bin/sbx-manager.sh" info 2>&1)
+  local rc=$?
+
+  if [[ "$rc" -eq 0 ]]; then
+    pass "info command accepts 640 state.json in fallback path"
+  else
+    fail "info command should accept 640 state.json in fallback path" "$output"
+  fi
+
+  if echo "$output" | grep -q "example.com"; then
+    pass "info command renders state-derived domain with 640 state.json"
+  else
+    fail "info command should render state-derived domain" "$output"
+  fi
+}
+
 echo ""
 echo "=========================================="
 echo "Running test suite: sbx-manager URI paths"
@@ -316,6 +427,7 @@ test_info_skips_tuic_when_not_configured
 test_info_prints_acme_managed_protocols
 test_cli_uri_matches_export_module
 test_hy2_uri_mport_param
+test_info_accepts_group_readable_state_without_export_module
 
 echo ""
 echo "=========================================="

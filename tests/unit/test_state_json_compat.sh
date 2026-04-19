@@ -78,6 +78,53 @@ teardown_state_fixture() {
   [[ -n "${TEST_TMP:-}" && -d "${TEST_TMP}" ]] && rm -rf "${TEST_TMP}"
 }
 
+write_cf_ws_only_state() {
+  cat > "${STATE_FILE}" << 'EOF'
+{
+  "version": "1.0",
+  "installed_at": "2026-04-19T00:00:00Z",
+  "mode": "multi_protocol",
+  "server": {
+    "domain": "x.950288.xyz",
+    "ip": null
+  },
+  "protocols": {
+    "reality": {
+      "enabled": false,
+      "port": null,
+      "uuid": "11111111-2222-3333-4444-555555555555",
+      "public_key": "pubkey123",
+      "short_id": "abcd1234",
+      "sni": "www.microsoft.com"
+    },
+    "ws_tls": {
+      "enabled": true,
+      "port": 443,
+      "certificate": "/tmp/fake-fullchain.pem",
+      "key": "/tmp/fake-key.pem"
+    },
+    "hysteria2": {
+      "enabled": false,
+      "port": null,
+      "password": null,
+      "port_range": null
+    },
+    "tuic": {
+      "enabled": false,
+      "port": null,
+      "password": null
+    },
+    "trojan": {
+      "enabled": false,
+      "port": null,
+      "password": null
+    }
+  }
+}
+EOF
+  chmod 600 "${STATE_FILE}"
+}
+
 test_sbx_manager_reads_state_json() {
   local output=''
   set +e
@@ -118,10 +165,42 @@ test_export_reads_state_json() {
   assert_equals "20000-40000" "${port_range_val}" "state.json port_range field is readable"
 }
 
+test_sbx_manager_skips_disabled_protocols_from_state_json() {
+  local output=''
+  write_cf_ws_only_state
+
+  set +e
+  output=$(LIB_DIR="${LIB_STUB}" TEST_STATE_FILE="${STATE_FILE}" TEST_CLIENT_INFO="${TEST_TMP}/missing-client-info.txt" \
+    bash "${PROJECT_ROOT}/bin/sbx-manager.sh" info 2>&1)
+  local rc=$?
+
+  assert_equals "0" "${rc}" "sbx-manager info works with ws-only CF state"
+  assert_contains "${output}" "INBOUND   : VLESS-WS-TLS   443/tcp" "ws-only CF state still prints WS inbound"
+  assert_not_contains "${output}" "INBOUND   : VLESS-REALITY" "ws-only CF state hides disabled reality inbound"
+  assert_not_contains "${output}" "INBOUND   : Hysteria2" "ws-only CF state hides disabled hysteria2 inbound"
+}
+
+test_export_skips_disabled_protocols_from_state_json() {
+  local uri_list=''
+  write_cf_ws_only_state
+
+  set +e
+  uri_list=$(TEST_STATE_FILE="${STATE_FILE}" TEST_CLIENT_INFO="${TEST_TMP}/missing-client-info.txt" \
+    bash -c "source \"${PROJECT_ROOT}/lib/export.sh\"; export_uri all" 2>&1)
+  local rc=$?
+
+  assert_equals "0" "${rc}" "export_uri all works with ws-only CF state"
+  assert_contains "${uri_list}" "WS-TLS-x.950288.xyz" "ws-only CF state still exports WS URI"
+  assert_not_contains "${uri_list}" "Reality-x.950288.xyz" "ws-only CF state skips disabled reality URI"
+  assert_not_contains "${uri_list}" "Hysteria2-x.950288.xyz" "ws-only CF state skips disabled hysteria2 URI"
+}
+
 main() {
   set +e
   run_test_suite "state.json compatibility" setup_state_fixture test_sbx_manager_reads_state_json teardown_state_fixture
   run_test_suite "state.json export compatibility" setup_state_fixture test_export_reads_state_json teardown_state_fixture
+  run_test_suite "state.json ws-only CF compatibility" setup_state_fixture test_sbx_manager_skips_disabled_protocols_from_state_json teardown_state_fixture
+  run_test_suite "state.json ws-only CF export compatibility" setup_state_fixture test_export_skips_disabled_protocols_from_state_json teardown_state_fixture
   print_test_summary
 }
 

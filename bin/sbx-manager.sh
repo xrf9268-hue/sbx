@@ -193,7 +193,10 @@ validate_state_info_file() {
   local resolved owner perm
   resolved=$(readlink -f "$state_file") || error_exit "Failed to resolve state file path: $state_file"
   perm=$(stat -c '%a' "$resolved" 2>/dev/null || stat -f '%Lp' "$resolved" 2>/dev/null) || error_exit "Unable to read state file permissions."
-  [[ "$perm" == "600" ]] || error_exit "State file permissions must be 600 (found $perm)."
+  case "$perm" in
+    600 | 640) ;;
+    *) error_exit "State file permissions must be 600 or 640 (found $perm)." ;;
+  esac
   [[ -s "$resolved" ]] || error_exit "State file is empty."
 
   if [[ -z "${TEST_STATE_FILE:-}" ]]; then
@@ -243,22 +246,34 @@ parse_client_info_file() {
     printf -v "$key" '%s' "${client_info_map[$key]}"
   done
 
-  if [[ -v client_info_map[WS_PORT] ]]; then
+  if [[ -n "${REALITY_PORT:-}" ]]; then
+    REALITY_ENABLED="true"
+  else
+    REALITY_ENABLED="false"
+  fi
+
+  if [[ -n "${WS_PORT:-}" ]]; then
     WS_ENABLED="true"
   else
     WS_ENABLED="false"
   fi
 
-  if [[ -v client_info_map[HY2_PORT] || -v client_info_map[HY2_PASS] ]]; then
+  if [[ -n "${HY2_PORT:-}" || -n "${HY2_PASS:-}" ]]; then
     HY2_ENABLED="true"
   else
     HY2_ENABLED="false"
   fi
 
-  if [[ -v client_info_map[TUIC_PORT] || -v client_info_map[TUIC_PASS] ]]; then
+  if [[ -n "${TUIC_PORT:-}" || -n "${TUIC_PASS:-}" ]]; then
     TUIC_ENABLED="true"
   else
     TUIC_ENABLED="false"
+  fi
+
+  if [[ -n "${TROJAN_PORT:-}" || -n "${TROJAN_PASS:-}" ]]; then
+    TROJAN_ENABLED="true"
+  else
+    TROJAN_ENABLED="false"
   fi
 
   # Set defaults for missing variables
@@ -267,17 +282,46 @@ parse_client_info_file() {
   local default_ws="${WS_PORT_DEFAULT:-8444}"
   local default_hy2="${HY2_PORT_DEFAULT:-8443}"
   local default_tuic="${TUIC_PORT_DEFAULT:-8445}"
+  local default_trojan="${TROJAN_PORT_DEFAULT:-8446}"
 
-  REALITY_PORT="${REALITY_PORT:-$default_reality}"
-  SNI="${SNI:-$default_sni}"
-  WS_PORT="${WS_PORT:-$default_ws}"
-  HY2_PORT="${HY2_PORT:-$default_hy2}"
-  TUIC_PORT="${TUIC_PORT:-$default_tuic}"
+  if [[ "${REALITY_ENABLED}" == "true" ]]; then
+    REALITY_PORT="${REALITY_PORT:-$default_reality}"
+    SNI="${SNI:-$default_sni}"
+  else
+    REALITY_PORT=""
+  fi
+
+  if [[ "${WS_ENABLED}" == "true" ]]; then
+    WS_PORT="${WS_PORT:-$default_ws}"
+  else
+    WS_PORT=""
+  fi
+
+  if [[ "${HY2_ENABLED}" == "true" ]]; then
+    HY2_PORT="${HY2_PORT:-$default_hy2}"
+  else
+    HY2_PORT=""
+    HY2_PASS=""
+  fi
+
+  if [[ "${TUIC_ENABLED}" == "true" ]]; then
+    TUIC_PORT="${TUIC_PORT:-$default_tuic}"
+  else
+    TUIC_PORT=""
+    TUIC_PASS=""
+  fi
+
+  if [[ "${TROJAN_ENABLED}" == "true" ]]; then
+    TROJAN_PORT="${TROJAN_PORT:-$default_trojan}"
+  else
+    TROJAN_PORT=""
+    TROJAN_PASS=""
+  fi
 }
 
 parse_state_info_file() {
   local file="$1"
-  local ws_enabled_raw='' hy2_enabled_raw='' tuic_enabled_raw=''
+  local reality_enabled_raw='' ws_enabled_raw='' hy2_enabled_raw='' tuic_enabled_raw='' trojan_enabled_raw=''
 
   DOMAIN=$(jq -r '.server.domain // .server.ip // empty' "$file")
   UUID=$(jq -r '.protocols.reality.uuid // empty' "$file")
@@ -290,11 +334,23 @@ parse_state_info_file() {
   HY2_PASS=$(jq -r '.protocols.hysteria2.password // empty' "$file")
   TUIC_PORT=$(jq -r '.protocols.tuic.port // empty' "$file")
   TUIC_PASS=$(jq -r '.protocols.tuic.password // empty' "$file")
+  TROJAN_PORT=$(jq -r '.protocols.trojan.port // empty' "$file")
+  TROJAN_PASS=$(jq -r '.protocols.trojan.password // empty' "$file")
   CERT_FULLCHAIN=$(jq -r '.protocols.ws_tls.certificate // empty' "$file")
   CERT_KEY=$(jq -r '.protocols.ws_tls.key // empty' "$file")
+  reality_enabled_raw=$(jq -r '.protocols.reality.enabled // empty' "$file")
   ws_enabled_raw=$(jq -r '.protocols.ws_tls.enabled // empty' "$file")
   hy2_enabled_raw=$(jq -r '.protocols.hysteria2.enabled // empty' "$file")
   tuic_enabled_raw=$(jq -r '.protocols.tuic.enabled // empty' "$file")
+  trojan_enabled_raw=$(jq -r '.protocols.trojan.enabled // empty' "$file")
+
+  case "${reality_enabled_raw}" in
+    true | 1 | yes | on) REALITY_ENABLED="true" ;;
+    false | 0 | no | off) REALITY_ENABLED="false" ;;
+    *)
+      [[ -n "${REALITY_PORT:-}" ]] && REALITY_ENABLED="true" || REALITY_ENABLED="false"
+      ;;
+  esac
 
   case "${ws_enabled_raw}" in
     true | 1 | yes | on) WS_ENABLED="true" ;;
@@ -320,17 +376,54 @@ parse_state_info_file() {
       ;;
   esac
 
+  case "${trojan_enabled_raw}" in
+    true | 1 | yes | on) TROJAN_ENABLED="true" ;;
+    false | 0 | no | off) TROJAN_ENABLED="false" ;;
+    *)
+      [[ -n "${TROJAN_PORT:-}" || -n "${TROJAN_PASS:-}" ]] && TROJAN_ENABLED="true" || TROJAN_ENABLED="false"
+      ;;
+  esac
+
   local default_reality="${REALITY_PORT_DEFAULT:-443}"
   local default_sni="${SNI_DEFAULT:-www.microsoft.com}"
   local default_ws="${WS_PORT_DEFAULT:-8444}"
   local default_hy2="${HY2_PORT_DEFAULT:-8443}"
   local default_tuic="${TUIC_PORT_DEFAULT:-8445}"
+  local default_trojan="${TROJAN_PORT_DEFAULT:-8446}"
 
-  REALITY_PORT="${REALITY_PORT:-$default_reality}"
-  SNI="${SNI:-$default_sni}"
-  WS_PORT="${WS_PORT:-$default_ws}"
-  HY2_PORT="${HY2_PORT:-$default_hy2}"
-  TUIC_PORT="${TUIC_PORT:-$default_tuic}"
+  if [[ "${REALITY_ENABLED}" == "true" ]]; then
+    REALITY_PORT="${REALITY_PORT:-$default_reality}"
+    SNI="${SNI:-$default_sni}"
+  else
+    REALITY_PORT=""
+  fi
+
+  if [[ "${WS_ENABLED}" == "true" ]]; then
+    WS_PORT="${WS_PORT:-$default_ws}"
+  else
+    WS_PORT=""
+  fi
+
+  if [[ "${HY2_ENABLED}" == "true" ]]; then
+    HY2_PORT="${HY2_PORT:-$default_hy2}"
+  else
+    HY2_PORT=""
+    HY2_PASS=""
+  fi
+
+  if [[ "${TUIC_ENABLED}" == "true" ]]; then
+    TUIC_PORT="${TUIC_PORT:-$default_tuic}"
+  else
+    TUIC_PORT=""
+    TUIC_PASS=""
+  fi
+
+  if [[ "${TROJAN_ENABLED}" == "true" ]]; then
+    TROJAN_PORT="${TROJAN_PORT:-$default_trojan}"
+  else
+    TROJAN_PORT=""
+    TROJAN_PASS=""
+  fi
 }
 
 fallback_load_client_info() {
@@ -625,17 +718,21 @@ output_info_json() {
   local missing_fields=()
   local warnings_text=''
   local warnings_json='[]'
+  local has_reality=false
   local has_ws=false
   local has_hy2=false
   local has_tuic=false
-  local tuic_port_out='' tuic_pass_out=''
-  local uri_real='' uri_ws='' uri_hy2='' uri_tuic=''
+  local has_trojan=false
+  local tuic_port_out='' tuic_pass_out='' trojan_port_out='' trojan_pass_out=''
+  local uri_real='' uri_ws='' uri_hy2='' uri_tuic='' uri_trojan=''
 
   ensure_client_info_loaded
 
-  [[ -z "${PUBLIC_KEY:-}" ]] && missing_fields+=("PUBLIC_KEY")
-  [[ -z "${UUID:-}" ]] && missing_fields+=("UUID")
-  [[ -z "${SHORT_ID:-}" ]] && missing_fields+=("SHORT_ID")
+  if [[ "${REALITY_ENABLED:-false}" == "true" ]]; then
+    [[ -z "${PUBLIC_KEY:-}" ]] && missing_fields+=("PUBLIC_KEY")
+    [[ -z "${UUID:-}" ]] && missing_fields+=("UUID")
+    [[ -z "${SHORT_ID:-}" ]] && missing_fields+=("SHORT_ID")
+  fi
   [[ -z "${DOMAIN:-}" ]] && missing_fields+=("DOMAIN")
 
   local field
@@ -643,28 +740,29 @@ output_info_json() {
     warnings_text+="Missing required field: ${field}"$'\n'
   done
 
-  REALITY_PORT="${REALITY_PORT:-443}"
-  SNI="${SNI:-www.microsoft.com}"
-  WS_PORT="${WS_PORT:-8444}"
-  HY2_PORT="${HY2_PORT:-8443}"
-  HY2_PASS="${HY2_PASS:-}"
+  if [[ "${REALITY_ENABLED:-false}" == "true" ]]; then
+    has_reality=true
+    REALITY_PORT="${REALITY_PORT:-443}"
+    SNI="${SNI:-www.microsoft.com}"
+  fi
 
   if [[ "${WS_ENABLED:-false}" == "true" ]]; then
     has_ws=true
-  elif [[ -n "${CERT_FULLCHAIN:-}" && -n "${CERT_KEY:-}" ]]; then
-    has_ws=true
+    WS_PORT="${WS_PORT:-8444}"
   fi
 
   if [[ "${HY2_ENABLED:-false}" == "true" ]]; then
     has_hy2=true
-  elif [[ -n "${CERT_FULLCHAIN:-}" && -n "${CERT_KEY:-}" ]]; then
-    has_hy2=true
+    HY2_PORT="${HY2_PORT:-8443}"
+    HY2_PASS="${HY2_PASS:-}"
   fi
 
   if [[ "${TUIC_ENABLED:-false}" == "true" ]]; then
     [[ -n "${TUIC_PASS:-}" ]] && has_tuic=true
-  elif [[ -n "${TUIC_PORT:-}" && -n "${TUIC_PASS:-}" ]]; then
-    has_tuic=true
+  fi
+
+  if [[ "${TROJAN_ENABLED:-false}" == "true" ]]; then
+    [[ -n "${TROJAN_PASS:-}" ]] && has_trojan=true
   fi
 
   if [[ "${has_tuic}" == "true" ]]; then
@@ -672,23 +770,46 @@ output_info_json() {
     tuic_pass_out="${TUIC_PASS:-}"
   fi
 
+  if [[ "${has_trojan}" == "true" ]]; then
+    trojan_port_out="${TROJAN_PORT:-8446}"
+    trojan_pass_out="${TROJAN_PASS:-}"
+  fi
+
   if command -v export_uri >/dev/null 2>&1; then
-    uri_real=$(export_uri reality)
-    uri_ws=$(export_uri ws 2>/dev/null || true)
-    uri_hy2=$(export_uri hy2 2>/dev/null || true)
+    if [[ "${has_reality}" == "true" ]]; then
+      uri_real=$(export_uri reality)
+    fi
+    if [[ "${has_ws}" == "true" ]]; then
+      uri_ws=$(export_uri ws)
+    fi
+    if [[ "${has_hy2}" == "true" ]]; then
+      uri_hy2=$(export_uri hy2)
+    fi
     if [[ "${has_tuic}" == "true" ]]; then
       uri_tuic=$(export_uri tuic)
     fi
+    if [[ "${has_trojan}" == "true" ]]; then
+      uri_trojan=$(export_uri trojan)
+    fi
   else
-    uri_real="vless://${UUID:-}@${DOMAIN:-}:${REALITY_PORT}?encryption=none&security=reality&flow=xtls-rprx-vision&sni=${SNI}&pbk=${PUBLIC_KEY:-}&sid=${SHORT_ID:-}&type=tcp&fp=chrome#Reality-${DOMAIN:-}"
-    uri_ws="vless://${UUID:-}@${DOMAIN:-}:${WS_PORT}?encryption=none&security=tls&type=ws&host=${DOMAIN:-}&path=/ws&sni=${DOMAIN:-}&fp=chrome#WS-TLS-${DOMAIN:-}"
-    uri_hy2="hysteria2://${HY2_PASS}@${DOMAIN:-}:${HY2_PORT}/?sni=${DOMAIN:-}&alpn=h3&insecure=0#Hysteria2-${DOMAIN:-}"
+    if [[ "${has_reality}" == "true" ]]; then
+      uri_real="vless://${UUID:-}@${DOMAIN:-}:${REALITY_PORT}?encryption=none&security=reality&flow=xtls-rprx-vision&sni=${SNI}&pbk=${PUBLIC_KEY:-}&sid=${SHORT_ID:-}&type=tcp&fp=chrome#Reality-${DOMAIN:-}"
+    fi
+    if [[ "${has_ws}" == "true" ]]; then
+      uri_ws="vless://${UUID:-}@${DOMAIN:-}:${WS_PORT}?encryption=none&security=tls&type=ws&host=${DOMAIN:-}&path=/ws&sni=${DOMAIN:-}&fp=chrome#WS-TLS-${DOMAIN:-}"
+    fi
+    if [[ "${has_hy2}" == "true" ]]; then
+      uri_hy2="hysteria2://${HY2_PASS}@${DOMAIN:-}:${HY2_PORT}/?sni=${DOMAIN:-}&alpn=h3&insecure=0#Hysteria2-${DOMAIN:-}"
+    fi
     if [[ "${has_tuic}" == "true" ]]; then
       uri_tuic="tuic://${UUID:-}:${tuic_pass_out}@${DOMAIN:-}:${tuic_port_out}?congestion_control=bbr&alpn=h3&sni=${DOMAIN:-}&udp_relay_mode=native#TUIC-${DOMAIN:-}"
     fi
+    if [[ "${has_trojan}" == "true" ]]; then
+      uri_trojan="trojan://${trojan_pass_out}@${DOMAIN:-}:${trojan_port_out}?sni=${DOMAIN:-}&security=tls&type=tcp&fp=chrome#Trojan-${DOMAIN:-}"
+    fi
   fi
 
-  if echo "${uri_real}" | grep -qE 'pbk=&|pbk=$|@:|//:'; then
+  if [[ "${has_reality}" == "true" ]] && echo "${uri_real}" | grep -qE 'pbk=&|pbk=$|@:|//:'; then
     warnings_text+="Reality URI has empty parameters"$'\n'
   fi
 
@@ -704,22 +825,27 @@ output_info_json() {
     --arg uuid "${UUID:-}" \
     --arg public_key "${PUBLIC_KEY:-}" \
     --arg short_id "${SHORT_ID:-}" \
-    --arg sni "${SNI}" \
-    --arg reality_port "${REALITY_PORT}" \
+    --arg sni "${SNI:-}" \
+    --arg reality_port "${REALITY_PORT:-}" \
     --arg uri_real "${uri_real}" \
-    --arg ws_port "${WS_PORT}" \
+    --arg ws_port "${WS_PORT:-}" \
     --arg uri_ws "${uri_ws}" \
-    --arg hy2_port "${HY2_PORT}" \
-    --arg hy2_pass "${HY2_PASS}" \
+    --arg hy2_port "${HY2_PORT:-}" \
+    --arg hy2_pass "${HY2_PASS:-}" \
     --arg uri_hy2 "${uri_hy2}" \
     --arg tuic_port "${tuic_port_out}" \
     --arg tuic_pass "${tuic_pass_out}" \
     --arg uri_tuic "${uri_tuic}" \
+    --arg trojan_port "${trojan_port_out}" \
+    --arg trojan_pass "${trojan_pass_out}" \
+    --arg uri_trojan "${uri_trojan}" \
     --arg cert_fullchain "${CERT_FULLCHAIN:-}" \
     --arg cert_key "${CERT_KEY:-}" \
+    --argjson reality_enabled "${has_reality}" \
     --argjson ws_enabled "${has_ws}" \
     --argjson hy2_enabled "${has_hy2}" \
     --argjson tuic_enabled "${has_tuic}" \
+    --argjson trojan_enabled "${has_trojan}" \
     --argjson warnings "${warnings_json}" \
     '{
         command: $command,
@@ -729,13 +855,13 @@ output_info_json() {
         warnings: $warnings,
         protocols: {
           reality: {
-            enabled: true,
+            enabled: $reality_enabled,
             port: ($reality_port | tonumber? // null),
             uuid: (if $uuid == "" then null else $uuid end),
             public_key: (if $public_key == "" then null else $public_key end),
             short_id: (if $short_id == "" then null else $short_id end),
             sni: (if $sni == "" then null else $sni end),
-            uri: $uri_real
+            uri: (if $reality_enabled then $uri_real else null end)
           },
           ws_tls: {
             enabled: $ws_enabled,
@@ -754,6 +880,12 @@ output_info_json() {
             port: ($tuic_port | tonumber? // null),
             password: (if $tuic_enabled and $tuic_pass != "" then $tuic_pass else null end),
             uri: (if $tuic_enabled then $uri_tuic else null end)
+          },
+          trojan: {
+            enabled: $trojan_enabled,
+            port: ($trojan_port | tonumber? // null),
+            password: (if $trojan_enabled and $trojan_pass != "" then $trojan_pass else null end),
+            uri: (if $trojan_enabled then $uri_trojan else null end)
           }
         }
       }'
@@ -839,9 +971,11 @@ case "${1:-}" in
     # Validate required fields
     missing_fields=()
     has_warnings=0
-    [[ -z "${PUBLIC_KEY:-}" ]] && missing_fields+=("PUBLIC_KEY") && has_warnings=1
-    [[ -z "${UUID:-}" ]] && missing_fields+=("UUID") && has_warnings=1
-    [[ -z "${SHORT_ID:-}" ]] && missing_fields+=("SHORT_ID") && has_warnings=1
+    if [[ "${REALITY_ENABLED:-false}" == "true" ]]; then
+      [[ -z "${PUBLIC_KEY:-}" ]] && missing_fields+=("PUBLIC_KEY") && has_warnings=1
+      [[ -z "${UUID:-}" ]] && missing_fields+=("UUID") && has_warnings=1
+      [[ -z "${SHORT_ID:-}" ]] && missing_fields+=("SHORT_ID") && has_warnings=1
+    fi
     [[ -z "${DOMAIN:-}" ]] && missing_fields+=("DOMAIN") && has_warnings=1
 
     echo
@@ -866,59 +1000,62 @@ case "${1:-}" in
     echo "Service   : systemctl status sing-box"
     echo
 
-    # Reality (use defaults if not set)
-    REALITY_PORT="${REALITY_PORT:-443}"
-    SNI="${SNI:-www.microsoft.com}"
-    echo "INBOUND   : VLESS-REALITY  ${REALITY_PORT}/tcp"
-    echo "  PublicKey = ${PUBLIC_KEY:-[MISSING]}"
-    echo "  Short ID  = ${SHORT_ID:-[MISSING]}"
-    echo "  UUID      = ${UUID:-[MISSING]}"
-    # Use export_uri() if available (DRY), otherwise generate inline
-    if command -v export_uri >/dev/null 2>&1; then
-      URI_REAL=$(export_uri reality)
-    else
-      URI_REAL="vless://${UUID:-}@${DOMAIN:-}:${REALITY_PORT}?encryption=none&security=reality&flow=xtls-rprx-vision&sni=${SNI}&pbk=${PUBLIC_KEY:-}&sid=${SHORT_ID:-}&type=tcp&fp=chrome#Reality-${DOMAIN:-}"
-    fi
-    echo "  URI       = ${URI_REAL}"
-
-    # Warn if URI has empty parameters
-    if echo "$URI_REAL" | grep -qE 'pbk=&|pbk=$|@:|//:'; then
-      echo -e "  ${R}⚠ WARNING:${N} URI has empty parameters and cannot be used"
-    fi
-
+    has_reality_in_info=false
     has_ws_in_info=false
     has_hy2_in_info=false
     has_tuic_in_info=false
+    has_trojan_in_info=false
     cert_label=''
+
+    if [[ "${REALITY_ENABLED:-false}" == "true" ]]; then
+      has_reality_in_info=true
+      REALITY_PORT="${REALITY_PORT:-443}"
+      SNI="${SNI:-www.microsoft.com}"
+    fi
 
     if [[ "${WS_ENABLED:-false}" == "true" ]]; then
       has_ws_in_info=true
-    elif [[ -n "${CERT_FULLCHAIN:-}" && -n "${CERT_KEY:-}" ]]; then
-      has_ws_in_info=true
+      WS_PORT="${WS_PORT:-8444}"
     fi
 
     if [[ "${HY2_ENABLED:-false}" == "true" ]]; then
       has_hy2_in_info=true
-    elif [[ -n "${CERT_FULLCHAIN:-}" && -n "${CERT_KEY:-}" ]]; then
-      has_hy2_in_info=true
+      HY2_PORT="${HY2_PORT:-8443}"
+      HY2_PASS="${HY2_PASS:-}"
     fi
 
     if [[ "${TUIC_ENABLED:-false}" == "true" ]]; then
       [[ -n "${TUIC_PASS:-}" ]] && has_tuic_in_info=true
-    elif [[ -n "${TUIC_PORT:-}" && -n "${TUIC_PASS:-}" ]]; then
-      has_tuic_in_info=true
+    fi
+
+    if [[ "${TROJAN_ENABLED:-false}" == "true" ]]; then
+      [[ -n "${TROJAN_PASS:-}" ]] && has_trojan_in_info=true
+    fi
+
+    if [[ "${has_reality_in_info}" == "true" ]]; then
+      echo "INBOUND   : VLESS-REALITY  ${REALITY_PORT}/tcp"
+      echo "  PublicKey = ${PUBLIC_KEY:-[MISSING]}"
+      echo "  Short ID  = ${SHORT_ID:-[MISSING]}"
+      echo "  UUID      = ${UUID:-[MISSING]}"
+      if command -v export_uri >/dev/null 2>&1; then
+        URI_REAL=$(export_uri reality)
+      else
+        URI_REAL="vless://${UUID:-}@${DOMAIN:-}:${REALITY_PORT}?encryption=none&security=reality&flow=xtls-rprx-vision&sni=${SNI}&pbk=${PUBLIC_KEY:-}&sid=${SHORT_ID:-}&type=tcp&fp=chrome#Reality-${DOMAIN:-}"
+      fi
+      echo "  URI       = ${URI_REAL}"
+
+      if echo "$URI_REAL" | grep -qE 'pbk=&|pbk=$|@:|//:'; then
+        echo -e "  ${R}⚠ WARNING:${N} URI has empty parameters and cannot be used"
+      fi
     fi
 
     if [[ -n "${CERT_FULLCHAIN:-}" && -n "${CERT_KEY:-}" ]]; then
       cert_label="${CERT_FULLCHAIN}"
-    elif [[ "${has_ws_in_info}" == "true" || "${has_hy2_in_info}" == "true" || "${has_tuic_in_info}" == "true" ]]; then
+    elif [[ "${has_ws_in_info}" == "true" || "${has_hy2_in_info}" == "true" || "${has_tuic_in_info}" == "true" || "${has_trojan_in_info}" == "true" ]]; then
       cert_label="ACME-managed"
     fi
 
-    if [[ "${has_ws_in_info}" == "true" || "${has_hy2_in_info}" == "true" || "${has_tuic_in_info}" == "true" ]]; then
-      WS_PORT="${WS_PORT:-8444}"
-      HY2_PORT="${HY2_PORT:-8443}"
-      HY2_PASS="${HY2_PASS:-}"
+    if [[ "${has_ws_in_info}" == "true" || "${has_hy2_in_info}" == "true" || "${has_tuic_in_info}" == "true" || "${has_trojan_in_info}" == "true" ]]; then
       echo
       if [[ "${has_ws_in_info}" == "true" ]]; then
         echo "INBOUND   : VLESS-WS-TLS   ${WS_PORT}/tcp"
@@ -961,9 +1098,23 @@ case "${1:-}" in
         fi
         echo "  URI      = ${URI_TUIC}"
       fi
+
+      if [[ "${has_trojan_in_info}" == "true" ]]; then
+        trojan_port_info="${TROJAN_PORT:-8446}"
+        trojan_pass_info="${TROJAN_PASS:-}"
+        echo
+        echo "INBOUND   : Trojan         ${trojan_port_info}/tcp"
+        echo "  CERT     = ${cert_label}"
+        if command -v export_uri >/dev/null 2>&1; then
+          URI_TROJAN=$(export_uri trojan)
+        else
+          URI_TROJAN="trojan://${trojan_pass_info}@${DOMAIN:-}:${trojan_port_info}?sni=${DOMAIN:-}&security=tls&type=tcp&fp=chrome#Trojan-${DOMAIN:-}"
+        fi
+        echo "  URI      = ${URI_TROJAN}"
+      fi
     fi
     echo
-    echo -e "${Y}Notes${N}: Reality/Hy2/TUIC suggest gray cloud; WS-TLS can use gray/orange cloud."
+    echo -e "${Y}Notes${N}: Reality/Hy2/TUIC/Trojan suggest gray cloud; WS-TLS can use gray/orange cloud."
 
     # Optional: Generate QR codes
     if command -v qrencode >/dev/null 2>&1; then
@@ -985,7 +1136,7 @@ case "${1:-}" in
     echo -e "${B}=== Configuration QR Codes ===${N}"
 
     # Generate Reality QR code
-    if [[ -n "$UUID" && -n "$DOMAIN" && -n "$PUBLIC_KEY" && -n "$SHORT_ID" ]]; then
+    if [[ "${REALITY_ENABLED:-false}" == "true" && -n "$UUID" && -n "$DOMAIN" && -n "$PUBLIC_KEY" && -n "$SHORT_ID" ]]; then
       echo
       echo -e "${G}VLESS-REALITY:${N}"
       echo "┌─────────────────────────────────────┐"
@@ -1000,8 +1151,7 @@ case "${1:-}" in
       echo "└─────────────────────────────────────┘"
     fi
 
-    # Generate WS-TLS QR code if certificates exist
-    if [[ -n "$CERT_FULLCHAIN" && -n "$CERT_KEY" && -n "$UUID" && -n "$DOMAIN" ]]; then
+    if [[ "${WS_ENABLED:-false}" == "true" && -n "$UUID" && -n "$DOMAIN" ]]; then
       echo
       echo -e "${G}VLESS-WS-TLS:${N}"
       echo "┌─────────────────────────────────────┐"
@@ -1012,7 +1162,9 @@ case "${1:-}" in
       fi
       qrencode -t UTF8 -m 0 "$URI_WS" 2>/dev/null || echo "QR code generation failed"
       echo "└─────────────────────────────────────┘"
+    fi
 
+    if [[ "${HY2_ENABLED:-false}" == "true" && -n "$DOMAIN" ]]; then
       echo
       echo -e "${G}Hysteria2:${N}"
       echo "┌─────────────────────────────────────┐"
@@ -1169,21 +1321,20 @@ case "${1:-}" in
       exit 1
     fi
 
-    # Paths
-    SB_BIN="/usr/local/bin/sing-box"
-    SB_CONF_DIR="/etc/sing-box"
-    SB_CONF="${SB_CONF_DIR}/config.json"
-    SB_SVC="/etc/systemd/system/sing-box.service"
-    CERT_DIR_BASE="/etc/ssl/sbx"
+    uninstall_sb_bin="${SB_BIN:-/usr/local/bin/sing-box}"
+    uninstall_sb_conf_dir="${SB_CONF_DIR:-/etc/sing-box}"
+    uninstall_sb_conf="${SB_CONF:-${uninstall_sb_conf_dir}/config.json}"
+    uninstall_sb_svc="${SB_SVC:-/etc/systemd/system/sing-box.service}"
+    uninstall_cert_dir="${CERT_DIR_BASE:-/etc/ssl/sbx}"
 
     echo
     echo -e "${Y}[!]${N} The following will be completely removed:"
-    [[ -x "$SB_BIN" ]] && echo "  - Binary: $SB_BIN"
-    [[ -f "$SB_CONF" ]] && echo "  - Config: $SB_CONF"
-    [[ -d "$SB_CONF_DIR" ]] && echo "  - Config directory: $SB_CONF_DIR"
-    [[ -f "$SB_SVC" ]] && echo "  - Service: $SB_SVC"
+    [[ -x "$uninstall_sb_bin" ]] && echo "  - Binary: $uninstall_sb_bin"
+    [[ -f "$uninstall_sb_conf" ]] && echo "  - Config: $uninstall_sb_conf"
+    [[ -d "$uninstall_sb_conf_dir" ]] && echo "  - Config directory: $uninstall_sb_conf_dir"
+    [[ -f "$uninstall_sb_svc" ]] && echo "  - Service: $uninstall_sb_svc"
     [[ -x "/usr/local/bin/sbx-manager" ]] && echo "  - Management commands: sbx-manager, sbx"
-    [[ -d "$CERT_DIR_BASE" ]] && echo "  - Certificates: $CERT_DIR_BASE"
+    [[ -d "$uninstall_cert_dir" ]] && echo "  - Certificates: $uninstall_cert_dir"
     [[ -d "$LIB_DIR" ]] && echo "  - Library modules: $LIB_DIR"
 
     echo
@@ -1212,10 +1363,10 @@ case "${1:-}" in
     done
 
     echo -e "${G}[*]${N} Removing files..."
-    rm -f "$SB_BIN" "$SB_SVC" "/usr/local/bin/sbx-manager" "/usr/local/bin/sbx" \
+    rm -f "$uninstall_sb_bin" "$uninstall_sb_svc" "/usr/local/bin/sbx-manager" "/usr/local/bin/sbx" \
       "/usr/local/bin/sbx-telegram-bot" "/etc/sing-box/telegram.env"
     rm -rf "/var/lib/sbx-telegram-bot"
-    rm -rf "$SB_CONF_DIR" "$CERT_DIR_BASE" "$LIB_DIR"
+    rm -rf "$uninstall_sb_conf_dir" "$uninstall_cert_dir" "$LIB_DIR"
 
     systemctl daemon-reload
 

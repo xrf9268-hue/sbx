@@ -235,12 +235,16 @@ _subscription_state_get() {
 # Widens mode from 600 to 640 and sets group to the service user.
 _subscription_grant_state_read() {
   local state_file=''
+  local state_dir=''
   local user="${SUB_SYSTEM_USER_OVERRIDE:-${SUBSCRIPTION_SYSTEM_USER}}"
   state_file=$(_subscription_state_file)
   [[ -f "${state_file}" ]] || return 0
+  state_dir=$(dirname "${state_file}")
   # Only touch permissions when running as root on a real system
   if [[ -z "${SUB_CACHE_DIR_OVERRIDE:-}" ]] && [[ "${EUID:-$(id -u)}" -eq 0 ]]; then
     if id -u "${user}" >/dev/null 2>&1; then
+      chgrp "${user}" "${state_dir}" 2>/dev/null || true
+      chmod 750 "${state_dir}" 2>/dev/null || true
       chgrp "${user}" "${state_file}" 2>/dev/null || true
       chmod 640 "${state_file}" 2>/dev/null || true
     fi

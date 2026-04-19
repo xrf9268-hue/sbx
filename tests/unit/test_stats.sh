@@ -48,6 +48,7 @@ source "${PROJECT_ROOT}/lib/stats.sh"
 
 _SECRET_FIXTURE="deadbeef0123456789abcdef0123456789abcdef0123456789abcdef0123dead"
 _TMP_STATE=""
+STATS_CONNECTIONS_FIXTURE="default"
 
 _setup_state() {
   local enabled="$1"
@@ -98,7 +99,21 @@ curl() {
       echo '{"inuse":10485760,"oslimit":0}'
       ;;
     */connections)
-      cat <<'EOF'
+      case "${STATS_CONNECTIONS_FIXTURE:-default}" in
+        no_metadata_user_reality)
+          cat <<'EOF'
+{
+  "downloadTotal": 4096,
+  "uploadTotal":    1024,
+  "connections": [
+    {"upload": 100, "download": 200, "start": "2024-01-01T00:00:00Z", "rule": "",
+     "metadata": {"host": "fallback.example", "destinationPort": "443", "type": "vless/in-reality"}}
+  ]
+}
+EOF
+          ;;
+        *)
+          cat <<'EOF'
 {
   "downloadTotal": 1048576,
   "uploadTotal":    524288,
@@ -112,6 +127,8 @@ curl() {
   ]
 }
 EOF
+          ;;
+      esac
       ;;
     *)
       return 22
@@ -197,6 +214,35 @@ test_per_user_grouping() {
   assert_jq "bob grouped count" "${out}" '[.users[] | select(.user=="bob")][0].count' "1"
   assert_jq "sorted by total traffic" "${out}" '.users[0].user' "alice"
 
+  _teardown_state
+}
+
+test_single_user_fallback_from_state() {
+  echo ""
+  echo "Testing single-user fallback when metadata.user is absent"
+  echo "--------------------------------------------------------"
+  _setup_state true
+  STATS_CONNECTIONS_FIXTURE="no_metadata_user_reality"
+
+  local tmp_state=""
+  tmp_state=$(mktemp)
+  jq '.protocols.reality.users = [{name: "default", uuid: "uuid-default"}]' \
+    "${_TMP_STATE}" >"${tmp_state}"
+  mv -f "${tmp_state}" "${_TMP_STATE}"
+
+  local out=""
+  out=$(stats_users_json)
+  assert_jq "fallback users payload valid" "${out}" '.enabled' "true"
+  assert_jq "fallback user count" "${out}" '.users | length' "1"
+  assert_jq "fallback user resolved from state" "${out}" '.users[0].user' "default"
+  assert_jq "fallback upload sum" "${out}" '.users[0].upload' "100"
+  assert_jq "fallback download sum" "${out}" '.users[0].download' "200"
+
+  out=$(stats_connections_json)
+  assert_jq "connections json exposes resolved_user" "${out}" \
+    '.connections[0].resolved_user' "default"
+
+  STATS_CONNECTIONS_FIXTURE="default"
   _teardown_state
 }
 
@@ -325,6 +371,7 @@ main() {
   test_disabled_path
   test_overview_json_structure
   test_per_user_grouping
+  test_single_user_fallback_from_state
   test_bearer_token_sent
   test_secret_never_printed
   test_curl_failure_handled

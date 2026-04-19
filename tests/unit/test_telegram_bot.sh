@@ -293,6 +293,7 @@ echo "Testing _tg_get_updates..."
 # Counters live in files so subshells don't lose them.
 GU_CALLS_FILE="${TEST_TMP_DIR}/gu_calls"
 GU_SLEEPS_FILE="${TEST_TMP_DIR}/gu_sleeps"
+GU_ARGV_FILE="${TEST_TMP_DIR}/gu_argv"
 
 # Stub curl: writes a fixture body and succeeds. Detects the -o argument
 # anywhere in argv (the lib uses curl -o <file>).
@@ -309,6 +310,11 @@ mock_curl_get_success() {
   echo '{"ok":true,"result":[]}' >"${out_file}"
   echo "ok" >>"${GU_CALLS_FILE}"
   return 0
+}
+
+mock_curl_get_success_record_argv() {
+  printf '%s\n' "$*" >"${GU_ARGV_FILE}"
+  mock_curl_get_success "$@"
 }
 
 # Stub curl: always fails (simulates network error / 5xx).
@@ -357,6 +363,20 @@ assert_eq "no sleep on success" "0" "${sleeps}"
 [[ -s "${TEST_TMP_DIR}/gu.out" ]] && test_result "output file populated" "pass" ||
   test_result "output file populated" "fail"
 
+# Case 3b: token must not appear in curl argv.
+: >"${GU_CALLS_FILE}"
+: >"${GU_SLEEPS_FILE}"
+: >"${GU_ARGV_FILE}"
+SBX_TG_CURL_CMD=mock_curl_get_success_record_argv \
+  _tg_get_updates 42 "${TEST_TMP_DIR}/gu.out"
+assert_zero "get_updates argv capture returns 0" "$?"
+if grep -qF "${BOT_TOKEN}" "${GU_ARGV_FILE}"; then
+  test_result "get_updates keeps token out of curl argv" "fail"
+  echo "      argv: $(cat "${GU_ARGV_FILE}")"
+else
+  test_result "get_updates keeps token out of curl argv" "pass"
+fi
+
 # Case 4: persistent failure with attempt cap → rc=1, exact attempt count,
 # backoff sequence is 1, 2, 4 (no sleep after the final failed attempt).
 : >"${GU_CALLS_FILE}"
@@ -387,6 +407,7 @@ echo "Testing _tg_send_message..."
 
 SM_CALLS_FILE="${TEST_TMP_DIR}/sm_calls"
 SM_SLEEPS_FILE="${TEST_TMP_DIR}/sm_sleeps"
+SM_ARGV_FILE="${TEST_TMP_DIR}/sm_argv"
 
 # Stub curl for send: writes body to -o file, prints HTTP code via -w.
 mock_curl_send_200() {
@@ -402,6 +423,11 @@ mock_curl_send_200() {
   echo '{"ok":true,"result":{"message_id":1}}' >"${out_file}"
   echo "200" >>"${SM_CALLS_FILE}"
   printf '200'
+}
+
+mock_curl_send_200_record_argv() {
+  printf '%s\n' "$*" >"${SM_ARGV_FILE}"
+  mock_curl_send_200 "$@"
 }
 
 mock_curl_send_500() {
@@ -481,6 +507,19 @@ calls=$(wc -l <"${SM_CALLS_FILE}" | tr -d ' ')
 sleeps=$(wc -l <"${SM_SLEEPS_FILE}" | tr -d ' ')
 assert_eq "send: exactly one curl call on 200" "1" "${calls}"
 assert_eq "send: no sleep on 200" "0" "${sleeps}"
+
+# Case 3b: token must not appear in curl argv.
+: >"${SM_CALLS_FILE}"
+: >"${SM_SLEEPS_FILE}"
+: >"${SM_ARGV_FILE}"
+SBX_TG_CURL_CMD=mock_curl_send_200_record_argv _tg_send_message 12345 "hello world"
+assert_zero "send argv capture returns 0" "$?"
+if grep -qF "${BOT_TOKEN}" "${SM_ARGV_FILE}"; then
+  test_result "send_message keeps token out of curl argv" "fail"
+  echo "      argv: $(cat "${SM_ARGV_FILE}")"
+else
+  test_result "send_message keeps token out of curl argv" "pass"
+fi
 
 # Case 4: 500 → fail immediately, no retry.
 : >"${SM_CALLS_FILE}"

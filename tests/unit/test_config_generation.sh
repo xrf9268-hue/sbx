@@ -261,6 +261,19 @@ test_create_reality_inbound_basic() {
   fi
 }
 
+test_create_reality_inbound_preserves_user_name() {
+  echo ""
+  echo "Testing create_reality_inbound() - User Name Preservation"
+  echo "---------------------------------------------------------"
+
+  local users_json='[{"name":"default","uuid":"123e4567-e89b-12d3-a456-426614174000"}]'
+  local reality_config
+  reality_config=$(create_reality_inbound "${users_json}" "443" "::" \
+    "www.microsoft.com" "EKlZxErkrHGkRKTyR7oiQ4jF-eO8w9BNYQ_MfB8BAnk" "abcdef12" 2>/dev/null)
+
+  assert_json_value_equals "Reality user name is preserved" "$reality_config" ".users[0].name" "default"
+}
+
 test_create_reality_inbound_security() {
   echo ""
   echo "Testing create_reality_inbound() - Security Features"
@@ -624,6 +637,24 @@ test_create_ws_inbound_basic() {
   assert_json_value_equals "TLS enabled" "$ws_config" ".tls.enabled" "true"
   assert_json_has_key "TLS has ACME block" "$ws_config" ".tls.acme"
   assert_json_value_equals "ACME domain correct" "$ws_config" ".tls.acme.domain[0]" "${test_domain}"
+}
+
+test_create_ws_inbound_preserves_user_name() {
+  echo ""
+  echo "Testing create_ws_inbound() - User Name Preservation"
+  echo "----------------------------------------------------"
+
+  local test_domain="ws.example.com"
+  local tls_json
+  tls_json=$(_build_tls_block "${test_domain}" '["h2","http/1.1"]' \
+    "" "" "acme" "" 2>/dev/null)
+
+  local users_json='[{"name":"default","uuid":"123e4567-e89b-12d3-a456-426614174000"}]'
+  local ws_config
+  ws_config=$(create_ws_inbound "${users_json}" "8444" "::" \
+    "${test_domain}" "${tls_json}" 2>/dev/null)
+
+  assert_json_value_equals "WS-TLS user name is preserved" "$ws_config" ".users[0].name" "default"
 }
 
 test_create_ws_inbound_manual_cert() {
@@ -990,6 +1021,7 @@ main() {
   test_create_base_config_dual_stack
   test_create_base_config_log_levels
   test_create_reality_inbound_basic
+  test_create_reality_inbound_preserves_user_name
   test_create_reality_inbound_security
   test_json_structure_compliance
   test_deprecated_fields_not_present
@@ -1003,6 +1035,7 @@ main() {
 
   # Run test suites — WS + Hysteria2 inbounds
   test_create_ws_inbound_basic
+  test_create_ws_inbound_preserves_user_name
   test_create_ws_inbound_manual_cert
   test_create_hysteria2_inbound_basic
   test_create_hysteria2_inbound_dns01
