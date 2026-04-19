@@ -86,6 +86,49 @@ _rotation_append_history() {
     ' <<<"${history_json}"
 }
 
+_rotation_schedule_backup_file() {
+  local source_file="$1"
+  local backup_file="$2"
+
+  if [[ -f "${source_file}" ]]; then
+    cp -a "${source_file}" "${backup_file}"
+  else
+    rm -f "${backup_file}" 2>/dev/null || true
+  fi
+}
+
+_rotation_schedule_restore_file() {
+  local backup_file="$1"
+  local target_file="$2"
+
+  if [[ -f "${backup_file}" ]]; then
+    cp -a "${backup_file}" "${target_file}"
+  else
+    rm -f "${target_file}" 2>/dev/null || true
+  fi
+}
+
+_rotation_schedule_restore_consistency() {
+  local state_backup="$1"
+  local state_file="$2"
+  local service_backup="$3"
+  local service_unit_path="$4"
+  local timer_backup="$5"
+  local timer_unit_path="$6"
+
+  _rotation_schedule_restore_file "${state_backup}" "${state_file}"
+  _rotation_schedule_restore_file "${service_backup}" "${service_unit_path}"
+  _rotation_schedule_restore_file "${timer_backup}" "${timer_unit_path}"
+
+  if [[ -f "${timer_backup}" ]]; then
+    systemctl enable --now "${ROTATION_TIMER_NAME}" >/dev/null 2>&1 || true
+  else
+    remove_systemd_unit "${ROTATION_TIMER_NAME}" "${timer_unit_path}" "strict" >/dev/null 2>&1 || true
+  fi
+
+  systemctl daemon-reload >/dev/null 2>&1 || true
+}
+
 _rotation_service_unit_content() {
   cat <<'EOF'
 [Unit]
@@ -128,7 +171,7 @@ _rotation_install_units() {
 
   install_systemd_unit "${service_unit_path}" "${service_unit_content}"
   install_systemd_unit "${timer_unit_path}" "${timer_unit_content}"
-  systemctl enable "${ROTATION_TIMER_NAME}" >/dev/null 2>&1 || true
+  systemctl enable --now "${ROTATION_TIMER_NAME}" >/dev/null 2>&1
 }
 
 reality_rotation_remove_units() {
@@ -314,10 +357,20 @@ _reality_rotation_update_config() {
 }
 
 reality_rotation_schedule() {
+  with_state_lock "${SBX_LOCK_TIMEOUT_SEC:-30}" _reality_rotation_schedule_locked "$@"
+}
+
+_reality_rotation_schedule_locked() {
   local schedule="${1:-}"
   local state_file=''
   local state_tmp=''
   local on_calendar=''
+  local backup_dir=''
+  local state_backup=''
+  local service_unit_path=''
+  local timer_unit_path=''
+  local service_backup=''
+  local timer_backup=''
 
   if [[ $# -ne 1 ]]; then
     err "Usage: reality_rotation_schedule <daily|weekly|monthly|off>"
@@ -341,34 +394,60 @@ reality_rotation_schedule() {
   esac
 
   state_file=$(_reality_rotation_state_file)
+  service_unit_path=$(_rotation_service_unit_path)
+  timer_unit_path=$(_rotation_timer_unit_path)
   [[ -f "${state_file}" ]] || {
     err "state.json not found: ${state_file}"
     return 1
   }
+
+  backup_dir=$(create_temp_dir "reality-schedule") || return 1
+  state_backup="${backup_dir}/state.json"
+  service_backup="${backup_dir}/$(basename "${service_unit_path}")"
+  timer_backup="${backup_dir}/$(basename "${timer_unit_path}")"
+
+  _rotation_schedule_backup_file "${state_file}" "${state_backup}"
+  _rotation_schedule_backup_file "${service_unit_path}" "${service_backup}"
+  _rotation_schedule_backup_file "${timer_unit_path}" "${timer_backup}"
 
   state_tmp=$(create_temp_file_in_dir "$(dirname "${state_file}")" "state.json") || return 1
 
   if [[ "${schedule}" == "off" ]]; then
     reality_rotation_remove_units || {
       rm -f "${state_tmp}" 2>/dev/null || true
+      _rotation_schedule_restore_consistency "${state_backup}" "${state_file}" "${service_backup}" "${service_unit_path}" "${timer_backup}" "${timer_unit_path}"
+      rm -rf "${backup_dir}" 2>/dev/null || true
       return 1
     }
     _rotation_write_schedule_state "${state_file}" "${state_tmp}" "${schedule}" false "${on_calendar}" || {
       rm -f "${state_tmp}" 2>/dev/null || true
+      _rotation_schedule_restore_consistency "${state_backup}" "${state_file}" "${service_backup}" "${service_unit_path}" "${timer_backup}" "${timer_unit_path}"
+      rm -rf "${backup_dir}" 2>/dev/null || true
       return 1
     }
   else
     _rotation_install_units "${on_calendar}" || {
       rm -f "${state_tmp}" 2>/dev/null || true
+      _rotation_schedule_restore_consistency "${state_backup}" "${state_file}" "${service_backup}" "${service_unit_path}" "${timer_backup}" "${timer_unit_path}"
+      rm -rf "${backup_dir}" 2>/dev/null || true
       return 1
     }
     _rotation_write_schedule_state "${state_file}" "${state_tmp}" "${schedule}" true "${on_calendar}" || {
       rm -f "${state_tmp}" 2>/dev/null || true
+      _rotation_schedule_restore_consistency "${state_backup}" "${state_file}" "${service_backup}" "${service_unit_path}" "${timer_backup}" "${timer_unit_path}"
+      rm -rf "${backup_dir}" 2>/dev/null || true
       return 1
     }
   fi
 
-  mv -f "${state_tmp}" "${state_file}"
+  if ! mv -f "${state_tmp}" "${state_file}"; then
+    rm -f "${state_tmp}" 2>/dev/null || true
+    _rotation_schedule_restore_consistency "${state_backup}" "${state_file}" "${service_backup}" "${service_unit_path}" "${timer_backup}" "${timer_unit_path}"
+    rm -rf "${backup_dir}" 2>/dev/null || true
+    return 1
+  fi
+
+  rm -rf "${backup_dir}" 2>/dev/null || true
 }
 
 _reality_rotate_shortid_locked() {

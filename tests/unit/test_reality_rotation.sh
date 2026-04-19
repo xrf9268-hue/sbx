@@ -245,6 +245,9 @@ run_schedule() {
       source "'"${PROJECT_ROOT}"'/lib/reality_rotation.sh"
       systemctl() {
         printf "systemctl %s\n" "$*" >>"'"${TEST_TMP}"'/systemctl.log"
+        if [[ "${SYSTEMCTL_FAIL_ENABLE_NOW:-0}" == "1" && "${1:-}" == "enable" && "${2:-}" == "--now" ]]; then
+          return 1
+        fi
         return 0
       }
       install_systemd_unit() {
@@ -389,7 +392,19 @@ test_reality_rotation_schedule_weekly_installs_units_and_updates_state() {
 }
 
 test_reality_rotation_schedule_off_removes_units_and_disables_state() {
+  local before_log_lines=0
+  local after_log_lines=0
+  local after_off_log=''
+
+  run_schedule weekly
+
+  assert_file_exists "$(rotation_service_unit_path)" "precondition: service unit exists before disabling"
+  assert_file_exists "$(rotation_timer_unit_path)" "precondition: timer unit exists before disabling"
+  before_log_lines=$(wc -l <"${TEST_TMP}/systemd.log" | tr -d '[:space:]')
+
   run_schedule off
+  after_log_lines=$(wc -l <"${TEST_TMP}/systemd.log" | tr -d '[:space:]')
+  after_off_log=$(sed -n "$((before_log_lines + 1)),${after_log_lines}p" "${TEST_TMP}/systemd.log")
 
   assert_equals "off" "$(jq -r '.protocols.reality.short_id_rotation.schedule' "${STATE_FILE_PATH}")" \
     "state.json records off schedule"
@@ -398,10 +413,45 @@ test_reality_rotation_schedule_off_removes_units_and_disables_state() {
   assert_equals "null" "$(jq -r '.protocols.reality.short_id_rotation.on_calendar' "${STATE_FILE_PATH}")" \
     "state.json clears on-calendar when disabled"
   assert_file_exists "${TEST_TMP}/systemd.log" "off schedule logs unit removal"
-  assert_not_contains "$(cat "${TEST_TMP}/systemd.log")" "install_systemd_unit" \
+  assert_not_contains "${after_off_log}" "install_systemd_unit" \
     "off schedule does not render units"
-  assert_contains "$(cat "${TEST_TMP}/systemd.log")" "remove_systemd_unit" \
+  assert_contains "${after_off_log}" "remove_systemd_unit" \
     "off schedule exercises unit removal"
+  assert_file_not_exists "$(rotation_service_unit_path)" "service unit is removed"
+  assert_file_not_exists "$(rotation_timer_unit_path)" "timer unit is removed"
+}
+
+test_invalid_schedule_leaves_state_and_units_untouched() {
+  local before_state=''
+  local before_service=''
+  local before_timer=''
+
+  run_schedule weekly
+  before_state=$(cat "${STATE_FILE_PATH}")
+  before_service=$(cat "$(rotation_service_unit_path)")
+  before_timer=$(cat "$(rotation_timer_unit_path)")
+
+  assert_failure "run_schedule hourly" "invalid schedule should fail"
+
+  assert_equals "${before_state}" "$(cat "${STATE_FILE_PATH}")" "invalid schedule leaves state.json untouched"
+  assert_equals "${before_service}" "$(cat "$(rotation_service_unit_path)")" "invalid schedule leaves service unit untouched"
+  assert_equals "${before_timer}" "$(cat "$(rotation_timer_unit_path)")" "invalid schedule leaves timer unit untouched"
+}
+
+test_schedule_enable_failure_rolls_back_state_and_units() {
+  local before_state=''
+
+  before_state=$(cat "${STATE_FILE_PATH}")
+
+  SYSTEMCTL_FAIL_ENABLE_NOW=1 assert_failure "run_schedule weekly" "failed timer activation should fail"
+
+  assert_equals "${before_state}" "$(cat "${STATE_FILE_PATH}")" "failed activation leaves state.json untouched"
+  assert_equals "[]" "$(jq -c '.protocols.reality.short_id_rotation.history' "${STATE_FILE_PATH}")" \
+    "failed activation keeps history unchanged"
+  assert_file_not_exists "$(rotation_service_unit_path)" "failed activation rolls back service unit"
+  assert_file_not_exists "$(rotation_timer_unit_path)" "failed activation rolls back timer unit"
+  assert_contains "$(cat "${TEST_TMP}/systemd.log")" "remove_systemd_unit" \
+    "failed activation exercises rollback removal"
 }
 
 test_history_trimming_keeps_twenty_entries() {
@@ -439,6 +489,12 @@ main() {
   teardown_fixture
   setup_fixture
   test_reality_rotation_schedule_off_removes_units_and_disables_state
+  teardown_fixture
+  setup_fixture
+  test_invalid_schedule_leaves_state_and_units_untouched
+  teardown_fixture
+  setup_fixture
+  test_schedule_enable_failure_rolls_back_state_and_units
   teardown_fixture
   setup_fixture
   test_history_trimming_keeps_twenty_entries
