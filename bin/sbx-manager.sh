@@ -38,6 +38,8 @@ if [[ -d "$LIB_DIR" ]]; then
   [[ -f "$LIB_DIR/cloudflare_tunnel.sh" ]] && source "$LIB_DIR/cloudflare_tunnel.sh"
   # shellcheck source=/dev/null
   [[ -f "$LIB_DIR/telegram_bot.sh" ]] && source "$LIB_DIR/telegram_bot.sh"
+  # shellcheck source=/dev/null
+  [[ -f "$LIB_DIR/reality_rotation.sh" ]] && source "$LIB_DIR/reality_rotation.sh"
 fi
 
 # Simple logo for management tool
@@ -126,6 +128,11 @@ ${B}Telegram Bot:${N}
   telegram admin add <chat_id>    Add an allowed Telegram chat ID
   telegram admin remove <chat_id> Remove an allowed Telegram chat ID
   telegram admin list             List allowed Telegram chat IDs
+
+${B}Reality Rotation:${N}
+  rotate-shortid [--dry-run]                 Rotate the Reality short ID
+  rotate-shortid --schedule <daily|weekly|monthly|off>
+                                            Configure scheduled rotation
 
 ${B}System:${N}
   uninstall|remove    Complete uninstall (requires root)
@@ -807,6 +814,44 @@ output_backup_list_json() {
           count: ($backups | length),
           backups: $backups
         }'
+}
+
+handle_rotate_shortid_command() {
+  local schedule_seen=0
+  local arg=''
+
+  need_root || exit 1
+
+  if ! declare -f reality_rotate_shortid >/dev/null 2>&1 || \
+    ! declare -f reality_rotation_schedule >/dev/null 2>&1; then
+    echo -e "${R}[ERR]${N} Reality rotation module not loaded. Please reinstall sbx-lite."
+    exit 1
+  fi
+
+  for arg in "$@"; do
+    [[ "${arg}" == "--schedule" ]] && schedule_seen=1
+  done
+
+  if [[ "${schedule_seen}" -eq 1 ]]; then
+    if [[ $# -ne 2 ]]; then
+      if [[ "${1:-}" == "--schedule" && $# -eq 1 ]]; then
+        echo -e "${R}[ERR]${N} Usage: sbx rotate-shortid --schedule <daily|weekly|monthly|off>"
+      else
+        echo -e "${R}[ERR]${N} --schedule cannot be combined with other flags."
+      fi
+      exit 1
+    fi
+
+    if [[ "${1:-}" != "--schedule" || -z "${2:-}" ]]; then
+      echo -e "${R}[ERR]${N} Usage: sbx rotate-shortid --schedule <daily|weekly|monthly|off>"
+      exit 1
+    fi
+
+    reality_rotation_schedule "${2}"
+    return 0
+  fi
+
+  reality_rotate_shortid "$@"
 }
 
 require_jq_for_json
@@ -1516,6 +1561,11 @@ case "${1:-}" in
         exit 1
         ;;
     esac
+    ;;
+
+  rotate-shortid)
+    shift
+    handle_rotate_shortid_command "$@"
     ;;
 
   help | --help | -h | "")
