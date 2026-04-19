@@ -87,7 +87,7 @@ ${B}Backup & Restore:${N}
 ${B}Configuration Export:${N}
   export v2rayn [protocol] [file]   Export v2rayN config (reality|ws)
   export clash [file]               Export Clash YAML config
-  export uri [protocol]             Export share URIs (reality|ws|hy2|tuic|all)
+  export uri [protocol]             Export share URIs (reality|ws|hy2|tuic|trojan|all)
   export qr [output-dir]            Generate QR code images
   export subscription [file]        Generate subscription link
 
@@ -1294,7 +1294,7 @@ case "${1:-}" in
         echo -e "${Y}Usage:${N}"
         echo "  sbx export v2rayn [reality|ws] [file]  - Export v2rayN config"
         echo "  sbx export clash [file]                - Export Clash config"
-        echo "  sbx export uri [protocol]              - Export share URIs (reality|ws|hy2|tuic|all)"
+        echo "  sbx export uri [protocol]              - Export share URIs (reality|ws|hy2|tuic|trojan|all)"
         echo "  sbx export qr [output-dir]             - Generate QR codes"
         echo "  sbx export subscription [file]         - Generate subscription"
         exit 1

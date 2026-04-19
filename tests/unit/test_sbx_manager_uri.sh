@@ -246,17 +246,17 @@ EOF
   fi
 }
 
-test_help_lists_tuic_export_protocol() {
+test_help_lists_tuic_and_trojan_export_protocols() {
   echo ""
-  echo "Test: sbx-manager help lists TUIC export support"
+  echo "Test: sbx-manager help lists TUIC and Trojan export support"
 
   local help_output
   help_output=$(bash "$PROJECT_ROOT/bin/sbx-manager.sh" help)
 
-  if echo "$help_output" | grep -q "reality|ws|hy2|tuic|all"; then
-    pass "help output lists TUIC for export uri"
+  if echo "$help_output" | grep -q "reality|ws|hy2|tuic|trojan|all"; then
+    pass "help output lists TUIC and Trojan for export uri"
   else
-    fail "help output should list TUIC for export uri" "$help_output"
+    fail "help output should list TUIC and Trojan for export uri" "$help_output"
   fi
 }
 
@@ -422,7 +422,7 @@ echo "Running test suite: sbx-manager URI paths"
 echo "=========================================="
 
 test_stubbed_export_uri_used_in_info_and_qr
-test_help_lists_tuic_export_protocol
+test_help_lists_tuic_and_trojan_export_protocols
 test_info_skips_tuic_when_not_configured
 test_info_prints_acme_managed_protocols
 test_cli_uri_matches_export_module

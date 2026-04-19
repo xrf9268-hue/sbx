@@ -1,6 +1,6 @@
 # sbx-lite
 
-One-click sing-box proxy deployment with VLESS-REALITY support.
+One-click sing-box proxy deployment with Reality-first defaults and optional multi-protocol support.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![sing-box](https://img.shields.io/badge/sing--box-1.13.0+-orange.svg)](https://github.com/SagerNet/sing-box)
@@ -13,9 +13,14 @@ bash <(curl -fsSL https://raw.githubusercontent.com/xrf9268-hue/sbx/main/install
 
 Done! Connection URIs are displayed after installation. Copy them to your client.
 
-**With domain** (enables multi-protocol):
+**With domain** (defaults to Reality + WS-TLS + Hysteria2):
 ```bash
 DOMAIN=your.domain.com bash <(curl -fsSL https://raw.githubusercontent.com/xrf9268-hue/sbx/main/install.sh)
+```
+
+**Enable TUIC / Trojan too**:
+```bash
+DOMAIN=your.domain.com ENABLE_TUIC=1 ENABLE_TROJAN=1 bash <(curl -fsSL https://raw.githubusercontent.com/xrf9268-hue/sbx/main/install.sh)
 ```
 
 **Cloudflare proxy mode** (when server IP is blocked):
@@ -32,8 +37,9 @@ CF_API_TOKEN=your_token CERT_MODE=cf_dns DOMAIN=your.domain.com bash <(curl -fsS
 
 ## Features
 
-- **Zero config** - Auto-detects IP, no domain/certs needed
-- **Multi-protocol** - VLESS-REALITY, VLESS-WS-TLS, Hysteria2
+- **Zero config** - Auto-detects IP, no domain/certs needed for Reality-only installs
+- **Domain-mode defaults** - VLESS-REALITY, VLESS-WS-TLS, Hysteria2
+- **Optional extra protocols** - TUIC V5 and Trojan via `ENABLE_TUIC=1` / `ENABLE_TROJAN=1`
 - **Cloudflare support** - CF_MODE for CDN proxying when IP is blocked
 - **DNS-01 challenge** - Certificate issuance without port 80 via Cloudflare API
 - **Easy export** - QR codes, v2rayN/Clash configs, share URIs
@@ -47,6 +53,9 @@ sbx qr        # QR codes for mobile
 sbx status    # Service status
 sbx check     # Validate config
 sbx health    # Comprehensive health report
+sbx stats     # Traffic and connection overview
+sbx export    # Export URIs / client configs / QR codes
+sbx tunnel    # Cloudflare Tunnel management
 sbx help      # All commands
 ```
 
@@ -81,15 +90,20 @@ See [REALITY_TROUBLESHOOTING.md](docs/REALITY_TROUBLESHOOTING.md) for more solut
 
 - Linux (Debian, Ubuntu, CentOS, Fedora, RHEL)
 - Root access
-- Ports available (default mode):
+- Ports available (default domain mode):
   - **443/tcp** - VLESS-Reality
   - **80/tcp** - ACME HTTP-01 challenge (certificate issuance, with domain)
   - **8444/tcp** - VLESS-WS-TLS (with domain)
   - **8443/udp** - Hysteria2 (with domain)
+  - **8445/udp** - TUIC V5 (optional, with `ENABLE_TUIC=1`)
+  - **8446/tcp** - Trojan (optional, with `ENABLE_TROJAN=1`)
+- Ports available (Reality-only / IP mode):
+  - **443/tcp** - VLESS-Reality only
 - Ports available (CF_MODE=1):
-  - **443/tcp** - VLESS-WS-TLS only (through Cloudflare CDN)
+  - **443/tcp** - VLESS-WS-TLS through Cloudflare CDN
+  - Optional direct fallback: `REALITY_PORT` if `ENABLE_REALITY=1`
 - Ports available (CERT_MODE=cf_dns):
-  - **443/tcp** - VLESS-Reality + WS-TLS (no port 80 needed)
+  - Same protocol ports as domain mode, but **80/tcp is not required**
 
 ## Documentation
 
