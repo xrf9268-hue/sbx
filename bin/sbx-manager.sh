@@ -818,23 +818,18 @@ output_backup_list_json() {
 
 handle_rotate_shortid_command() {
   local schedule_seen=0
+  local schedule_value=''
   local arg=''
 
-  need_root || exit 1
-
-  if ! declare -f reality_rotate_shortid >/dev/null 2>&1 || \
-    ! declare -f reality_rotation_schedule >/dev/null 2>&1; then
-    echo -e "${R}[ERR]${N} Reality rotation module not loaded. Please reinstall sbx-lite."
-    exit 1
-  fi
-
   for arg in "$@"; do
-    [[ "${arg}" == "--schedule" ]] && schedule_seen=1
+    if [[ "${arg}" == "--schedule" ]]; then
+      schedule_seen=1
+    fi
   done
 
   if [[ "${schedule_seen}" -eq 1 ]]; then
-    if [[ $# -ne 2 ]]; then
-      if [[ "${1:-}" == "--schedule" && $# -eq 1 ]]; then
+    if [[ $# -ne 2 || "${1:-}" != "--schedule" || -z "${2:-}" ]]; then
+      if [[ $# -eq 1 && "${1:-}" == "--schedule" ]]; then
         echo -e "${R}[ERR]${N} Usage: sbx rotate-shortid --schedule <daily|weekly|monthly|off>"
       else
         echo -e "${R}[ERR]${N} --schedule cannot be combined with other flags."
@@ -842,12 +837,19 @@ handle_rotate_shortid_command() {
       exit 1
     fi
 
-    if [[ "${1:-}" != "--schedule" || -z "${2:-}" ]]; then
-      echo -e "${R}[ERR]${N} Usage: sbx rotate-shortid --schedule <daily|weekly|monthly|off>"
-      exit 1
-    fi
+    schedule_value="${2}"
+  fi
 
-    reality_rotation_schedule "${2}"
+  if ! declare -f reality_rotate_shortid >/dev/null 2>&1 || \
+    ! declare -f reality_rotation_schedule >/dev/null 2>&1; then
+    echo -e "${R}[ERR]${N} Reality rotation module not loaded. Please reinstall sbx-lite."
+    exit 1
+  fi
+
+  need_root || exit 1
+
+  if [[ -n "${schedule_value}" ]]; then
+    reality_rotation_schedule "${schedule_value}"
     return 0
   fi
 

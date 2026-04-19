@@ -102,11 +102,23 @@ test_rotate_shortid_invalid_flag_combination_fails() {
 main() {
   set +e
   run_test_suite \
-    "sbx-manager rotate-shortid command routing" \
+    "sbx-manager rotate-shortid help" \
     setup_manager_rotate_shortid_mock \
     test_help_lists_rotate_shortid_commands \
+    teardown_manager_rotate_shortid_mock
+  run_test_suite \
+    "sbx-manager rotate-shortid dry-run" \
+    setup_manager_rotate_shortid_mock \
     test_rotate_shortid_dry_run_routes_to_module \
+    teardown_manager_rotate_shortid_mock
+  run_test_suite \
+    "sbx-manager rotate-shortid schedule" \
+    setup_manager_rotate_shortid_mock \
     test_rotate_shortid_schedule_weekly_routes_to_module \
+    teardown_manager_rotate_shortid_mock
+  run_test_suite \
+    "sbx-manager rotate-shortid invalid flags" \
+    setup_manager_rotate_shortid_mock \
     test_rotate_shortid_invalid_flag_combination_fails \
     teardown_manager_rotate_shortid_mock
   print_test_summary
