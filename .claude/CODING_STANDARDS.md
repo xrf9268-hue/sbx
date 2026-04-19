@@ -261,3 +261,21 @@ part of the feature, not as follow-up cleanup.
   paths.
 - Tests must not depend on host `/var/lock` ownership or on side effects from
   prior root-run installs.
+
+## Failure Propagation for Shared Helpers
+
+When a shared helper performs side effects, its return value must reflect the
+first failing step. Do not rely on `set -e` to stop execution inside helpers
+that may be called from `if`, `&&`, or `||` contexts.
+
+- Do **not** end a side-effecting helper with unconditional `return 0` after
+  commands that may fail. That converts partial failure into false success for
+  every caller.
+- In helpers such as unit installers, config writers, or state mutators, guard
+  each critical step explicitly: `write_file ... || return 1`,
+  `chmod ... || return 1`, `systemctl daemon-reload ... || return 1`.
+- Callers may still use `helper || { rollback; return 1; }`, but the helper
+  itself must already have correct failure semantics.
+- Add a regression test for the negative path that triggered the bug. Prefer
+  reproductions like missing target directories, unwritable destinations, or
+  failing `systemctl` stubs over purely synthetic assertions.
