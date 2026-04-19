@@ -129,9 +129,9 @@ else
 fi
 
 #==============================================================================
-# Test 4: Module syntax validation
+# Test 4: Downloaded module syntax validation helper
 #==============================================================================
-test_start "Downloaded module syntax validation"
+test_start "Downloaded module syntax validation helper rejects stderr-only parse errors"
 temp_dir=$(mktemp -d)
 
 # Create valid module
@@ -146,10 +146,21 @@ cat > "$temp_dir/invalid.sh" << 'EOF'
 if [[ ; then
 EOF
 
-if bash -n "$temp_dir/valid.sh" 2>/dev/null && ! bash -n "$temp_dir/invalid.sh" 2>/dev/null; then
+result=$(TEMP_MODULE_DIR="$temp_dir" bash -c '
+source <(sed -n "/^_validate_bash_syntax_file()/,/^}/p" "'"$SCRIPT_DIR"'/install.sh")
+
+if _validate_bash_syntax_file "${TEMP_MODULE_DIR}/valid.sh" \
+    && ! _validate_bash_syntax_file "${TEMP_MODULE_DIR}/invalid.sh"; then
+    echo "PASS"
+else
+    echo "FAIL"
+fi
+' 2>&1)
+
+if [[ "$result" == "PASS" ]]; then
     test_pass
 else
-    test_fail "Syntax validation not working correctly"
+    test_fail "Syntax validation not working correctly: $result"
 fi
 
 rm -rf "$temp_dir"

@@ -140,6 +140,19 @@ create_temp_dir() {
   return 0
 }
 
+# Some Bash 5.2 builds can print parse errors to stderr while still exiting 0
+# for malformed conditional expressions. Treat any parser stderr as a failure.
+_validate_bash_syntax_file() {
+  local file_path="$1"
+  local syntax_output=""
+
+  if ! syntax_output="$(bash -n "${file_path}" 2>&1 >/dev/null)"; then
+    return 1
+  fi
+
+  [[ -z "${syntax_output}" ]]
+}
+
 # Print usage help (must work before module loading)
 _print_help() {
   cat <<'EOF'
@@ -230,7 +243,7 @@ _download_single_module() {
   fi
 
   # Validate bash syntax
-  if ! bash -n "${module_file}" 2>/dev/null; then
+  if ! _validate_bash_syntax_file "${module_file}"; then
     echo "SYNTAX_ERROR:${module}" >&2
     [[ "${DEBUG:-0}" == "1" ]] && echo "DEBUG: Syntax check failed for ${module}" >&2
     return 1
@@ -357,7 +370,7 @@ _download_modules_sequential() {
       return 1
     fi
 
-    if ! bash -n "${module_file}" 2>/dev/null; then
+    if ! _validate_bash_syntax_file "${module_file}"; then
       echo " ✗ SYNTAX ERROR"
       rm -rf "${temp_lib_dir}"
       _show_syntax_error "${module}"
@@ -488,7 +501,7 @@ _download_and_validate_manager_script() {
     return 1
   fi
 
-  if ! bash -n "${manager_file}" 2>/dev/null; then
+  if ! _validate_bash_syntax_file "${manager_file}"; then
     echo "ERROR: Invalid bash syntax in downloaded sbx-manager.sh"
     echo "       File may be corrupted."
     return 1
