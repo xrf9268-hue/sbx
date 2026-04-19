@@ -17,6 +17,8 @@ CONFIG_FILE_PATH=""
 CLIENT_INFO_PATH=""
 SYSTEMD_DIR_PATH=""
 LOCK_FILE_PATH=""
+GLOBAL_LOCK_FILE_PATH=""
+LOCK_HOLDER_PID=""
 LAST_ROTATION_OUTPUT=""
 LAST_SCHEDULE_OUTPUT=""
 ROTATION_SERVICE_UNIT_NAME="sbx-shortid-rotate.service"
@@ -31,6 +33,7 @@ setup_fixture() {
   CLIENT_INFO_PATH="${TEST_TMP}/client-info.txt"
   SYSTEMD_DIR_PATH="${TEST_TMP}/systemd"
   LOCK_FILE_PATH="${TEST_TMP}/sbx-state.lock"
+  GLOBAL_LOCK_FILE_PATH="${TEST_TMP}/sbx.lock"
 
   mkdir -p "${FAKE_BIN_DIR}"
   mkdir -p "${SYSTEMD_DIR_PATH}"
@@ -135,6 +138,7 @@ EOF
   export TEST_CLIENT_INFO="${CLIENT_INFO_PATH}"
   export TEST_SYSTEMD_DIR="${SYSTEMD_DIR_PATH}"
   export SBX_SYSTEMD_DIR="${SYSTEMD_DIR_PATH}"
+  export SBX_LOCK_FILE="${GLOBAL_LOCK_FILE_PATH}"
   export SBX_STATE_LOCK_FILE="${LOCK_FILE_PATH}"
   export SBX_LOCK_TIMEOUT_SEC=1
 
@@ -149,6 +153,10 @@ EOF
 }
 
 teardown_fixture() {
+  if [[ -n "${LOCK_HOLDER_PID:-}" ]]; then
+    wait "${LOCK_HOLDER_PID}" 2>/dev/null || true
+    LOCK_HOLDER_PID=""
+  fi
   [[ -n "${TEST_TMP:-}" && -d "${TEST_TMP}" ]] && rm -rf "${TEST_TMP}"
 }
 
@@ -227,6 +235,9 @@ run_rotation() {
         fi
         return 0
       }
+      _restart_service_impl() {
+        restart_service "$@"
+      }
       subscription_refresh_cache() {
         printf "subscription_refresh_cache\n" >>"'"${TEST_TMP}"'/subscription-refresh.log"
       }
@@ -287,12 +298,213 @@ run_restart_inside_state_lock() {
     source "'"${PROJECT_ROOT}"'/lib/validation.sh"
     source "'"${PROJECT_ROOT}"'/lib/service.sh"
     source "'"${PROJECT_ROOT}"'/lib/reality_rotation.sh"
-    restart_lock_file="'"${TEST_TMP}"'/restart-lock-file.txt"
     restart_service() {
-      printf "%s\n" "${SBX_LOCK_FILE-__unset__}" >"${restart_lock_file}"
       with_flock "${SBX_LOCK_TIMEOUT_SEC:-30}" true
     }
+    _restart_service_impl() {
+      printf "called\n" >"'"${TEST_TMP}"'/restart-impl-called.txt"
+      return 0
+    }
     with_state_lock "${SBX_LOCK_TIMEOUT_SEC:-30}" _reality_rotation_restart_service_safely
+  '
+}
+
+hold_global_lock_in_background() {
+  local ready_file="${TEST_TMP}/global-lock.ready"
+  local spin=0
+
+  rm -f "${ready_file}" 2>/dev/null || true
+  bash -c '
+    set -euo pipefail
+    source "'"${PROJECT_ROOT}"'/lib/common.sh"
+    with_flock 5 bash -c '"'"'touch "$1"; sleep 2'"'"' _ "'"${ready_file}"'"
+  ' &
+  LOCK_HOLDER_PID=$!
+
+  while [[ ! -f "${ready_file}" && ${spin} -lt 50 ]]; do
+    sleep 0.1
+    spin=$((spin + 1))
+  done
+
+  [[ -f "${ready_file}" ]]
+}
+
+run_rotation_with_restore_failure() {
+  LAST_ROTATION_OUTPUT=$(
+    TEST_CONFIG_FILE="${TEST_CONFIG_FILE:-}" bash -c '
+      set -euo pipefail
+      source "'"${PROJECT_ROOT}"'/lib/common.sh"
+      source "'"${PROJECT_ROOT}"'/lib/validation.sh"
+      source "'"${PROJECT_ROOT}"'/lib/service.sh"
+      source "'"${PROJECT_ROOT}"'/lib/reality_rotation.sh"
+      restart_invocations_file="'"${TEST_TMP}"'/restart-invocations.count"
+      rotation_restart_impl() {
+        local attempt=0
+        if [[ -f "${restart_invocations_file}" ]]; then
+          attempt=$(cat "${restart_invocations_file}")
+        fi
+        attempt=$((attempt + 1))
+        printf "%s\n" "${attempt}" >"${restart_invocations_file}"
+        if [[ "${attempt}" -eq 1 ]]; then
+          return 1
+        fi
+        return 0
+      }
+      restart_service() {
+        rotation_restart_impl "$@"
+      }
+      _restart_service_impl() {
+        rotation_restart_impl "$@"
+      }
+      _reality_rotation_restore_backups() {
+        printf "restore-failed\n" >>"'"${TEST_TMP}"'/restore-failure.log"
+        return 1
+      }
+      reality_rotate_shortid "$@"
+    ' -- "$@"
+  )
+}
+
+run_restore_with_missing_backup() {
+  local backup_dir="${TEST_TMP}/partial-restore"
+
+  mkdir -p "${backup_dir}"
+  cp -a "${CLIENT_INFO_PATH}" "${backup_dir}/client-info.txt"
+  cp -a "${STATE_FILE_PATH}" "${backup_dir}/state.json"
+
+  bash -c '
+    set -euo pipefail
+    source "'"${PROJECT_ROOT}"'/lib/common.sh"
+    source "'"${PROJECT_ROOT}"'/lib/validation.sh"
+    source "'"${PROJECT_ROOT}"'/lib/service.sh"
+    source "'"${PROJECT_ROOT}"'/lib/reality_rotation.sh"
+    _reality_rotation_restore_backups \
+      "'"${backup_dir}"'" \
+      "'"${CONFIG_FILE_PATH}"'" \
+      "'"${CLIENT_INFO_PATH}"'" \
+      "'"${STATE_FILE_PATH}"'"
+  '
+}
+
+prepare_runtime_restore_scenario() {
+  local backup_dir="${TEST_TMP}/runtime-restore"
+
+  mkdir -p "${backup_dir}"
+  cp -a "${CONFIG_FILE_PATH}" "${backup_dir}/config.json"
+  cp -a "${CLIENT_INFO_PATH}" "${backup_dir}/client-info.txt"
+  cp -a "${STATE_FILE_PATH}" "${backup_dir}/state.json"
+
+  jq '.protocols.reality.short_id = "deadbeef"' "${STATE_FILE_PATH}" >"${STATE_FILE_PATH}.tmp"
+  mv -f "${STATE_FILE_PATH}.tmp" "${STATE_FILE_PATH}"
+  jq '(.inbounds[] | select(.tls.reality) | .tls.reality.short_id) = ["deadbeef"]' \
+    "${CONFIG_FILE_PATH}" >"${CONFIG_FILE_PATH}.tmp"
+  mv -f "${CONFIG_FILE_PATH}.tmp" "${CONFIG_FILE_PATH}"
+  cat >"${CLIENT_INFO_PATH}" <<'EOF'
+UUID="11111111-2222-3333-4444-555555555555"
+SHORT_ID="deadbeef"
+SNI="www.microsoft.com"
+EOF
+
+  printf '%s\n' "${backup_dir}"
+}
+
+run_restore_with_second_copy_failure() {
+  local backup_dir="$1"
+
+  bash -c '
+    set -euo pipefail
+    source "'"${PROJECT_ROOT}"'/lib/common.sh"
+    source "'"${PROJECT_ROOT}"'/lib/validation.sh"
+    source "'"${PROJECT_ROOT}"'/lib/service.sh"
+    source "'"${PROJECT_ROOT}"'/lib/reality_rotation.sh"
+    cp_count=0
+    cp() {
+      cp_count=$((cp_count + 1))
+      if [[ "${cp_count}" -eq 2 ]]; then
+        return 1
+      fi
+      command cp "$@"
+    }
+    _reality_rotation_restore_backups \
+      "'"${backup_dir}"'" \
+      "'"${CONFIG_FILE_PATH}"'" \
+      "'"${CLIENT_INFO_PATH}"'" \
+      "'"${STATE_FILE_PATH}"'"
+  '
+}
+
+prepare_schedule_restore_scenario() {
+  local backup_dir="${TEST_TMP}/schedule-restore"
+  local service_path=''
+  local timer_path=''
+
+  service_path=$(rotation_service_unit_path)
+  timer_path=$(rotation_timer_unit_path)
+  mkdir -p "${backup_dir}"
+
+  cat >"${service_path}" <<'EOF'
+[Unit]
+Description=original service
+EOF
+  cat >"${timer_path}" <<'EOF'
+[Timer]
+OnCalendar=weekly
+EOF
+
+  cp -a "${STATE_FILE_PATH}" "${backup_dir}/state.json"
+  cp -a "${service_path}" "${backup_dir}/sbx-shortid-rotate.service"
+  cp -a "${timer_path}" "${backup_dir}/sbx-shortid-rotate.timer"
+
+  jq '.protocols.reality.short_id_rotation.schedule = "monthly"' "${STATE_FILE_PATH}" \
+    >"${STATE_FILE_PATH}.tmp"
+  mv -f "${STATE_FILE_PATH}.tmp" "${STATE_FILE_PATH}"
+  cat >"${service_path}" <<'EOF'
+[Unit]
+Description=mutated service
+EOF
+  cat >"${timer_path}" <<'EOF'
+[Timer]
+OnCalendar=monthly
+EOF
+
+  printf '%s\n' "${backup_dir}"
+}
+
+run_schedule_restore_with_second_copy_failure() {
+  local backup_dir="$1"
+  local service_path=''
+  local timer_path=''
+
+  service_path=$(rotation_service_unit_path)
+  timer_path=$(rotation_timer_unit_path)
+
+  bash -c '
+    set -euo pipefail
+    source "'"${PROJECT_ROOT}"'/lib/common.sh"
+    source "'"${PROJECT_ROOT}"'/lib/validation.sh"
+    source "'"${PROJECT_ROOT}"'/lib/service.sh"
+    source "'"${PROJECT_ROOT}"'/lib/reality_rotation.sh"
+    cp_count=0
+    cp() {
+      cp_count=$((cp_count + 1))
+      if [[ "${cp_count}" -eq 2 ]]; then
+        return 1
+      fi
+      command cp "$@"
+    }
+    systemctl() {
+      return 0
+    }
+    remove_systemd_unit() {
+      return 0
+    }
+    _rotation_schedule_restore_consistency \
+      "'"${backup_dir}"'/state.json" \
+      "'"${STATE_FILE_PATH}"'" \
+      "'"${backup_dir}"'/sbx-shortid-rotate.service" \
+      "'"${service_path}"'" \
+      "'"${backup_dir}"'/sbx-shortid-rotate.timer" \
+      "'"${timer_path}"'"
   '
 }
 
@@ -394,15 +606,10 @@ test_restart_failure_with_exit_rolls_back_and_restarts_restored_config() {
 }
 
 test_rotation_restart_does_not_inherit_state_lock_file() {
-  local restart_lock_value=''
-
   assert_success "SBX_LOCK_TIMEOUT_SEC=0 run_restart_inside_state_lock" \
     "restart inside rotation succeeds without re-locking the state lock file"
-
-  assert_file_exists "${TEST_TMP}/restart-lock-file.txt" "restart path captures the inherited lock file"
-  restart_lock_value=$(cat "${TEST_TMP}/restart-lock-file.txt")
-  assert_equals "__unset__" "${restart_lock_value}" \
-    "restart inside rotation clears SBX_LOCK_FILE before calling restart_service"
+  assert_file_exists "${TEST_TMP}/restart-impl-called.txt" \
+    "rotation restart helper reaches the unlocked restart implementation"
 }
 
 test_scheduled_run_records_timer_trigger() {
@@ -528,6 +735,108 @@ test_schedule_change_failure_restores_prior_active_schedule() {
     "rollback re-enables timer only after daemon-reload"
 }
 
+test_rotation_respects_global_lock() {
+  local before_state=''
+  local before_client=''
+  local before_config=''
+
+  before_state=$(cat "${STATE_FILE_PATH}")
+  before_client=$(cat "${CLIENT_INFO_PATH}")
+  before_config=$(cat "${CONFIG_FILE_PATH}")
+
+  assert_success "hold_global_lock_in_background" \
+    "test fixture acquires the shared mutation lock"
+  SBX_LOCK_TIMEOUT_SEC=0 assert_failure "run_rotation" \
+    "rotation should fail fast while the shared mutation lock is held"
+
+  assert_equals "${before_state}" "$(cat "${STATE_FILE_PATH}")" \
+    "global lock contention leaves state.json untouched"
+  assert_equals "${before_client}" "$(cat "${CLIENT_INFO_PATH}")" \
+    "global lock contention leaves client-info.txt untouched"
+  assert_equals "${before_config}" "$(cat "${CONFIG_FILE_PATH}")" \
+    "global lock contention leaves config.json untouched"
+}
+
+test_schedule_respects_global_lock() {
+  local before_state=''
+
+  before_state=$(cat "${STATE_FILE_PATH}")
+
+  assert_success "hold_global_lock_in_background" \
+    "test fixture acquires the shared mutation lock for scheduling"
+  SBX_LOCK_TIMEOUT_SEC=0 assert_failure "run_schedule weekly" \
+    "schedule changes should fail fast while the shared mutation lock is held"
+
+  assert_equals "${before_state}" "$(cat "${STATE_FILE_PATH}")" \
+    "global lock contention leaves schedule state untouched"
+  assert_file_not_exists "$(rotation_service_unit_path)" \
+    "global lock contention does not install service unit"
+  assert_file_not_exists "$(rotation_timer_unit_path)" \
+    "global lock contention does not install timer unit"
+}
+
+test_restore_failure_aborts_without_retry_restart() {
+  assert_failure "run_rotation_with_restore_failure" \
+    "rotation should fail when restore of backup files fails"
+  assert_file_exists "${TEST_TMP}/restore-failure.log" \
+    "restore failure path is exercised"
+  assert_file_exists "${TEST_TMP}/restart-invocations.count" \
+    "restart attempts are tracked when restore fails"
+  assert_equals "1" "$(cat "${TEST_TMP}/restart-invocations.count")" \
+    "restore failure aborts without retrying restart on mixed files"
+}
+
+test_restore_requires_complete_backup_set() {
+  assert_failure "run_restore_with_missing_backup" \
+    "restore helper should fail when any required backup file is missing"
+}
+
+test_runtime_restore_is_atomic_on_copy_failure() {
+  local backup_dir=''
+  local before_state=''
+  local before_client=''
+  local before_config=''
+
+  backup_dir=$(prepare_runtime_restore_scenario)
+  before_state=$(cat "${STATE_FILE_PATH}")
+  before_client=$(cat "${CLIENT_INFO_PATH}")
+  before_config=$(cat "${CONFIG_FILE_PATH}")
+
+  assert_failure "run_restore_with_second_copy_failure '${backup_dir}'" \
+    "runtime restore should fail when a staged copy fails"
+  assert_equals "${before_state}" "$(cat "${STATE_FILE_PATH}")" \
+    "failed runtime restore leaves state.json unchanged"
+  assert_equals "${before_client}" "$(cat "${CLIENT_INFO_PATH}")" \
+    "failed runtime restore leaves client-info.txt unchanged"
+  assert_equals "${before_config}" "$(cat "${CONFIG_FILE_PATH}")" \
+    "failed runtime restore leaves config.json unchanged"
+}
+
+test_schedule_restore_is_atomic_on_copy_failure() {
+  local backup_dir=''
+  local service_path=''
+  local timer_path=''
+  local before_state=''
+  local before_service=''
+  local before_timer=''
+
+  backup_dir=$(prepare_schedule_restore_scenario)
+  service_path=$(rotation_service_unit_path)
+  timer_path=$(rotation_timer_unit_path)
+  before_state=$(cat "${STATE_FILE_PATH}")
+  before_service=$(cat "${service_path}")
+  before_timer=$(cat "${timer_path}")
+
+  assert_failure "run_schedule_restore_with_second_copy_failure '${backup_dir}'" \
+    "schedule restore should fail when a staged copy fails"
+  assert_equals "${before_state}" "$(cat "${STATE_FILE_PATH}")" \
+    "failed schedule restore leaves state.json unchanged"
+  assert_equals "${before_service}" "$(cat "${service_path}")" \
+    "failed schedule restore leaves service unit unchanged"
+  assert_equals "${before_timer}" "$(cat "${timer_path}")" \
+    "failed schedule restore leaves timer unit unchanged"
+}
+
 test_history_trimming_keeps_twenty_entries() {
   local history_count=''
 
@@ -578,6 +887,24 @@ main() {
   teardown_fixture
   setup_fixture
   test_history_trimming_keeps_twenty_entries
+  teardown_fixture
+  setup_fixture
+  test_rotation_respects_global_lock
+  teardown_fixture
+  setup_fixture
+  test_schedule_respects_global_lock
+  teardown_fixture
+  setup_fixture
+  test_restore_failure_aborts_without_retry_restart
+  teardown_fixture
+  setup_fixture
+  test_restore_requires_complete_backup_set
+  teardown_fixture
+  setup_fixture
+  test_runtime_restore_is_atomic_on_copy_failure
+  teardown_fixture
+  setup_fixture
+  test_schedule_restore_is_atomic_on_copy_failure
   teardown_fixture
   print_test_summary
 }

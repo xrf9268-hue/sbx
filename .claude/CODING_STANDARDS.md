@@ -224,3 +224,40 @@ tmpfile=$(create_temp_file "backup") || return 1
 # Secure temp directory (700 permissions automatic)
 tmpdir=$(create_temp_dir "restore") || return 1
 ```
+
+## Runtime Mutation Discipline
+
+When a command mutates installed runtime artifacts, treat locking and rollback as
+part of the feature, not as follow-up cleanup.
+
+**Locking order is mandatory:**
+- If a flow mutates `config.json`, systemd units, or restarts services, take the
+  shared mutation lock with `with_flock` at the top-level boundary.
+- If the same flow also mutates `state.json`, nest `with_state_lock` inside the
+  global lock, in that order.
+- Do **not** add a state-only mutator that can race with existing global
+  mutators such as `write_config`, `restart_service`, or `backup_restore`.
+
+**Nested restart paths must avoid lock inheritance:**
+- If code already runs under the shared mutation lock, prefer calling the
+  unlocked implementation (`_restart_service_impl`) from a helper/subshell
+  instead of re-entering `restart_service`.
+- Re-entering `restart_service` while `SBX_LOCK_FILE` still points at
+  `sbx-state.lock` can deadlock on the same lock file.
+
+**Multi-file rollback must be staged:**
+- For restores involving multiple live files (`config.json`,
+  `client-info.txt`, `state.json`, unit files), stage backup copies into temp
+  files in the destination directory first, then switch them into place with
+  `mv`.
+- Do **not** sequentially `cp` over live files. If a later copy fails, you
+  leave a mixed on-disk state and rollback becomes unsafe.
+- If the apply step itself fails, restore the captured pre-restore files before
+  returning failure.
+
+**State-mutating tests must isolate lock files:**
+- Unit tests that call `state_json_apply`, `with_state_lock`, or any higher-level
+  state mutator must override `SBX_LOCK_FILE` and `SBX_STATE_LOCK_FILE` to temp
+  paths.
+- Tests must not depend on host `/var/lock` ownership or on side effects from
+  prior root-run installs.

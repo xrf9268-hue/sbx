@@ -21,6 +21,7 @@ source "${_LIB_DIR}/service.sh"
 declare -gr ROTATION_SERVICE_NAME="sbx-shortid-rotate.service"
 declare -gr ROTATION_TIMER_NAME="sbx-shortid-rotate.timer"
 declare -gr ROTATION_HISTORY_LIMIT=20
+declare -gr ROTATION_STAGE_REMOVE="__SBX_ROTATION_REMOVE__"
 
 #------------------------------------------------------------------------------
 # Path helpers
@@ -112,6 +113,59 @@ _rotation_schedule_restore_file() {
   return 0
 }
 
+_rotation_stage_restore_target() {
+  local backup_file="$1"
+  local target_file="$2"
+  local out_var="$3"
+  local staged_file=''
+
+  if [[ ! -f "${backup_file}" ]]; then
+    printf -v "${out_var}" '%s' "${ROTATION_STAGE_REMOVE}"
+    return 0
+  fi
+
+  staged_file=$(create_temp_file_in_dir "$(dirname "${target_file}")" "$(basename "${target_file}")") || return 1
+  cp -a "${backup_file}" "${staged_file}" || {
+    rm -f "${staged_file}" 2>/dev/null || true
+    return 1
+  }
+
+  printf -v "${out_var}" '%s' "${staged_file}"
+  return 0
+}
+
+_rotation_cleanup_staged_target() {
+  local staged_file="${1:-}"
+
+  [[ -n "${staged_file}" && "${staged_file}" != "${ROTATION_STAGE_REMOVE}" ]] || return 0
+  rm -f "${staged_file}" 2>/dev/null || true
+}
+
+_rotation_apply_staged_target() {
+  local staged_file="$1"
+  local target_file="$2"
+
+  if [[ "${staged_file}" == "${ROTATION_STAGE_REMOVE}" ]]; then
+    rm -f "${target_file}" 2>/dev/null || true
+    return 0
+  fi
+
+  mv -f "${staged_file}" "${target_file}"
+}
+
+_rotation_restore_target_from_capture() {
+  local capture_file="$1"
+  local target_file="$2"
+
+  if [[ -f "${capture_file}" ]]; then
+    cp -a "${capture_file}" "${target_file}" || return 1
+  else
+    rm -f "${target_file}" 2>/dev/null || true
+  fi
+
+  return 0
+}
+
 _rotation_schedule_restore_consistency() {
   local state_backup="$1"
   local state_file="$2"
@@ -119,10 +173,55 @@ _rotation_schedule_restore_consistency() {
   local service_unit_path="$4"
   local timer_backup="$5"
   local timer_unit_path="$6"
+  local rollback_dir=''
+  local staged_state=''
+  local staged_service=''
+  local staged_timer=''
 
-  _rotation_schedule_restore_file "${state_backup}" "${state_file}" || return 1
-  _rotation_schedule_restore_file "${service_backup}" "${service_unit_path}" || return 1
-  _rotation_schedule_restore_file "${timer_backup}" "${timer_unit_path}" || return 1
+  rollback_dir=$(create_temp_dir "reality-schedule-restore") || return 1
+  _rotation_schedule_backup_file "${state_file}" "${rollback_dir}/state.json" || {
+    rm -rf "${rollback_dir}" 2>/dev/null || true
+    return 1
+  }
+  _rotation_schedule_backup_file "${service_unit_path}" "${rollback_dir}/$(basename "${service_unit_path}")" || {
+    rm -rf "${rollback_dir}" 2>/dev/null || true
+    return 1
+  }
+  _rotation_schedule_backup_file "${timer_unit_path}" "${rollback_dir}/$(basename "${timer_unit_path}")" || {
+    rm -rf "${rollback_dir}" 2>/dev/null || true
+    return 1
+  }
+
+  _rotation_stage_restore_target "${state_backup}" "${state_file}" staged_state || {
+    rm -rf "${rollback_dir}" 2>/dev/null || true
+    return 1
+  }
+  _rotation_stage_restore_target "${service_backup}" "${service_unit_path}" staged_service || {
+    _rotation_cleanup_staged_target "${staged_state}"
+    rm -rf "${rollback_dir}" 2>/dev/null || true
+    return 1
+  }
+  _rotation_stage_restore_target "${timer_backup}" "${timer_unit_path}" staged_timer || {
+    _rotation_cleanup_staged_target "${staged_state}"
+    _rotation_cleanup_staged_target "${staged_service}"
+    rm -rf "${rollback_dir}" 2>/dev/null || true
+    return 1
+  }
+
+  if ! {
+    _rotation_apply_staged_target "${staged_state}" "${state_file}" &&
+      _rotation_apply_staged_target "${staged_service}" "${service_unit_path}" &&
+      _rotation_apply_staged_target "${staged_timer}" "${timer_unit_path}"
+  }; then
+    _rotation_restore_target_from_capture "${rollback_dir}/state.json" "${state_file}" || true
+    _rotation_restore_target_from_capture "${rollback_dir}/$(basename "${service_unit_path}")" "${service_unit_path}" || true
+    _rotation_restore_target_from_capture "${rollback_dir}/$(basename "${timer_unit_path}")" "${timer_unit_path}" || true
+    _rotation_cleanup_staged_target "${staged_state}"
+    _rotation_cleanup_staged_target "${staged_service}"
+    _rotation_cleanup_staged_target "${staged_timer}"
+    rm -rf "${rollback_dir}" 2>/dev/null || true
+    return 1
+  fi
 
   systemctl daemon-reload >/dev/null 2>&1 || return 1
 
@@ -132,6 +231,7 @@ _rotation_schedule_restore_consistency() {
     remove_systemd_unit "${ROTATION_TIMER_NAME}" "${timer_unit_path}" "strict" || return 1
   fi
 
+  rm -rf "${rollback_dir}" 2>/dev/null || true
   return 0
 }
 
@@ -302,17 +402,84 @@ _reality_rotation_restore_backups() {
   local config_file="$2"
   local client_info_file="$3"
   local state_file="$4"
+  local config_backup="${backup_dir}/config.json"
+  local client_backup="${backup_dir}/client-info.txt"
+  local state_backup="${backup_dir}/state.json"
+  local rollback_dir=''
+  local staged_config=''
+  local staged_client=''
+  local staged_state=''
 
-  [[ -f "${backup_dir}/config.json" ]] && cp -a "${backup_dir}/config.json" "${config_file}"
-  [[ -f "${backup_dir}/client-info.txt" ]] && cp -a "${backup_dir}/client-info.txt" "${client_info_file}"
-  [[ -f "${backup_dir}/state.json" ]] && cp -a "${backup_dir}/state.json" "${state_file}"
+  [[ -f "${config_backup}" ]] || return 1
+  [[ -f "${client_backup}" ]] || return 1
+  [[ -f "${state_backup}" ]] || return 1
+
+  rollback_dir=$(create_temp_dir "reality-restore") || return 1
+  _reality_rotation_backup_file "${config_file}" "${rollback_dir}/config.json" || {
+    rm -rf "${rollback_dir}" 2>/dev/null || true
+    return 1
+  }
+  _reality_rotation_backup_file "${client_info_file}" "${rollback_dir}/client-info.txt" || {
+    rm -rf "${rollback_dir}" 2>/dev/null || true
+    return 1
+  }
+  _reality_rotation_backup_file "${state_file}" "${rollback_dir}/state.json" || {
+    rm -rf "${rollback_dir}" 2>/dev/null || true
+    return 1
+  }
+
+  _rotation_stage_restore_target "${config_backup}" "${config_file}" staged_config || {
+    rm -rf "${rollback_dir}" 2>/dev/null || true
+    return 1
+  }
+  _rotation_stage_restore_target "${client_backup}" "${client_info_file}" staged_client || {
+    _rotation_cleanup_staged_target "${staged_config}"
+    rm -rf "${rollback_dir}" 2>/dev/null || true
+    return 1
+  }
+  _rotation_stage_restore_target "${state_backup}" "${state_file}" staged_state || {
+    _rotation_cleanup_staged_target "${staged_config}"
+    _rotation_cleanup_staged_target "${staged_client}"
+    rm -rf "${rollback_dir}" 2>/dev/null || true
+    return 1
+  }
+
+  if ! {
+    _rotation_apply_staged_target "${staged_config}" "${config_file}" &&
+      _rotation_apply_staged_target "${staged_client}" "${client_info_file}" &&
+      _rotation_apply_staged_target "${staged_state}" "${state_file}"
+  }; then
+    _rotation_restore_target_from_capture "${rollback_dir}/config.json" "${config_file}" || true
+    _rotation_restore_target_from_capture "${rollback_dir}/client-info.txt" "${client_info_file}" || true
+    _rotation_restore_target_from_capture "${rollback_dir}/state.json" "${state_file}" || true
+    _rotation_cleanup_staged_target "${staged_config}"
+    _rotation_cleanup_staged_target "${staged_client}"
+    _rotation_cleanup_staged_target "${staged_state}"
+    rm -rf "${rollback_dir}" 2>/dev/null || true
+    return 1
+  fi
+
+  rm -rf "${rollback_dir}" 2>/dev/null || true
+  return 0
 }
 
 _reality_rotation_restart_service_safely() {
   (
-    unset SBX_LOCK_FILE
-    restart_service
+    _restart_service_impl
   )
+}
+
+_reality_rotation_with_mutation_locks() {
+  local locked_command="${1:-}"
+  local timeout="${SBX_LOCK_TIMEOUT_SEC:-30}"
+
+  [[ -n "${locked_command}" ]] || {
+    err "_reality_rotation_with_mutation_locks requires a command"
+    return 1
+  }
+  shift || true
+
+  with_flock "${timeout}" with_state_lock "${timeout}" "${locked_command}" "$@"
 }
 
 _reality_rotation_update_state() {
@@ -364,7 +531,7 @@ _reality_rotation_update_config() {
 }
 
 reality_rotation_schedule() {
-  with_state_lock "${SBX_LOCK_TIMEOUT_SEC:-30}" _reality_rotation_schedule_locked "$@"
+  _reality_rotation_with_mutation_locks _reality_rotation_schedule_locked "$@"
 }
 
 _reality_rotation_schedule_locked() {
@@ -591,7 +758,9 @@ _reality_rotate_shortid_locked() {
       mv -f "${state_tmp}" "${state_file}"
   }; then
     warn "Failed to commit rotation changes, restoring previous files"
-    _reality_rotation_restore_backups "${backup_dir}" "${config_file}" "${client_info_file}" "${state_file}"
+    if ! _reality_rotation_restore_backups "${backup_dir}" "${config_file}" "${client_info_file}" "${state_file}"; then
+      warn "Failed to restore previous files after commit failure"
+    fi
     rm -f "${config_tmp}" "${client_tmp}" "${state_tmp}" 2>/dev/null || true
     rm -rf "${backup_dir}" 2>/dev/null || true
     return 1
@@ -599,7 +768,11 @@ _reality_rotate_shortid_locked() {
 
   if ! _reality_rotation_restart_service_safely; then
     warn "Service restart failed, restoring previous Reality short ID"
-    _reality_rotation_restore_backups "${backup_dir}" "${config_file}" "${client_info_file}" "${state_file}"
+    if ! _reality_rotation_restore_backups "${backup_dir}" "${config_file}" "${client_info_file}" "${state_file}"; then
+      warn "Failed to restore previous Reality short ID files"
+      rm -rf "${backup_dir}" 2>/dev/null || true
+      return 1
+    fi
     if ! _reality_rotation_restart_service_safely; then
       warn "Failed to restart sing-box after restoring previous files"
       rm -rf "${backup_dir}" 2>/dev/null || true
@@ -622,9 +795,7 @@ _reality_rotate_shortid_locked() {
 }
 
 reality_rotate_shortid() {
-  local arg=''
-
-  with_state_lock "${SBX_LOCK_TIMEOUT_SEC:-30}" _reality_rotate_shortid_locked "$@"
+  _reality_rotation_with_mutation_locks _reality_rotate_shortid_locked "$@"
 }
 
 export -f reality_rotate_shortid
