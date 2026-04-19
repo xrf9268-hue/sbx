@@ -840,7 +840,7 @@ handle_rotate_shortid_command() {
     schedule_value="${2}"
   fi
 
-  if ! declare -f reality_rotate_shortid >/dev/null 2>&1 || \
+  if ! declare -f reality_rotate_shortid >/dev/null 2>&1 ||
     ! declare -f reality_rotation_schedule >/dev/null 2>&1; then
     echo -e "${R}[ERR]${N} Reality rotation module not loaded. Please reinstall sbx-lite."
     exit 1

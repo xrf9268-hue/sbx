@@ -55,7 +55,7 @@ _rotation_schedule_to_oncalendar() {
   local schedule="$1"
 
   case "${schedule}" in
-    daily|weekly|monthly)
+    daily | weekly | monthly)
       printf '%s\n' "${schedule}"
       return 0
       ;;
@@ -552,7 +552,7 @@ _reality_rotation_schedule_locked() {
   fi
 
   case "${schedule}" in
-    daily|weekly|monthly)
+    daily | weekly | monthly)
       on_calendar=$(_rotation_schedule_to_oncalendar "${schedule}") || {
         err "Invalid schedule value: ${schedule}"
         return 1
@@ -651,7 +651,7 @@ _reality_rotate_shortid_locked() {
       --scheduled-run)
         scheduled_run=1
         ;;
-      --help|-h)
+      --help | -h)
         _reality_rotation_usage
         return 0
         ;;
