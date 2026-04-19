@@ -2225,13 +2225,16 @@ uninstall_flow() {
   # Remove short-id rotation units (best effort)
   if declare -f reality_rotation_remove_units >/dev/null 2>&1; then
     reality_rotation_remove_units || true
+  elif declare -f remove_systemd_unit >/dev/null 2>&1; then
+    remove_systemd_unit "sbx-shortid-rotate.timer" "/etc/systemd/system/sbx-shortid-rotate.timer" "best_effort" || true
+    remove_systemd_unit "sbx-shortid-rotate.service" "/etc/systemd/system/sbx-shortid-rotate.service" "best_effort" || true
   else
-    systemctl stop "${ROTATION_TIMER_NAME}" 2>/dev/null || true
-    systemctl disable "${ROTATION_TIMER_NAME}" 2>/dev/null || true
-    rm -f "/etc/systemd/system/${ROTATION_TIMER_NAME}"
-    systemctl stop "${ROTATION_SERVICE_NAME}" 2>/dev/null || true
-    systemctl disable "${ROTATION_SERVICE_NAME}" 2>/dev/null || true
-    rm -f "/etc/systemd/system/${ROTATION_SERVICE_NAME}"
+    systemctl stop "sbx-shortid-rotate.timer" 2>/dev/null || true
+    systemctl disable "sbx-shortid-rotate.timer" 2>/dev/null || true
+    rm -f "/etc/systemd/system/sbx-shortid-rotate.timer"
+    systemctl stop "sbx-shortid-rotate.service" 2>/dev/null || true
+    systemctl disable "sbx-shortid-rotate.service" 2>/dev/null || true
+    rm -f "/etc/systemd/system/sbx-shortid-rotate.service"
     systemctl daemon-reload 2>/dev/null || true
   fi
   rm -f /usr/local/bin/sbx-sub-server

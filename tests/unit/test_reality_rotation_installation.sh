@@ -24,8 +24,8 @@ test_reality_rotation_installation() {
   module_line=$(grep -F 'subscription reality_rotation stats' "${install_sh}" || true)
   contract_line=$(grep -F '["reality_rotation"]="reality_rotate_shortid reality_rotation_schedule reality_rotation_remove_units"' "${install_sh}" || true)
   helper_call_line=$(grep -F 'if declare -f reality_rotation_remove_units' "${install_sh}" || true)
-  timer_line=$(grep -F 'rm -f "/etc/systemd/system/${ROTATION_TIMER_NAME}"' "${install_sh}" || true)
-  service_line=$(grep -F 'rm -f "/etc/systemd/system/${ROTATION_SERVICE_NAME}"' "${install_sh}" || true)
+  timer_line=$(grep -F 'remove_systemd_unit "sbx-shortid-rotate.timer" "/etc/systemd/system/sbx-shortid-rotate.timer" "best_effort"' "${install_sh}" || true)
+  service_line=$(grep -F 'remove_systemd_unit "sbx-shortid-rotate.service" "/etc/systemd/system/sbx-shortid-rotate.service" "best_effort"' "${install_sh}" || true)
 
   assert_not_empty "${module_line}" "install.sh module list includes reality_rotation after subscription and before stats"
   assert_not_empty "${contract_line}" "install.sh API contract includes reality_rotation"
