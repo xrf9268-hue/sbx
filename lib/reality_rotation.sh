@@ -129,6 +129,12 @@ _reality_rotation_restore_backups() {
   [[ -f "${backup_dir}/state.json" ]] && cp -a "${backup_dir}/state.json" "${state_file}"
 }
 
+_reality_rotation_restart_service_safely() {
+  (
+    restart_service
+  )
+}
+
 _reality_rotation_update_state() {
   local state_file="$1"
   local output_file="$2"
@@ -208,7 +214,7 @@ _reality_rotate_shortid_locked() {
   done
 
   if [[ "${scheduled_run}" -eq 1 ]]; then
-    trigger='scheduled'
+    trigger='timer'
   fi
 
   state_file=$(_reality_rotation_state_file)
@@ -308,9 +314,14 @@ _reality_rotate_shortid_locked() {
     return 1
   fi
 
-  if ! restart_service; then
+  if ! _reality_rotation_restart_service_safely; then
     warn "Service restart failed, restoring previous Reality short ID"
     _reality_rotation_restore_backups "${backup_dir}" "${config_file}" "${client_info_file}" "${state_file}"
+    if ! _reality_rotation_restart_service_safely; then
+      warn "Failed to restart sing-box after restoring previous files"
+      rm -rf "${backup_dir}" 2>/dev/null || true
+      return 1
+    fi
     rm -rf "${backup_dir}" 2>/dev/null || true
     return 1
   fi

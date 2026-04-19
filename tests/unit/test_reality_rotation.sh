@@ -158,13 +158,29 @@ current_config_short_id() {
 
 run_rotation() {
   LAST_ROTATION_OUTPUT=$(
-    MOCK_RESTART_RESULT="${MOCK_RESTART_RESULT:-0}" bash -c '
+    TEST_CONFIG_FILE="${TEST_CONFIG_FILE:-}" MOCK_RESTART_RESULT="${MOCK_RESTART_RESULT:-0}" MOCK_RESTART_STYLE="${MOCK_RESTART_STYLE:-return}" bash -c '
       set -euo pipefail
       source "'"${PROJECT_ROOT}"'/lib/common.sh"
       source "'"${PROJECT_ROOT}"'/lib/validation.sh"
       source "'"${PROJECT_ROOT}"'/lib/service.sh"
       source "'"${PROJECT_ROOT}"'/lib/reality_rotation.sh"
+      restart_attempts_file="'"${TEST_TMP}"'/restart-attempts.log"
+      restart_invocations_file="'"${TEST_TMP}"'/restart-invocations.count"
+      restart_config_file="${TEST_CONFIG_FILE:-${SB_CONF}}"
       restart_service() {
+        local attempt=0
+        if [[ -f "${restart_invocations_file}" ]]; then
+          attempt=$(cat "${restart_invocations_file}")
+        fi
+        attempt=$((attempt + 1))
+        printf "%s\n" "${attempt}" >"${restart_invocations_file}"
+        jq -r ".inbounds[] | select(.tls.reality) | .tls.reality.short_id[0]" "${restart_config_file}" >>"${restart_attempts_file}"
+        if [[ "${MOCK_RESTART_STYLE:-return}" == "exit" ]]; then
+          if [[ "${attempt}" -eq 1 ]]; then
+            exit 17
+          fi
+          return 0
+        fi
         if [[ "${MOCK_RESTART_RESULT:-0}" != "0" ]]; then
           return 1
         fi
@@ -201,6 +217,8 @@ test_manual_rotation_updates_files() {
     "state.json rotation metadata records the new short ID"
   assert_equals "${old_sid}" "$(jq -r '.protocols.reality.short_id_rotation.previous_short_id' "${STATE_FILE_PATH}")" \
     "state.json rotation metadata records the previous short ID"
+  assert_equals "manual" "$(jq -r '.protocols.reality.short_id_rotation.trigger' "${STATE_FILE_PATH}")" \
+    "manual rotations are labeled manual"
   assert_file_exists "${TEST_TMP}/subscription-refresh.log" "subscription cache refresh is triggered when enabled"
   assert_contains "$(cat "${TEST_TMP}/subscription-refresh.log")" "subscription_refresh_cache" \
     "subscription cache refresh is triggered when enabled"
@@ -247,6 +265,41 @@ test_restart_failure_rolls_back_files() {
   assert_equals "abcd1234" "$(current_config_short_id)" "rollback restores original config short ID"
 }
 
+test_restart_failure_with_exit_rolls_back_and_restarts_restored_config() {
+  local before_state=''
+  local before_client=''
+  local before_config=''
+  before_state=$(cat "${STATE_FILE_PATH}")
+  before_client=$(cat "${CLIENT_INFO_PATH}")
+  before_config=$(cat "${CONFIG_FILE_PATH}")
+
+  MOCK_RESTART_STYLE=exit assert_failure "run_rotation" "non-returning restart failure still triggers rollback"
+
+  assert_equals "${before_state}" "$(cat "${STATE_FILE_PATH}")" "non-returning restart failure rolls back state.json"
+  assert_equals "${before_client}" "$(cat "${CLIENT_INFO_PATH}")" "non-returning restart failure rolls back client-info.txt"
+  assert_equals "${before_config}" "$(cat "${CONFIG_FILE_PATH}")" "non-returning restart failure rolls back config.json"
+  assert_file_exists "${TEST_TMP}/restart-attempts.log" "restart attempts are logged"
+  assert_equals "2" "$(wc -l <"${TEST_TMP}/restart-attempts.log" | tr -d '[:space:]')" \
+    "rotation retries restart after restoring backups"
+  assert_matches "$(sed -n '1p' "${TEST_TMP}/restart-attempts.log")" '^[0-9a-f]{8}$' \
+    "first restart saw a rotated short ID"
+  assert_not_contains "$(sed -n '1p' "${TEST_TMP}/restart-attempts.log")" "abcd1234" \
+    "first restart did not see the original short ID"
+  assert_equals "abcd1234" "$(sed -n '2p' "${TEST_TMP}/restart-attempts.log")" \
+    "second restart saw restored config"
+  assert_file_not_exists "${TEST_TMP}/subscription-refresh.log" "failed rotation does not refresh subscription cache"
+  assert_equals "abcd1234" "$(current_state_short_id)" "non-returning restart failure restores original state short ID"
+}
+
+test_scheduled_run_records_timer_trigger() {
+  run_rotation --scheduled-run
+
+  assert_equals "timer" "$(jq -r '.protocols.reality.short_id_rotation.trigger' "${STATE_FILE_PATH}")" \
+    "scheduled rotations are labeled timer"
+  assert_equals "timer" "$(jq -r '.protocols.reality.short_id_rotation.history[0].trigger' "${STATE_FILE_PATH}")" \
+    "rotation history records timer trigger"
+}
+
 main() {
   set +e
   echo "Running: reality rotation"
@@ -258,6 +311,12 @@ main() {
   teardown_fixture
   setup_fixture
   test_restart_failure_rolls_back_files
+  teardown_fixture
+  setup_fixture
+  test_restart_failure_with_exit_rolls_back_and_restarts_restored_config
+  teardown_fixture
+  setup_fixture
+  test_scheduled_run_records_timer_trigger
   teardown_fixture
   print_test_summary
 }
